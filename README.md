@@ -18,13 +18,24 @@ npx serve .
 
 | Page | What it does |
 |---|---|
-| **Overview** | Net worth, asset composition, smart alerts, upcoming deposits, portfolio snapshot, global-percentile chip |
-| **Accounts** | Checking / savings / investment accounts with APY — daily, monthly & yearly interest projections, live accrual since the last balance update, one-click "Capitalize" |
+| **Overview** | Net worth, **net worth history chart**, asset composition, smart alerts, upcoming deposits, portfolio snapshot, global-percentile chip |
+| **Accounts** | Checking / savings / investment accounts with APY — daily, monthly & yearly interest projections (net of tax), live accrual since the last balance update, one-click "Capitalize" |
 | **Credit Cards** | Limits, balances, utilization bars, statement-cut & payment-due countdowns with alerts (≤5 days for cut, ≤7 for payment, high-utilization warnings) |
-| **Portfolio** | Stocks & ETFs with shares + price paid; edit the "Price now" column inline to refresh returns, allocation chart, best/worst positions |
-| **Earnings** | Salaries & recurring income (monthly, every 15 days / quincena, every 14 days, weekly) mapped to receiving accounts, per-account interest engine, 30-day deposit timeline, 12-month projection chart |
-| **Milestones** | Gamification: your estimated global percentile for net worth and total annual earnings, distance to the next "top X%" bracket, and 14 achievements for healthy financial habits |
-| **Guide** | A built-in manual: how each page works, credit-card date mechanics, and how to keep your data safe |
+| **Portfolio** | Stocks & ETFs with shares + price paid in the listing's currency; **live quotes & dividends** via a free Finnhub key (or edit prices inline), allocation chart, after-tax returns, best/worst positions |
+| **Earnings** | Salaries & recurring income (monthly, every 15 days / quincena, every 14 days, weekly) with **gross/net + tax-rate handling**, mapped to receiving accounts; interest & dividend engines, 30-day deposit timeline, 12-month net projection chart |
+| **Milestones** | Gamification: your estimated global percentile for net worth and gross annual earnings, distance to the next "top X%" bracket, and 16 achievements for healthy financial habits |
+| **Guide** | A built-in manual: how each page works, credit-card date mechanics, currencies, taxes, and how to keep your data safe |
+
+## Multi-currency & live data
+
+- Every account, card, position and income stream carries its **own currency** (USD/MXN/EUR/GBP) — mix Mexican bank accounts with US stocks freely.
+- Totals convert to your display currency using **daily ECB exchange rates** (Frankfurter API, no key needed), refreshed automatically with an offline fallback.
+- **Live stock/ETF prices and annual dividends** via [Finnhub](https://finnhub.io/register) — paste a free API key in Settings and hit "↻ Update prices" on the Portfolio page.
+- Net worth history is snapshotted daily in USD, so switching display currency never distorts the chart.
+
+## Taxes
+
+Declare each income stream as **gross** (with an effective withholding rate) or **net** — projections, timeline and charts always show what actually lands. Global rates for **interest, dividends, and capital gains** live in Settings and flow through every projection in the app.
 
 ## Keeping your finances safe
 

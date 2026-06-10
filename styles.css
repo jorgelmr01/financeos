@@ -645,11 +645,26 @@ body {
   .page-title { font-size: 32px; }
 }
 
+/* ---------- multi-currency sub-amounts ---------- */
+.fx-sub {
+  display: block;
+  font-family: var(--font-mono); font-size: 11.5px; font-weight: 400;
+  color: var(--text-mute); margin-top: 2px; letter-spacing: 0;
+}
+
+/* ---------- net worth history chart ---------- */
+.nw-chart { display: block; width: 100%; height: 190px; }
+.nw-chart-scale {
+  display: flex; justify-content: space-between; margin-top: 10px;
+  font-family: var(--font-mono); font-size: 10.5px; color: var(--text-mute);
+  letter-spacing: 0.08em;
+}
+
 /* ---------- privacy mode ---------- */
 body.privacy :is(.hero-amount, .stat-value, .chip-value, .acct-balance,
   .ccard-balance, .tl-amount, .tbl .num, .b-val, .ai-val, .bar-total,
   .pct-big, .accrued-note, .ccard-limit, .stat-note, .comp-legend .lg,
-  .pct-sub, .pct-next, .pct-breakdown) {
+  .pct-sub, .pct-next, .pct-breakdown, .fx-sub, .nw-chart, .nw-chart-scale) {
   filter: blur(9px);
   transition: filter 0.25s;
 }

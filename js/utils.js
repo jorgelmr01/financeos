@@ -12,10 +12,20 @@ function esc(s) {
 }
 
 const CURRENCY_LOCALE = { USD: "en-US", MXN: "es-MX", EUR: "de-DE", GBP: "en-GB" };
+const CURRENCY_CODES = ["USD", "MXN", "EUR", "GBP"];
 
+function displayCurrency() {
+  return (typeof Store !== "undefined" && Store.state) ? Store.state.settings.currency : "USD";
+}
+
+/* Format an amount that is already in the display currency */
 function fmtMoney(n, opts) {
+  return fmtMoneyIn(n, displayCurrency(), opts);
+}
+
+/* Format an amount in an explicit currency */
+function fmtMoneyIn(n, cur, opts) {
   opts = opts || {};
-  const cur = (typeof Store !== "undefined" && Store.state) ? Store.state.settings.currency : "USD";
   const v = Number(n) || 0;
   const out = new Intl.NumberFormat(CURRENCY_LOCALE[cur] || "en-US", {
     style: "currency", currency: cur,
@@ -149,16 +159,41 @@ function freqLabel(income) {
   }
 }
 
-/* Monthly-equivalent amount of an income stream */
-function monthlyEquivalent(income) {
-  const a = Number(income.amount) || 0;
+/* Deposits per month for a frequency */
+function freqFactor(income) {
   switch (income.frequency) {
-    case "monthly": return a;
-    case "quincena": return a * 2;
-    case "biweekly": return a * 26 / 12;
-    case "weekly": return a * 52 / 12;
-    default: return a;
+    case "monthly": return 1;
+    case "quincena": return 2;
+    case "biweekly": return 26 / 12;
+    case "weekly": return 52 / 12;
+    default: return 1;
   }
+}
+
+/* What actually lands in the account per deposit (after tax). */
+function netPerDeposit(income) {
+  const a = Number(income.amount) || 0;
+  const r = Number(income.taxRate) || 0;
+  if (income.amountType === "gross" && r > 0) return a * (1 - r / 100);
+  return a;
+}
+
+/* Pre-tax amount per deposit. */
+function grossPerDeposit(income) {
+  const a = Number(income.amount) || 0;
+  const r = Number(income.taxRate) || 0;
+  if (income.amountType === "net" && r > 0 && r < 100) return a / (1 - r / 100);
+  return a;
+}
+
+/* Monthly-equivalent gross amount of an income stream (native currency) */
+function monthlyEquivalent(income) {
+  return grossPerDeposit(income) * freqFactor(income);
+}
+
+/* Monthly-equivalent net amount (native currency) */
+function monthlyEquivalentNet(income) {
+  return netPerDeposit(income) * freqFactor(income);
 }
 
 /* ---------- interest math ---------- */
@@ -218,23 +253,41 @@ function ordinal(n) {
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
 
+/* ---------- foreign exchange ----------
+   Rates are stored as units-per-USD (Frankfurter/ECB, refreshed daily).
+   FALLBACK_FX keeps the app working offline. */
+
+const FALLBACK_FX = { USD: 1, MXN: 18.2, EUR: 0.92, GBP: 0.79 };
+
+function fxRates() {
+  const s = (typeof Store !== "undefined" && Store.state) ? Store.state.settings : null;
+  return (s && s.fx && s.fx.rates) ? s.fx.rates : FALLBACK_FX;
+}
+
+function convBetween(amount, from, to) {
+  if (from === to) return Number(amount) || 0;
+  const r = fxRates();
+  return (Number(amount) || 0) * ((r[to] || 1) / (r[from] || 1));
+}
+
+/* entity currency -> display currency */
+function conv(amount, fromCur) {
+  return convBetween(amount, fromCur || displayCurrency(), displayCurrency());
+}
+
+function toUSD(amount, fromCur) {
+  return convBetween(amount, fromCur || displayCurrency(), "USD");
+}
+
+function fromUSD(amount, toCur) {
+  return convBetween(amount, "USD", toCur || displayCurrency());
+}
+
 /* ---------- global percentile estimation (gamification) ----------
    Approximate distributions for the global adult population, in USD,
    interpolated from public global wealth & income reports (UBS/Credit
    Suisse Global Wealth Report, World Inequality Database, ~2024).
    Estimates only — shown with a disclaimer in the app. */
-
-const FX_TO_USD = { USD: 1, MXN: 0.055, EUR: 1.09, GBP: 1.27 };
-
-function toUSD(amount) {
-  const cur = (typeof Store !== "undefined" && Store.state) ? Store.state.settings.currency : "USD";
-  return (Number(amount) || 0) * (FX_TO_USD[cur] || 1);
-}
-
-function fromUSD(amount) {
-  const cur = (typeof Store !== "undefined" && Store.state) ? Store.state.settings.currency : "USD";
-  return (Number(amount) || 0) / (FX_TO_USD[cur] || 1);
-}
 
 /* [net worth in USD, % of global adults at or below that level] */
 const NETWORTH_PCT_TABLE = [

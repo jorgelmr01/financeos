@@ -50,6 +50,12 @@ const UI = {
       inputHtml + (hint ? '<div class="hint">' + hint + "</div>" : "") + "</div>";
   },
 
+  currencySelect(name, selected) {
+    const cur = selected || displayCurrency();
+    return '<select name="' + name + '">' + CURRENCY_CODES.map(c =>
+      '<option value="' + c + '"' + (cur === c ? " selected" : "") + ">" + c + "</option>").join("") + "</select>";
+  },
+
   /* ---------- forms ---------- */
 
   accountForm(acc) {
@@ -65,6 +71,7 @@ const UI = {
           ).join("") +
         "</select>") +
       this.field("Current balance", '<input name="balance" type="number" step="0.01" min="0" required value="' + (acc.balance != null ? acc.balance : "") + '" placeholder="0.00">') +
+      this.field("Currency", this.currencySelect("currency", acc.currency), "Converted automatically in totals") +
       this.field("Interest rate — APY %", '<input name="apy" type="number" step="0.01" min="0" max="100" value="' + (acc.apy != null && acc.apy !== 0 ? acc.apy : "") + '" placeholder="e.g. 7.50">', "Leave empty if the account pays no interest") +
       "</div>";
     this.openModal(isEdit ? "Edit account" : "New account", body, {
@@ -76,6 +83,7 @@ const UI = {
           institution: fd.get("institution").trim(),
           type: fd.get("type"),
           balance: balance,
+          currency: fd.get("currency"),
           apy: parseFloat(fd.get("apy")) || 0,
         };
         if (isEdit) {
@@ -109,6 +117,7 @@ const UI = {
       this.field("Issuer", '<input name="issuer" maxlength="40" value="' + esc(card.issuer || "") + '" placeholder="Bank">') +
       this.field("Credit limit", '<input name="limit" type="number" step="0.01" min="0" required value="' + (card.limit != null ? card.limit : "") + '">') +
       this.field("Current balance", '<input name="balance" type="number" step="0.01" min="0" required value="' + (card.balance != null ? card.balance : "") + '">', "What you currently owe") +
+      this.field("Currency", this.currencySelect("currency", card.currency)) +
       this.field("APR % (optional)", '<input name="apr" type="number" step="0.01" min="0" max="200" value="' + (card.apr != null && card.apr !== 0 ? card.apr : "") + '">') +
       this.field("Statement cut day", '<select name="cutDay">' + dayOpts(card.cutDay || 1) + "</select>", "Day of month the statement closes") +
       this.field("Payment due day", '<select name="payDay">' + dayOpts(card.payDay || 20) + "</select>", "Day of month payment is due") +
@@ -125,6 +134,7 @@ const UI = {
           issuer: fd.get("issuer").trim(),
           limit: parseFloat(fd.get("limit")) || 0,
           balance: parseFloat(fd.get("balance")) || 0,
+          currency: fd.get("currency"),
           apr: parseFloat(fd.get("apr")) || 0,
           cutDay: parseInt(fd.get("cutDay"), 10),
           payDay: parseInt(fd.get("payDay"), 10),
@@ -153,8 +163,10 @@ const UI = {
         "</select>") +
       this.field("Name", '<input name="hname" maxlength="60" value="' + esc(h.name || "") + '" placeholder="Vanguard S&P 500 ETF">', null, true) +
       this.field("Shares", '<input name="shares" type="number" step="any" min="0" required value="' + (h.shares != null ? h.shares : "") + '">', "Fractional shares allowed") +
+      this.field("Prices in", this.currencySelect("currency", h.currency || "USD"), "Currency of this listing (US tickers: USD)") +
       this.field("Avg. price paid", '<input name="costBasis" type="number" step="any" min="0" required value="' + (h.costBasis != null ? h.costBasis : "") + '">', "Per share") +
-      this.field("Current price", '<input name="currentPrice" type="number" step="any" min="0" required value="' + (h.currentPrice != null ? h.currentPrice : "") + '">', "Update anytime from the table") +
+      this.field("Current price", '<input name="currentPrice" type="number" step="any" min="0" required value="' + (h.currentPrice != null ? h.currentPrice : "") + '">', "Auto-updates with a Finnhub key") +
+      this.field("Dividend / share / year", '<input name="divPerShare" type="number" step="any" min="0" value="' + (h.divPerShare != null && h.divPerShare !== 0 ? h.divPerShare : "") + '">', "Optional — auto-fills when refreshing prices") +
       this.field("Purchase date", '<input name="purchaseDate" type="date" value="' + esc(h.purchaseDate || toISO(todayMid())) + '">') +
       this.field("Held in account", '<select name="accountId">' + acctOpts + "</select>", invAccounts.length ? null : "Tip: add an Investment account to link", true) +
       "</div>";
@@ -166,8 +178,10 @@ const UI = {
           kind: fd.get("kind"),
           name: fd.get("hname").trim(),
           shares: parseFloat(fd.get("shares")) || 0,
+          currency: fd.get("currency"),
           costBasis: parseFloat(fd.get("costBasis")) || 0,
           currentPrice: parseFloat(fd.get("currentPrice")) || 0,
+          divPerShare: parseFloat(fd.get("divPerShare")) || 0,
           purchaseDate: fd.get("purchaseDate") || toISO(todayMid()),
           accountId: fd.get("accountId") || "",
         };
@@ -198,6 +212,15 @@ const UI = {
             '<option' + (inc.category === c ? " selected" : "") + ">" + c + "</option>").join("") +
         "</select>") +
       this.field("Amount per deposit", '<input name="amount" type="number" step="0.01" min="0" required value="' + (inc.amount != null ? inc.amount : "") + '">') +
+      this.field("Currency", this.currencySelect("currency", inc.currency)) +
+      this.field("This amount is",
+        '<select name="amountType" id="amount-type-select">' +
+          '<option value="net"' + ((inc.amountType || "net") === "net" ? " selected" : "") + ">Net — after taxes (take-home)</option>" +
+          '<option value="gross"' + (inc.amountType === "gross" ? " selected" : "") + ">Gross — before taxes</option>" +
+        "</select>", null, true) +
+      '<div id="taxrate-wrap" class="full"' + (inc.amountType === "gross" ? "" : ' style="display:none"') + ">" +
+        this.field("Effective tax rate %", '<input name="taxRate" type="number" step="0.1" min="0" max="99" value="' + (inc.taxRate != null && inc.taxRate !== 0 ? inc.taxRate : "") + '" placeholder="e.g. 21">', "Withholding applied to each deposit — projections use the net amount", true) +
+      "</div>" +
       this.field("Deposits into", '<select name="accountId" required>' + (acctOpts || '<option value="">No accounts yet</option>') + "</select>", null, true) +
       this.field("Frequency",
         '<select name="frequency" id="freq-select">' +
@@ -219,6 +242,9 @@ const UI = {
           name: fd.get("name").trim(),
           category: fd.get("category"),
           amount: parseFloat(fd.get("amount")) || 0,
+          currency: fd.get("currency"),
+          amountType: fd.get("amountType"),
+          taxRate: parseFloat(fd.get("taxRate")) || 0,
           accountId: fd.get("accountId"),
           frequency: fd.get("frequency"),
           payDay: parseInt(fd.get("payDay"), 10) || 1,
@@ -232,6 +258,42 @@ const UI = {
     });
     document.getElementById("freq-select").addEventListener("change", e => {
       document.getElementById("payday-wrap").style.display = e.target.value === "monthly" ? "" : "none";
+    });
+    document.getElementById("amount-type-select").addEventListener("change", e => {
+      document.getElementById("taxrate-wrap").style.display = e.target.value === "gross" ? "" : "none";
+    });
+  },
+
+  settingsForm() {
+    const st = Store.state.settings;
+    const tax = st.tax || { interest: 0, dividends: 0, capGains: 0 };
+    const fxNote = st.fx && st.fx.asOf
+      ? "Live ECB rates as of " + fmtDate(parseISO(st.fx.asOf)) + " · 1 USD = " + fmtNum(st.fx.rates.MXN, 2) + " MXN · " + fmtNum(st.fx.rates.EUR, 3) + " EUR"
+      : "Using built-in fallback rates — refresh from the ⋯ menu when online";
+    const body =
+      '<div class="f-grid">' +
+      this.field("Finnhub API key",
+        '<input name="finnhubKey" value="' + esc(st.finnhubKey || "") + '" placeholder="paste your free key" autocomplete="off">',
+        "Powers “Update prices” on the Portfolio page. Get a free key at finnhub.io/register (60 calls/min). Stored only in this browser.", true) +
+      this.field("Tax on interest %", '<input name="taxInterest" type="number" step="0.1" min="0" max="99" value="' + (tax.interest || "") + '" placeholder="0">', "e.g. ISR retention in Mexico") +
+      this.field("Tax on dividends %", '<input name="taxDividends" type="number" step="0.1" min="0" max="99" value="' + (tax.dividends || "") + '" placeholder="0">', "withholding rate") +
+      this.field("Tax on capital gains %", '<input name="taxCapGains" type="number" step="0.1" min="0" max="99" value="' + (tax.capGains || "") + '" placeholder="0">', "applied to projected gains", true) +
+      '<div class="field full"><div class="hint">' + fxNote + "</div></div>" +
+      "</div>";
+    this.openModal("Settings — taxes & live data", body, {
+      submitLabel: "Save settings",
+      onSubmit(fd) {
+        Store.state.settings.finnhubKey = (fd.get("finnhubKey") || "").trim();
+        Store.state.settings.tax = {
+          interest: parseFloat(fd.get("taxInterest")) || 0,
+          dividends: parseFloat(fd.get("taxDividends")) || 0,
+          capGains: parseFloat(fd.get("taxCapGains")) || 0,
+        };
+        Store.save();
+        UI.toast("Settings saved");
+        UI.closeModal();
+        App.render();
+      },
     });
   },
 

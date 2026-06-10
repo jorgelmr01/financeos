@@ -12,17 +12,31 @@ const Store = {
 
   defaults() {
     return {
-      accounts: [],   // {id, name, institution, type, balance, apy, balanceAsOf}
-      cards: [],      // {id, name, issuer, limit, balance, cutDay, payDay, apr, color}
-      holdings: [],   // {id, symbol, name, kind, shares, costBasis, currentPrice, accountId, purchaseDate}
-      incomes: [],    // {id, name, category, amount, accountId, frequency, payDay, startDate}
-      settings: { currency: "USD", privacy: false, pinEnabled: false, lastExport: null },
+      accounts: [],   // {id, name, institution, type, balance, apy, balanceAsOf, currency}
+      cards: [],      // {id, name, issuer, limit, balance, cutDay, payDay, apr, color, currency}
+      holdings: [],   // {id, symbol, name, kind, shares, costBasis, currentPrice, divPerShare, accountId, purchaseDate, currency}
+      incomes: [],    // {id, name, category, amount, amountType, taxRate, accountId, frequency, payDay, startDate, currency}
+      snapshots: [],  // [{d: ISO date, usd: net worth in USD}]
+      settings: {
+        currency: "USD", privacy: false, pinEnabled: false, lastExport: null,
+        fx: null,                 // {base:'USD', rates:{...units per USD}, asOf}
+        tax: { interest: 0, dividends: 0, capGains: 0 },
+        finnhubKey: "", lastQuoteSync: null,
+      },
     };
   },
 
   _hydrate(parsed) {
-    this.state = Object.assign(this.defaults(), parsed);
-    this.state.settings = Object.assign(this.defaults().settings, parsed.settings || {});
+    const d = this.defaults();
+    this.state = Object.assign(d, parsed);
+    this.state.settings = Object.assign(d.settings, parsed.settings || {});
+    this.state.settings.tax = Object.assign({ interest: 0, dividends: 0, capGains: 0 }, (parsed.settings || {}).tax || {});
+    if (!Array.isArray(this.state.snapshots)) this.state.snapshots = [];
+    // migrate pre-multicurrency data: tag entities with the display currency
+    const cur = this.state.settings.currency || "USD";
+    ["accounts", "cards", "holdings", "incomes"].forEach(coll =>
+      this.state[coll].forEach(x => { if (!x.currency) x.currency = cur; }));
+    this.state.incomes.forEach(x => { if (!x.amountType) x.amountType = "net"; if (x.taxRate == null) x.taxRate = 0; });
   },
 
   /* returns { locked: boolean } — when locked, call unlock(pin) before using state */
@@ -166,58 +180,145 @@ const Store = {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(this.state));
   },
 
+  /* ---------- live data ---------- */
+
+  /* ECB daily rates via Frankfurter (no key, CORS-friendly). Returns true if updated. */
+  async refreshFx(force) {
+    const fx = this.state && this.state.settings.fx;
+    if (!force && fx && fx.asOf && daysBetween(parseISO(fx.asOf), todayMid()) < 1) return false;
+    try {
+      const r = await fetch("https://api.frankfurter.dev/v1/latest?base=USD&symbols=MXN,EUR,GBP");
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const j = await r.json();
+      if (j && j.rates) {
+        this.state.settings.fx = {
+          base: "USD",
+          rates: Object.assign({ USD: 1 }, j.rates),
+          asOf: toISO(todayMid()),
+        };
+        this.save();
+        return true;
+      }
+    } catch (e) {
+      console.warn("FinanceOS: FX refresh failed (offline?)", e);
+    }
+    return false;
+  },
+
+  /* Quotes + annual dividend-per-share via Finnhub (user-supplied free key). */
+  async fetchQuotes() {
+    const key = (this.state.settings.finnhubKey || "").trim();
+    if (!key) return { error: "no-key" };
+    let prices = 0, divs = 0;
+    const failed = [];
+    for (const h of this.state.holdings) {
+      const sym = encodeURIComponent(h.symbol);
+      try {
+        const r = await fetch("https://finnhub.io/api/v1/quote?symbol=" + sym + "&token=" + key);
+        if (r.status === 401 || r.status === 403) return { error: "bad-key" };
+        const j = await r.json();
+        if (j && Number(j.c) > 0) { h.currentPrice = Number(j.c); prices++; }
+        else failed.push(h.symbol);
+        const r2 = await fetch("https://finnhub.io/api/v1/stock/metric?symbol=" + sym + "&metric=all&token=" + key);
+        if (r2.ok) {
+          const m = await r2.json();
+          const dps = m && m.metric && (m.metric.dividendPerShareAnnual || m.metric.dividendPerShareTTM);
+          if (Number(dps) > 0) { h.divPerShare = Number(dps); divs++; }
+        }
+      } catch (e) {
+        failed.push(h.symbol);
+      }
+    }
+    this.state.settings.lastQuoteSync = toISO(todayMid());
+    this.save();
+    return { prices, divs, failed };
+  },
+
+  /* One net-worth snapshot per day, stored in USD so currency switches don't distort history. */
+  recordSnapshot() {
+    if (!this.state) return;
+    const s = this.state;
+    if (!(s.accounts.length || s.cards.length || s.holdings.length || s.incomes.length)) return;
+    const usd = toUSD(computeTotals().netWorth);
+    const iso = toISO(todayMid());
+    const snaps = s.snapshots;
+    const last = snaps[snaps.length - 1];
+    if (last && last.d === iso) {
+      if (Math.abs(last.usd - usd) > 0.005) { last.usd = usd; this.save(); }
+    } else {
+      snaps.push({ d: iso, usd: usd });
+      if (snaps.length > 730) snaps.splice(0, snaps.length - 730);
+      this.save();
+    }
+  },
+
   loadSample() {
     const t = todayMid();
     const iso = toISO(t);
     const monthAgo = toISO(new Date(t.getFullYear(), t.getMonth() - 1, t.getDate()));
     const acc1 = uid(), acc2 = uid(), acc3 = uid(), acc4 = uid();
+    const settings = Object.assign(this.defaults().settings, this.state ? this.state.settings : {});
+    settings.tax = { interest: 5, dividends: 10, capGains: 10 };
     this.state = {
-      settings: Object.assign(this.defaults().settings,
-        this.state ? this.state.settings : {}),
+      settings: settings,
       accounts: [
-        { id: acc1, name: "Everyday Checking", institution: "BBVA", type: "checking", balance: 18450.22, apy: 0, balanceAsOf: iso },
-        { id: acc2, name: "High-Yield Savings", institution: "Nu", type: "savings", balance: 92000, apy: 9.25, balanceAsOf: monthAgo },
-        { id: acc3, name: "Emergency Fund", institution: "Openbank", type: "savings", balance: 45000, apy: 7.5, balanceAsOf: monthAgo },
-        { id: acc4, name: "Brokerage Cash", institution: "GBM+", type: "investment", balance: 6200, apy: 0, balanceAsOf: iso },
+        { id: acc1, name: "Everyday Checking", institution: "BBVA", type: "checking", balance: 18450.22, apy: 0, balanceAsOf: iso, currency: "MXN" },
+        { id: acc2, name: "High-Yield Savings", institution: "Nu", type: "savings", balance: 92000, apy: 9.25, balanceAsOf: monthAgo, currency: "MXN" },
+        { id: acc3, name: "Emergency Fund", institution: "Openbank", type: "savings", balance: 45000, apy: 7.5, balanceAsOf: monthAgo, currency: "MXN" },
+        { id: acc4, name: "Brokerage Cash", institution: "GBM+", type: "investment", balance: 1200, apy: 0, balanceAsOf: iso, currency: "USD" },
       ],
       cards: [
-        { id: uid(), name: "Platinum Rewards", issuer: "American Express", limit: 85000, balance: 21340.5, cutDay: 14, payDay: 4, apr: 39.9, color: "c-forest" },
-        { id: uid(), name: "Cashback Visa", issuer: "Santander", limit: 40000, balance: 31200, cutDay: 25, payDay: 15, apr: 45.2, color: "c-ocean" },
+        { id: uid(), name: "Platinum Rewards", issuer: "American Express", limit: 85000, balance: 21340.5, cutDay: 14, payDay: 4, apr: 39.9, color: "c-forest", currency: "MXN" },
+        { id: uid(), name: "Cashback Visa", issuer: "Santander", limit: 40000, balance: 31200, cutDay: 25, payDay: 15, apr: 45.2, color: "c-ocean", currency: "MXN" },
       ],
       holdings: [
-        { id: uid(), symbol: "VOO", name: "Vanguard S&P 500 ETF", kind: "etf", shares: 14, costBasis: 412.3, currentPrice: 472.1, accountId: acc4, purchaseDate: "2025-03-10" },
-        { id: uid(), symbol: "AAPL", name: "Apple Inc.", kind: "stock", shares: 25, costBasis: 178.5, currentPrice: 224.4, accountId: acc4, purchaseDate: "2025-01-22" },
-        { id: uid(), symbol: "QQQM", name: "Invesco Nasdaq 100 ETF", kind: "etf", shares: 30, costBasis: 168.2, currentPrice: 195.6, accountId: acc4, purchaseDate: "2025-06-02" },
-        { id: uid(), symbol: "NVDA", name: "NVIDIA Corp.", kind: "stock", shares: 10, costBasis: 118.9, currentPrice: 104.3, accountId: acc4, purchaseDate: "2025-11-14" },
+        { id: uid(), symbol: "VOO", name: "Vanguard S&P 500 ETF", kind: "etf", shares: 14, costBasis: 412.3, currentPrice: 472.1, divPerShare: 6.97, accountId: acc4, purchaseDate: "2025-03-10", currency: "USD" },
+        { id: uid(), symbol: "AAPL", name: "Apple Inc.", kind: "stock", shares: 25, costBasis: 178.5, currentPrice: 224.4, divPerShare: 1.04, accountId: acc4, purchaseDate: "2025-01-22", currency: "USD" },
+        { id: uid(), symbol: "QQQM", name: "Invesco Nasdaq 100 ETF", kind: "etf", shares: 30, costBasis: 168.2, currentPrice: 195.6, divPerShare: 1.18, accountId: acc4, purchaseDate: "2025-06-02", currency: "USD" },
+        { id: uid(), symbol: "NVDA", name: "NVIDIA Corp.", kind: "stock", shares: 10, costBasis: 118.9, currentPrice: 104.3, divPerShare: 0.04, accountId: acc4, purchaseDate: "2025-11-14", currency: "USD" },
       ],
       incomes: [
-        { id: uid(), name: "Salary — Acme Corp", category: "Salary", amount: 28500, accountId: acc1, frequency: "quincena", payDay: 15, startDate: "2025-01-15" },
-        { id: uid(), name: "Freelance retainer", category: "Freelance", amount: 9500, accountId: acc1, frequency: "monthly", payDay: 1, startDate: "2025-04-01" },
-        { id: uid(), name: "Apartment rent (tenant)", category: "Rent", amount: 7800, accountId: acc2, frequency: "monthly", payDay: 5, startDate: "2025-02-05" },
+        { id: uid(), name: "Salary — Acme Corp", category: "Salary", amount: 36000, amountType: "gross", taxRate: 21, accountId: acc1, frequency: "quincena", payDay: 15, startDate: "2025-01-15", currency: "MXN" },
+        { id: uid(), name: "Freelance retainer", category: "Freelance", amount: 9500, amountType: "net", taxRate: 0, accountId: acc1, frequency: "monthly", payDay: 1, startDate: "2025-04-01", currency: "MXN" },
+        { id: uid(), name: "Apartment rent (tenant)", category: "Rent", amount: 7800, amountType: "gross", taxRate: 10, accountId: acc2, frequency: "monthly", payDay: 5, startDate: "2025-02-05", currency: "MXN" },
       ],
+      snapshots: (() => {
+        // synthetic 90-day history ending near today's value, so the chart has something to show
+        const out = [];
+        let v = 21500;
+        for (let i = 90; i >= 1; i--) {
+          const d = new Date(t.getFullYear(), t.getMonth(), t.getDate() - i);
+          v *= 1 + 0.0012 + Math.sin(i / 7) * 0.004;
+          out.push({ d: toISO(d), usd: Math.round(v * 100) / 100 });
+        }
+        return out;
+      })(),
     };
     this.save();
   },
 };
 
-/* ---------- derived totals ---------- */
+/* ---------- derived totals (all converted to the display currency) ---------- */
 
 function computeTotals() {
   const s = Store.state;
   let cash = 0, savings = 0, investCash = 0;
   s.accounts.forEach(a => {
-    const b = Number(a.balance) || 0;
+    const b = conv(Number(a.balance) || 0, a.currency);
     if (a.type === "checking") cash += b;
     else if (a.type === "savings") savings += b;
     else investCash += b;
   });
   let invested = 0, marketValue = 0;
   s.holdings.forEach(h => {
-    invested += (Number(h.shares) || 0) * (Number(h.costBasis) || 0);
-    marketValue += (Number(h.shares) || 0) * (Number(h.currentPrice) || 0);
+    invested += conv((Number(h.shares) || 0) * (Number(h.costBasis) || 0), h.currency);
+    marketValue += conv((Number(h.shares) || 0) * (Number(h.currentPrice) || 0), h.currency);
   });
   let debt = 0, creditLimit = 0;
-  s.cards.forEach(c => { debt += Number(c.balance) || 0; creditLimit += Number(c.limit) || 0; });
+  s.cards.forEach(c => {
+    debt += conv(Number(c.balance) || 0, c.currency);
+    creditLimit += conv(Number(c.limit) || 0, c.currency);
+  });
 
   const accountsTotal = cash + savings + investCash;
   const assets = accountsTotal + marketValue;
@@ -276,7 +377,7 @@ function collectAlerts() {
       alerts.push({
         level: "warn",
         text: "<strong>" + esc(h.symbol) + "</strong> is down " + fmtPct(((mv - cost) / cost) * 100, 1).replace("+", ""),
-        meta: "Position value " + fmtMoney(mv) + " vs cost " + fmtMoney(cost),
+        meta: "Position value " + fmtMoneyIn(mv, h.currency) + " vs cost " + fmtMoneyIn(cost, h.currency),
         when: 101,
       });
     }
@@ -299,21 +400,47 @@ function collectAlerts() {
   return alerts;
 }
 
-/* ---------- annual earnings, all sources (for Milestones) ---------- */
+/* ---------- annual earnings, all sources ----------
+   Everything converted to the display currency. Gross = pre-tax,
+   Net = what actually lands after the configured tax rates. */
 
 function earningsBreakdown() {
   const s = Store.state;
-  const scheduled = s.incomes.reduce((a, x) => a + monthlyEquivalent(x), 0) * 12;
-  const interest = s.accounts.reduce((a, x) => a + monthlyInterestEst(x), 0) * 12;
-  let invest = 0;
+  const tax = s.settings.tax || { interest: 0, dividends: 0, capGains: 0 };
+
+  let schedGross = 0, schedNet = 0;
+  s.incomes.forEach(i => {
+    schedGross += conv(monthlyEquivalent(i) * 12, i.currency);
+    schedNet += conv(monthlyEquivalentNet(i) * 12, i.currency);
+  });
+
+  let intGross = 0;
+  s.accounts.forEach(a => { intGross += conv(yearlyInterestEst(a), a.currency); });
+  const intNet = intGross * (1 - (Number(tax.interest) || 0) / 100);
+
+  let divGross = 0;
   s.holdings.forEach(h => {
-    const pnl = (Number(h.shares) || 0) * ((Number(h.currentPrice) || 0) - (Number(h.costBasis) || 0));
+    divGross += conv((Number(h.shares) || 0) * (Number(h.divPerShare) || 0), h.currency);
+  });
+  const divNet = divGross * (1 - (Number(tax.dividends) || 0) / 100);
+
+  let investGross = 0;
+  s.holdings.forEach(h => {
+    const pnl = conv((Number(h.shares) || 0) * ((Number(h.currentPrice) || 0) - (Number(h.costBasis) || 0)), h.currency);
     const bought = parseISO(h.purchaseDate);
     // annualize each position's return over its holding period (≥30d to avoid spikes)
     const days = bought ? Math.max(30, daysBetween(bought, todayMid())) : 365;
-    invest += pnl * 365 / days;
+    investGross += pnl * 365 / days;
   });
-  return { scheduled, interest, invest, total: scheduled + interest + invest };
+  const investNet = investGross > 0 ? investGross * (1 - (Number(tax.capGains) || 0) / 100) : investGross;
+
+  return {
+    schedGross, schedNet, intGross, intNet, divGross, divNet, investGross, investNet,
+    totalGross: schedGross + intGross + divGross + investGross,
+    totalNet: schedNet + intNet + divNet + investNet,
+    /* steady monthly cash-flow estimate (excludes market swings) */
+    monthlyNet: (schedNet + intNet + divNet) / 12,
+  };
 }
 
 /* ---------- achievements ---------- */
@@ -331,6 +458,12 @@ const ACHIEVEMENTS = [
   { id: "compounding", icon: "❋", title: "Compounding Machine",
     desc: "Earn $100+ (USD) of interest per month",
     test: c => toUSD(c.interestMo) >= 100 },
+  { id: "dividend-collector", icon: "✿", title: "Dividend Collector",
+    desc: "Hold a position that pays dividends",
+    test: c => c.s.holdings.some(h => Number(h.divPerShare) > 0) },
+  { id: "globalist", icon: "◍", title: "Globalist",
+    desc: "Hold assets in two or more currencies",
+    test: c => new Set([].concat(c.s.accounts, c.s.holdings).map(x => x.currency)).size >= 2 },
   { id: "diversified", icon: "◮", title: "Diversified",
     desc: "Hold 5 or more positions",
     test: c => c.s.holdings.length >= 5 },
@@ -369,9 +502,9 @@ function achievementContext() {
   const eb = earningsBreakdown();
   return {
     s, t, eb,
-    interestMo: s.accounts.reduce((a, x) => a + monthlyInterestEst(x), 0),
-    incomeMo: s.incomes.reduce((a, x) => a + monthlyEquivalent(x), 0),
+    interestMo: eb.intGross / 12,                                         // display currency
+    incomeMo: s.incomes.reduce((a, x) => a + conv(monthlyEquivalentNet(x), x.currency), 0),
     nwPct: percentileFromTable(toUSD(t.netWorth), NETWORTH_PCT_TABLE),
-    incPct: percentileFromTable(toUSD(eb.total), INCOME_PCT_TABLE),
+    incPct: percentileFromTable(toUSD(eb.totalGross), INCOME_PCT_TABLE),  // income stats are pre-tax
   };
 }

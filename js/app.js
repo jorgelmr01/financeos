@@ -8,7 +8,7 @@ const App = {
     overview:   { title: "Overview",     actions: "" },
     accounts:   { title: "Accounts",     actions: '<button class="btn primary" data-action="add-account">+ Add account</button>' },
     cards:      { title: "Credit Cards", actions: '<button class="btn primary" data-action="add-card">+ Add card</button>' },
-    portfolio:  { title: "Portfolio",    actions: '<button class="btn primary" data-action="add-holding">+ Add position</button>' },
+    portfolio:  { title: "Portfolio",    actions: '<button class="btn" data-action="refresh-prices">↻ Update prices</button><button class="btn primary" data-action="add-holding">+ Add position</button>' },
     earnings:   { title: "Earnings",     actions: '<button class="btn primary" data-action="add-income">+ Add income stream</button>' },
     milestones: { title: "Milestones",   actions: "" },
     guide:      { title: "Guide",        actions: "" },
@@ -42,6 +42,8 @@ const App = {
     if (eye) eye.classList.toggle("active", !!Store.state.settings.privacy);
     const lockBtn = document.getElementById("lock-btn");
     if (lockBtn) lockBtn.style.display = Store.pinEnabled ? "" : "none";
+
+    Store.recordSnapshot();
   },
 
   showLock() {
@@ -66,6 +68,7 @@ const App = {
         root.innerHTML = "";
         document.getElementById("currency-select").value = Store.state.settings.currency;
         this.render();
+        Store.refreshFx().then(changed => { if (changed) this.render(); });
       } else {
         const err = document.getElementById("lock-error");
         err.textContent = "Wrong PIN — try again";
@@ -97,15 +100,47 @@ const App = {
       }
       case "capitalize": {
         const a = Store.find("accounts", id);
-        const accrued = accruedInterest(a);
+        const taxI = (Store.state.settings.tax && Number(Store.state.settings.tax.interest)) || 0;
+        const accruedNet = accruedInterest(a) * (1 - taxI / 100);
         Store.update("accounts", id, {
-          balance: Math.round((Number(a.balance) + accrued) * 100) / 100,
+          balance: Math.round((Number(a.balance) + accruedNet) * 100) / 100,
           balanceAsOf: toISO(todayMid()),
         });
-        UI.toast("Added " + fmtMoney(accrued) + " of accrued interest to " + a.name);
+        UI.toast("Added " + fmtMoneyIn(accruedNet, a.currency) + " of net accrued interest to " + a.name);
         this.render();
         break;
       }
+
+      case "refresh-prices": {
+        if (!(Store.state.settings.finnhubKey || "").trim()) {
+          UI.settingsForm();
+          UI.toast("Paste a free Finnhub API key first — get one at finnhub.io/register");
+          break;
+        }
+        if (!Store.state.holdings.length) { UI.toast("No positions to update yet"); break; }
+        UI.toast("Fetching live prices…");
+        Store.fetchQuotes().then(res => {
+          if (res.error === "bad-key") UI.toast("Finnhub rejected the key — check it in Settings");
+          else if (res.error) UI.toast("Price update failed — are you online?");
+          else {
+            let msg = "Updated " + res.prices + " price" + (res.prices === 1 ? "" : "s") + ", " + res.divs + " dividend" + (res.divs === 1 ? "" : "s");
+            if (res.failed.length) msg += " · no data for " + res.failed.join(", ");
+            UI.toast(msg);
+          }
+          App.render();
+        });
+        break;
+      }
+
+      case "app-settings": UI.settingsForm(); break;
+
+      case "refresh-fx":
+        UI.toast("Refreshing exchange rates…");
+        Store.refreshFx(true).then(ok => {
+          UI.toast(ok ? "Exchange rates updated (ECB)" : "Couldn't reach the rate service — using cached rates");
+          App.render();
+        });
+        break;
 
       case "add-card": UI.cardForm(); break;
       case "edit-card": UI.cardForm(Store.find("cards", id)); break;
@@ -289,6 +324,11 @@ const App = {
 
     if (res.locked) this.showLock();
     else this.render();
+
+    // refresh ECB rates in the background (daily); re-render if they changed
+    if (Store.state) {
+      Store.refreshFx().then(changed => { if (changed) this.render(); });
+    }
   },
 };
 
