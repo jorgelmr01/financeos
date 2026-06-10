@@ -30,6 +30,12 @@ const App = {
     document.getElementById("topbar-actions").innerHTML = meta.actions;
     document.getElementById("page").innerHTML = Pages[this.page]();
 
+    // compute initial values for any live learn-widgets just rendered
+    document.querySelectorAll(".lw").forEach(el => {
+      const w = typeof WIDGETS !== "undefined" && WIDGETS[el.dataset.lw];
+      if (w) w.update(el);
+    });
+
     const t = computeTotals();
     document.getElementById("sidebar-networth").textContent = fmtMoney(t.netWorth, { compact: true });
 
@@ -294,6 +300,12 @@ const App = {
         const pop = document.getElementById("data-menu-pop");
         if (pop) pop.classList.remove("open");
       }
+    });
+
+    /* live learn-widget sliders */
+    document.addEventListener("input", e => {
+      const w = e.target.closest(".lw");
+      if (w && typeof WIDGETS !== "undefined" && WIDGETS[w.dataset.lw]) WIDGETS[w.dataset.lw].update(w);
     });
 
     /* inline price edits (portfolio) */

@@ -627,9 +627,9 @@ const Pages = {
         "Net worth history is stored in USD, so switching display currency never distorts the chart.",
       ]) +
       card("✺", "Learn", [
-        "Four short <strong>scenario games</strong> (~3 min each) teach the habits that matter: paychecks, credit cards, market crashes and inflation — by making the choices yourself.",
-        "Every choice shows the estimated <strong>10-year impact</strong> of that habit, so the stakes feel real.",
-        "The <strong>Wealth Builder sandbox</strong> simulates 20 years of saving, investing, crashes and emergencies — beat the mattress saver and chase an S-grade.",
+        "Four <strong>interactive modules</strong> mix live calculators (drag a slider, watch compounding, minimum-payment traps or the Rule of 72 react), real decisions with a <strong>10-year impact</strong> meter, and quick knowledge checks.",
+        "The <strong>Wealth Builder sandbox</strong> plays 20 years where crashes, scams, emergencies and job offers interrupt you — each demands a decision with real consequences.",
+        "Balance wealth against the <strong>life-satisfaction meter</strong>: finish burned out and the grade drops. Results show your fortune in today's purchasing power, too.",
         "Scores earn XP and levels, and three achievements are tied to learning.",
       ]) +
       card("✶", "Milestones", [
