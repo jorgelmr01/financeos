@@ -23,12 +23,15 @@ function fmtMoney(n, opts) {
   return fmtMoneyIn(n, displayCurrency(), opts);
 }
 
-/* Format an amount in an explicit currency */
+/* Format an amount in an explicit currency.
+   Foreign currencies render with their code ("USD 6.97") rather than an
+   ambiguous "$", since USD and MXN share the same symbol. */
 function fmtMoneyIn(n, cur, opts) {
   opts = opts || {};
   const v = Number(n) || 0;
   const out = new Intl.NumberFormat(CURRENCY_LOCALE[cur] || "en-US", {
     style: "currency", currency: cur,
+    currencyDisplay: cur !== displayCurrency() ? "code" : "symbol",
     minimumFractionDigits: opts.compact ? 0 : 2,
     maximumFractionDigits: opts.compact ? 0 : 2,
   }).format(v);

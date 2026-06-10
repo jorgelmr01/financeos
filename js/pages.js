@@ -58,7 +58,7 @@ const Pages = {
           '<div class="alert-row"><span class="alert-dot info" style="background:var(--mint);color:var(--mint)"></span>' +
           '<div class="alert-body"><strong>' + esc(u.inc.name) + "</strong> → " + esc(Store.accountName(u.inc.accountId)) +
           '<div class="alert-meta">' + fmtDate(u.d) + (u.inc.amountType === "gross" && u.inc.taxRate > 0 ? " · net of " + u.inc.taxRate + "% tax" : "") + "</div></div>" +
-          '<div class="tl-amount" style="margin-left:auto">' + fmtMoneyIn(netPerDeposit(u.inc), u.inc.currency, { sign: true }) + "</div></div>"
+          '<div class="tl-amount" style="margin-left:auto">' + fmtMoney(conv(netPerDeposit(u.inc), u.inc.currency), { sign: true }) + "</div></div>"
         ).join("")
       : '<div class="all-clear" style="color:var(--text-mute)">No deposits scheduled in the next 14 days.</div>';
 
@@ -404,8 +404,9 @@ const Pages = {
         '<td><div class="cell-main">' + esc(inc.name) + '</div><div class="cell-sub">' + esc(inc.category || "Other") + " · " + freqLabel(inc) + " · " + esc(inc.currency) +
           (isGross ? " · gross −" + inc.taxRate + "% tax" : "") + "</div></td>" +
         "<td>" + esc(Store.accountName(inc.accountId)) + "</td>" +
-        '<td class="num">' + fmtMoneyIn(netPerDeposit(inc), inc.currency) +
-          (isGross ? '<div class="cell-sub">gross ' + fmtMoneyIn(inc.amount, inc.currency, { compact: true }) + "</div>" : "") + "</td>" +
+        '<td class="num">' + fmtMoney(conv(netPerDeposit(inc), inc.currency)) +
+          (isGross ? '<div class="cell-sub">gross ' + fmtMoneyIn(inc.amount, inc.currency, { compact: true }) + "</div>"
+            : (inc.currency !== s.settings.currency ? '<div class="cell-sub">' + fmtMoneyIn(netPerDeposit(inc), inc.currency, { compact: true }) + "</div>" : "")) + "</td>" +
         '<td class="num">' + fmtMoney(conv(monthlyEquivalentNet(inc), inc.currency)) + "</td>" +
         "<td>" + (next ? fmtDate(next) : "—") + "</td>" +
         '<td class="actions-cell">' +
@@ -427,11 +428,11 @@ const Pages = {
     const interestRows = intAccounts.length ? intAccounts.map(a =>
       "<tr>" +
         '<td><div class="cell-main">' + esc(a.name) + '</div><div class="cell-sub">' + esc(a.institution || "") + " · " + esc(a.currency) + "</div></td>" +
-        '<td class="num">' + fmtMoneyIn(a.balance, a.currency) + "</td>" +
+        '<td class="num">' + fmtMoney(conv(a.balance, a.currency)) + "</td>" +
         '<td class="num"><span class="tag mint">' + a.apy + "% APY</span></td>" +
-        '<td class="num pos">' + fmtMoneyIn(dailyInterest(a) * taxIF, a.currency, { sign: true }) + "</td>" +
-        '<td class="num pos">' + fmtMoneyIn(monthlyInterestEst(a) * taxIF, a.currency, { sign: true }) + "</td>" +
-        '<td class="num pos">' + fmtMoneyIn(yearlyInterestEst(a) * taxIF, a.currency, { sign: true }) + "</td>" +
+        '<td class="num pos">' + fmtMoney(conv(dailyInterest(a) * taxIF, a.currency), { sign: true }) + "</td>" +
+        '<td class="num pos">' + fmtMoney(conv(monthlyInterestEst(a) * taxIF, a.currency), { sign: true }) + "</td>" +
+        '<td class="num pos">' + fmtMoney(conv(yearlyInterestEst(a) * taxIF, a.currency), { sign: true }) + "</td>" +
       "</tr>").join("") :
       '<tr><td colspan="6" style="color:var(--text-mute);text-align:center;padding:26px">No interest-bearing accounts. Set an APY on a savings account to see projections here.</td></tr>';
 
@@ -452,15 +453,15 @@ const Pages = {
           "<th>Position</th><th class=\"num\">Shares</th><th class=\"num\">Div / share / yr</th><th class=\"num\">Yield</th><th class=\"num\">Annual (net)</th><th class=\"num\">Monthly avg</th>" +
         "</tr></thead><tbody>" +
         divHoldings.map(h => {
-          const annual = h.shares * h.divPerShare * taxDF;
+          const annualDisp = conv(h.shares * h.divPerShare * taxDF, h.currency);
           const yieldPct = h.currentPrice > 0 ? h.divPerShare / h.currentPrice * 100 : 0;
           return "<tr>" +
             '<td><div class="cell-main">' + esc(h.symbol) + '</div><div class="cell-sub">' + esc(h.name || "") + " · " + esc(h.currency) + "</div></td>" +
             '<td class="num">' + fmtNum(h.shares) + "</td>" +
             '<td class="num">' + fmtMoneyIn(h.divPerShare, h.currency) + "</td>" +
             '<td class="num">' + yieldPct.toFixed(2) + "%</td>" +
-            '<td class="num pos">' + fmtMoneyIn(annual, h.currency, { sign: true }) + "</td>" +
-            '<td class="num pos">' + fmtMoneyIn(annual / 12, h.currency, { sign: true }) + "</td>" +
+            '<td class="num pos">' + fmtMoney(annualDisp, { sign: true }) + "</td>" +
+            '<td class="num pos">' + fmtMoney(annualDisp / 12, { sign: true }) + "</td>" +
           "</tr>";
         }).join("") +
         "</tbody></table></div></div>"
