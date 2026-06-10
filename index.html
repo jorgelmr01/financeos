@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FinanceOS — Financial Command Center</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230B0E0C'/%3E%3Ctext x='16' y='22' font-family='Georgia,serif' font-size='17' fill='%238FE3A6' text-anchor='middle' font-style='italic'%3EF%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=Instrument+Sans:ital,wght@0,400..700;1,400..700&family=Spline+Sans+Mono:wght@300..700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="atmosphere" aria-hidden="true"></div>
+<div class="grain" aria-hidden="true"></div>
+
+<div class="app">
+
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">F<span>/</span></div>
+      <div class="brand-name">Finance<em>OS</em></div>
+      <div class="brand-tag">Command Center</div>
+    </div>
+
+    <nav class="nav">
+      <button class="nav-item active" data-action="nav" data-page="overview">
+        <span class="nav-glyph">◉</span> Overview
+        <span class="nav-index">01</span>
+      </button>
+      <button class="nav-item" data-action="nav" data-page="accounts">
+        <span class="nav-glyph">▤</span> Accounts
+        <span class="nav-index">02</span>
+      </button>
+      <button class="nav-item" data-action="nav" data-page="cards">
+        <span class="nav-glyph">▭</span> Credit Cards
+        <span class="nav-index">03</span>
+      </button>
+      <button class="nav-item" data-action="nav" data-page="portfolio">
+        <span class="nav-glyph">◮</span> Portfolio
+        <span class="nav-index">04</span>
+      </button>
+      <button class="nav-item" data-action="nav" data-page="earnings">
+        <span class="nav-glyph">✦</span> Earnings
+        <span class="nav-index">05</span>
+      </button>
+      <button class="nav-item" data-action="nav" data-page="milestones">
+        <span class="nav-glyph">✶</span> Milestones
+        <span class="nav-index">06</span>
+      </button>
+      <button class="nav-item" data-action="nav" data-page="guide">
+        <span class="nav-glyph">❖</span> Guide
+        <span class="nav-index">07</span>
+      </button>
+    </nav>
+
+    <div class="sidebar-foot">
+      <div class="networth-chip">
+        <div class="chip-label">Net Worth</div>
+        <div class="chip-value" id="sidebar-networth">—</div>
+      </div>
+      <div class="sidebar-tools">
+        <select id="currency-select" class="currency-select" title="Display currency">
+          <option value="USD">USD $</option>
+          <option value="MXN">MXN $</option>
+          <option value="EUR">EUR €</option>
+          <option value="GBP">GBP £</option>
+        </select>
+        <button class="tool-btn" id="privacy-btn" data-action="toggle-privacy" title="Hide / show amounts">◑</button>
+        <button class="tool-btn" id="lock-btn" data-action="lock-now" title="Lock now" style="display:none">⛨</button>
+        <div class="data-menu">
+          <button class="tool-btn" data-action="toggle-data-menu" title="Data options">⋯</button>
+          <div class="data-menu-pop" id="data-menu-pop">
+            <button data-action="pin-settings">PIN lock…</button>
+            <button data-action="export">Export data (.json)</button>
+            <button data-action="import">Import data</button>
+            <button data-action="sample">Load sample data</button>
+            <button data-action="reset" class="danger">Erase everything</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div>
+        <h1 class="page-title" id="page-title">Overview</h1>
+        <div class="page-date" id="page-date"></div>
+      </div>
+      <div class="topbar-right" id="topbar-actions"></div>
+    </header>
+    <div id="page" class="page"></div>
+  </main>
+
+</div>
+
+<div id="modal-root"></div>
+<div id="toast-root"></div>
+<div id="lock-root"></div>
+<input type="file" id="import-file" accept="application/json" hidden>
+
+<script src="js/utils.js"></script>
+<script src="js/store.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/pages.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
