@@ -11,6 +11,7 @@ const App = {
     portfolio:  { title: "Portfolio",    actions: '<button class="btn" data-action="refresh-prices">↻ Update prices</button><button class="btn primary" data-action="add-holding">+ Add position</button>' },
     earnings:   { title: "Earnings",     actions: '<button class="btn primary" data-action="add-income">+ Add income stream</button>' },
     milestones: { title: "Milestones",   actions: "" },
+    learn:      { title: "Learn",        actions: "" },
     guide:      { title: "Guide",        actions: "" },
   },
 
@@ -265,6 +266,11 @@ const App = {
         break;
 
       case "close-modal": UI.closeModal(); break;
+
+      default:
+        if (action.indexOf("learn-") === 0 || action.indexOf("sb-") === 0) {
+          Learn.handle(action, el);
+        }
     }
   },
 

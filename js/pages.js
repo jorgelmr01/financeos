@@ -573,6 +573,11 @@ const Pages = {
     return standing + badges + method;
   },
 
+  /* ================= LEARN ================= */
+  learn() {
+    return Learn.render();
+  },
+
   /* ================= GUIDE ================= */
   guide() {
     const card = (glyph, title, items) =>
@@ -619,6 +624,12 @@ const Pages = {
         "Totals, net worth and charts convert everything to your <strong>display currency</strong> (sidebar selector) using daily ECB rates, refreshed automatically when online.",
         "Entity cards show the native amount with the converted value underneath.",
         "Net worth history is stored in USD, so switching display currency never distorts the chart.",
+      ]) +
+      card("✺", "Learn", [
+        "Four short <strong>scenario games</strong> (~3 min each) teach the habits that matter: paychecks, credit cards, market crashes and inflation — by making the choices yourself.",
+        "Every choice shows the estimated <strong>10-year impact</strong> of that habit, so the stakes feel real.",
+        "The <strong>Wealth Builder sandbox</strong> simulates 20 years of saving, investing, crashes and emergencies — beat the mattress saver and chase an S-grade.",
+        "Scores earn XP and levels, and three achievements are tied to learning.",
       ]) +
       card("✶", "Milestones", [
         "See your estimated <strong>global percentile</strong> for net worth and total annual earnings (all sources combined).",

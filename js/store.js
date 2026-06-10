@@ -17,6 +17,7 @@ const Store = {
       holdings: [],   // {id, symbol, name, kind, shares, costBasis, currentPrice, divPerShare, accountId, purchaseDate, currency}
       incomes: [],    // {id, name, category, amount, amountType, taxRate, accountId, frequency, payDay, startDate, currency}
       snapshots: [],  // [{d: ISO date, usd: net worth in USD}]
+      learn: { scenarios: {}, sandbox: { best: 0, runs: 0 } },
       settings: {
         currency: "USD", privacy: false, pinEnabled: false, lastExport: null, theme: "dark",
         fx: null,                 // {base:'USD', rates:{...units per USD}, asOf}
@@ -32,6 +33,8 @@ const Store = {
     this.state.settings = Object.assign(d.settings, parsed.settings || {});
     this.state.settings.tax = Object.assign({ interest: 0, dividends: 0, capGains: 0 }, (parsed.settings || {}).tax || {});
     if (!Array.isArray(this.state.snapshots)) this.state.snapshots = [];
+    this.state.learn = Object.assign({ scenarios: {}, sandbox: {} }, this.state.learn || {});
+    this.state.learn.sandbox = Object.assign({ best: 0, runs: 0 }, this.state.learn.sandbox || {});
     // migrate pre-multicurrency data: tag entities with the display currency
     const cur = this.state.settings.currency || "USD";
     ["accounts", "cards", "holdings", "incomes"].forEach(coll =>
@@ -273,6 +276,7 @@ const Store = {
     settings.tax = { interest: 5, dividends: 10, capGains: 10 };
     this.state = {
       settings: settings,
+      learn: this.state && this.state.learn ? this.state.learn : { scenarios: {}, sandbox: { best: 0, runs: 0 } },
       accounts: [
         { id: acc1, name: "Everyday Checking", institution: "BBVA", type: "checking", balance: 18450.22, apy: 0, balanceAsOf: iso, currency: "MXN" },
         { id: acc2, name: "High-Yield Savings", institution: "Nu", type: "savings", balance: 92000, apy: 9.25, balanceAsOf: monthAgo, currency: "MXN" },
@@ -500,6 +504,15 @@ const ACHIEVEMENTS = [
   { id: "one-percent", icon: "♛", title: "The 1% Club",
     desc: "Net worth or earnings in the global top 1%",
     test: c => c.nwPct >= 99 || c.incPct >= 99 },
+  { id: "student", icon: "✐", title: "Student of Money",
+    desc: "Complete your first Learn scenario",
+    test: c => c.s.learn && Object.keys(c.s.learn.scenarios).length >= 1 },
+  { id: "scholar", icon: "❈", title: "Scholar",
+    desc: "Complete every Learn scenario",
+    test: c => c.s.learn && typeof SCENARIOS !== "undefined" && SCENARIOS.every(sc => c.s.learn.scenarios[sc.id]) },
+  { id: "tycoon", icon: "♚", title: "Sandbox Tycoon",
+    desc: "Reach $400k in a Wealth Builder run",
+    test: c => c.s.learn && c.s.learn.sandbox.best >= 400000 },
   { id: "guardian", icon: "⛨", title: "Guardian",
     desc: "Protect your data with a PIN lock",
     test: c => !!c.s.settings.pinEnabled },

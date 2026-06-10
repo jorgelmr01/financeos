@@ -23,7 +23,8 @@ npx serve .
 | **Credit Cards** | Limits, balances, utilization bars, statement-cut & payment-due countdowns with alerts (≤5 days for cut, ≤7 for payment, high-utilization warnings) |
 | **Portfolio** | Stocks & ETFs with shares + price paid in the listing's currency; **live quotes & dividends** via a free Finnhub key (or edit prices inline), allocation chart, after-tax returns, best/worst positions |
 | **Earnings** | Salaries & recurring income (monthly, every 15 days / quincena, every 14 days, weekly) with **gross/net + tax-rate handling**, mapped to receiving accounts; interest & dividend engines, 30-day deposit timeline, 12-month net projection chart |
-| **Milestones** | Gamification: your estimated global percentile for net worth and gross annual earnings, distance to the next "top X%" bracket, and 16 achievements for healthy financial habits |
+| **Milestones** | Gamification: your estimated global percentile for net worth and gross annual earnings, distance to the next "top X%" bracket, and 19 achievements for healthy financial habits |
+| **Learn** | Four interactive scenario games (~3 min each) on paychecks, credit cards, market crashes and inflation — every choice shows its 10-year impact — plus **Wealth Builder**, a 20-year investing sandbox with random crashes, emergencies and a mattress-saver baseline to beat. Scores earn XP and levels. |
 | **Guide** | A built-in manual: how each page works, credit-card date mechanics, currencies, taxes, and how to keep your data safe |
 
 ## Multi-currency & live data
