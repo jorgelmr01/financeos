@@ -37,6 +37,72 @@
   --shadow-pop: 0 24px 60px -16px rgba(0, 0, 0, 0.65);
 }
 
+/* ---------- light theme: "morning ledger" ---------- */
+body.light {
+  --bg: #f1eee4;
+  --bg-raise: #f6f4ec;
+  --surface: #faf8f1;
+  --surface-2: #fffdf7;
+  --surface-3: #e6e2d3;
+  --hairline: rgba(28, 38, 30, 0.10);
+  --hairline-strong: rgba(28, 38, 30, 0.22);
+
+  --text: #1d2721;
+  --text-dim: #49564b;
+  --text-mute: #79867a;
+
+  --mint: #177a42;
+  --mint-bright: #115e33;
+  --mint-dim: rgba(23, 122, 66, 0.10);
+  --gold: #9a7110;
+  --gold-dim: rgba(154, 113, 16, 0.11);
+  --rose: #bd4a33;
+  --rose-dim: rgba(189, 74, 51, 0.10);
+  --sky: #2a6e8f;
+  --lilac: #66548f;
+
+  --shadow-pop: 0 24px 56px -18px rgba(40, 52, 43, 0.28);
+}
+body.light .atmosphere {
+  background:
+    radial-gradient(1100px 700px at 85% -10%, rgba(23, 122, 66, 0.06), transparent 60%),
+    radial-gradient(900px 600px at -10% 100%, rgba(154, 113, 16, 0.05), transparent 55%);
+}
+body.light .grain { opacity: 0.03; }
+body.light .sidebar {
+  background: linear-gradient(180deg, rgba(255, 253, 247, 0.65), rgba(241, 238, 228, 0.2));
+}
+body.light .nav-item:hover { background: rgba(28, 38, 30, 0.05); }
+body.light .data-menu-pop button:hover { background: rgba(28, 38, 30, 0.05); }
+body.light .tbl tbody tr:hover { background: rgba(28, 38, 30, 0.03); }
+body.light .icon-btn:hover { background: rgba(28, 38, 30, 0.06); }
+body.light .btn.primary { color: #fdfcf5; }
+body.light .btn.primary:hover { background: var(--mint-bright); border-color: var(--mint-bright); }
+body.light .pct-mark { background: rgba(28, 38, 30, 0.30); }
+body.light .hero-networth::after { color: rgba(23, 122, 66, 0.07); }
+body.light .modal-overlay { background: rgba(60, 70, 62, 0.35); }
+body.light .lock-screen {
+  background:
+    radial-gradient(900px 500px at 70% 20%, rgba(23, 122, 66, 0.05), transparent 60%),
+    var(--bg);
+}
+
+body.light .nw-chart polyline { stroke: #177a42; }
+body.light .nw-chart stop:first-child { stop-color: rgba(23, 122, 66, 0.20); }
+body.light .nw-chart stop:last-child { stop-color: rgba(23, 122, 66, 0); }
+/* deepen the pastel chart palette so it reads on paper */
+body.light :is(.alloc-bar span, .comp-bar span, .comp-legend .dot) {
+  filter: saturate(1.5) brightness(0.72);
+}
+
+/* credit cards stay dark in both themes, like the cards in your wallet */
+.ccard {
+  --text: #e9efe4; --text-dim: #aab5a7; --text-mute: #8a968a;
+  --hairline-strong: rgba(233, 239, 228, 0.16);
+  --mint: #8fe3a6; --gold: #e5c97b; --rose: #e8836f;
+  color: var(--text);
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body { height: 100%; }

@@ -44,6 +44,10 @@ Declare each income stream as **gross** (with an effective withholding rate) or 
 - **Privacy mode**: one click blurs every amount on screen — for coffee shops and screen shares.
 - **Backups**: export/import `.json` from the sidebar `⋯` menu; the app reminds you when a backup is older than 30 days. Exports are unencrypted — store them safely.
 
+## Appearance
+
+Two hand-tuned themes, toggled with the ☀/☾ button in the sidebar: **"ledger after midnight"** (dark, default) and **"morning ledger"** (warm paper light mode). Credit cards stay dark in both — like the cards in your wallet.
+
 ## Notes
 
 - The currency switch (USD/MXN/EUR/GBP) changes display formatting and the USD conversion used for percentiles; it does not convert your balances.

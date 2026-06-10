@@ -606,7 +606,7 @@ const Pages = {
         "Add each stock or ETF with the <strong>shares and average price you paid</strong>, in the listing's own currency (US tickers are USD).",
         "Press <strong>↻ Update prices</strong> to pull live quotes and annual dividends. It needs a free API key from <strong>finnhub.io/register</strong> — paste it in Settings (⋯ menu). No key? Edit prices inline anytime.",
         "Values and returns are converted to your display currency with daily ECB exchange rates.",
-        "Dividends feed the Earnings page and your annual-earnings milestone automatically.",
+        "Dividends feed the Earnings page and your annual-earnings milestone automatically. Some tickers — many ETFs especially — don't expose dividend data on free API plans; when the refresh reports none, set <strong>Dividend / share / year</strong> yourself in the position editor (✎).",
       ]) +
       card("✦", "Earnings & taxes", [
         "Income streams support <strong>monthly</strong> (any day), <strong>every 15 days</strong> (15th & month-end), <strong>every 14 days</strong> and <strong>weekly</strong> schedules.",

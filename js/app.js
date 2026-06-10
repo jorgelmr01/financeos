@@ -43,6 +43,15 @@ const App = {
     const lockBtn = document.getElementById("lock-btn");
     if (lockBtn) lockBtn.style.display = Store.pinEnabled ? "" : "none";
 
+    // theme
+    const light = Store.state.settings.theme === "light";
+    document.body.classList.toggle("light", light);
+    const themeBtn = document.getElementById("theme-btn");
+    if (themeBtn) {
+      themeBtn.textContent = light ? "☾" : "☀";
+      themeBtn.title = light ? "Switch to dark mode" : "Switch to light mode";
+    }
+
     Store.recordSnapshot();
   },
 
@@ -124,8 +133,13 @@ const App = {
           else if (res.error) UI.toast("Price update failed — are you online?");
           else {
             let msg = "Updated " + res.prices + " price" + (res.prices === 1 ? "" : "s") + ", " + res.divs + " dividend" + (res.divs === 1 ? "" : "s");
-            if (res.failed.length) msg += " · no data for " + res.failed.join(", ");
+            if (res.failed.length) msg += " · no quote for " + res.failed.join(", ");
             UI.toast(msg);
+            if (res.metricBlocked) {
+              UI.toast("Your Finnhub plan doesn't expose dividend data — set div/share manually via ✎ on each position");
+            } else if (res.noDiv && res.noDiv.length) {
+              UI.toast("No dividend data for " + res.noDiv.join(", ") + " — common for ETFs; set div/share manually via ✎");
+            }
           }
           App.render();
         });
@@ -184,6 +198,12 @@ const App = {
 
       case "toggle-privacy":
         Store.state.settings.privacy = !Store.state.settings.privacy;
+        Store.save();
+        this.render();
+        break;
+
+      case "toggle-theme":
+        Store.state.settings.theme = Store.state.settings.theme === "light" ? "dark" : "light";
         Store.save();
         this.render();
         break;

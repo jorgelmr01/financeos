@@ -18,7 +18,7 @@ const Store = {
       incomes: [],    // {id, name, category, amount, amountType, taxRate, accountId, frequency, payDay, startDate, currency}
       snapshots: [],  // [{d: ISO date, usd: net worth in USD}]
       settings: {
-        currency: "USD", privacy: false, pinEnabled: false, lastExport: null,
+        currency: "USD", privacy: false, pinEnabled: false, lastExport: null, theme: "dark",
         fx: null,                 // {base:'USD', rates:{...units per USD}, asOf}
         tax: { interest: 0, dividends: 0, capGains: 0 },
         finnhubKey: "", lastQuoteSync: null,
@@ -209,8 +209,8 @@ const Store = {
   async fetchQuotes() {
     const key = (this.state.settings.finnhubKey || "").trim();
     if (!key) return { error: "no-key" };
-    let prices = 0, divs = 0;
-    const failed = [];
+    let prices = 0, divs = 0, metricBlocked = false;
+    const failed = [], noDiv = [];
     for (const h of this.state.holdings) {
       const sym = encodeURIComponent(h.symbol);
       try {
@@ -219,19 +219,31 @@ const Store = {
         const j = await r.json();
         if (j && Number(j.c) > 0) { h.currentPrice = Number(j.c); prices++; }
         else failed.push(h.symbol);
-        const r2 = await fetch("https://finnhub.io/api/v1/stock/metric?symbol=" + sym + "&metric=all&token=" + key);
-        if (r2.ok) {
-          const m = await r2.json();
-          const dps = m && m.metric && (m.metric.dividendPerShareAnnual || m.metric.dividendPerShareTTM);
-          if (Number(dps) > 0) { h.divPerShare = Number(dps); divs++; }
-        }
       } catch (e) {
         failed.push(h.symbol);
+        continue;
+      }
+      if (metricBlocked) { noDiv.push(h.symbol); continue; }
+      try {
+        const r2 = await fetch("https://finnhub.io/api/v1/stock/metric?symbol=" + sym + "&metric=all&token=" + key);
+        if (r2.status === 401 || r2.status === 403) { metricBlocked = true; noDiv.push(h.symbol); continue; }
+        const m = r2.ok ? await r2.json() : null;
+        const met = (m && m.metric) || {};
+        // direct per-share figures, then fall back to deriving from the yield
+        let dps = Number(met.dividendPerShareAnnual) || Number(met.dividendPerShareTTM) || 0;
+        if (!(dps > 0)) {
+          const yld = Number(met.dividendYieldIndicatedAnnual) || Number(met.currentDividendYieldTTM) || 0;
+          if (yld > 0 && Number(h.currentPrice) > 0) dps = Number(h.currentPrice) * yld / 100;
+        }
+        if (dps > 0) { h.divPerShare = Math.round(dps * 10000) / 10000; divs++; }
+        else noDiv.push(h.symbol);
+      } catch (e) {
+        noDiv.push(h.symbol);
       }
     }
     this.state.settings.lastQuoteSync = toISO(todayMid());
     this.save();
-    return { prices, divs, failed };
+    return { prices, divs, failed, noDiv, metricBlocked };
   },
 
   /* One net-worth snapshot per day, stored in USD so currency switches don't distort history. */
