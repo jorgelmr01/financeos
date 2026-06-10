@@ -272,9 +272,9 @@ const UI = {
       : "Using built-in fallback rates — refresh from the ⋯ menu when online";
     const body =
       '<div class="f-grid">' +
-      this.field("Finnhub API key",
-        '<input name="finnhubKey" value="' + esc(st.finnhubKey || "") + '" placeholder="paste your free key" autocomplete="off">',
-        "Powers “Update prices” on the Portfolio page. Get a free key at finnhub.io/register (60 calls/min). Stored only in this browser.", true) +
+      this.field("Finnhub API key (optional)",
+        '<input name="finnhubKey" value="' + esc(st.finnhubKey || "") + '" placeholder="works without one — Yahoo fallback" autocomplete="off">',
+        "“Update prices” works with no key via Yahoo (through a public CORS proxy, which sees only the ticker symbols). A free finnhub.io key adds a direct, faster source for stock quotes. Stored only in this browser.", true) +
       this.field("Tax on interest %", '<input name="taxInterest" type="number" step="0.1" min="0" max="99" value="' + (tax.interest || "") + '" placeholder="0">', "e.g. ISR retention in Mexico") +
       this.field("Tax on dividends %", '<input name="taxDividends" type="number" step="0.1" min="0" max="99" value="' + (tax.dividends || "") + '" placeholder="0">', "withholding rate") +
       this.field("Tax on capital gains %", '<input name="taxCapGains" type="number" step="0.1" min="0" max="99" value="' + (tax.capGains || "") + '" placeholder="0">', "applied to projected gains", true) +

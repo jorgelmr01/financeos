@@ -31,7 +31,7 @@ npx serve .
 
 - Every account, card, position and income stream carries its **own currency** (USD/MXN/EUR/GBP) — mix Mexican bank accounts with US stocks freely.
 - Totals convert to your display currency using **daily ECB exchange rates** (Frankfurter API, no key needed), refreshed automatically with an offline fallback.
-- **Live stock/ETF prices and annual dividends** via [Finnhub](https://finnhub.io/register) — paste a free API key in Settings and hit "↻ Update prices" on the Portfolio page.
+- **Live stock/ETF prices and annual dividends with no API key**: "↻ Update prices" pulls quotes and the actual dividend payments of the trailing 12 months (Yahoo Finance data via a public CORS proxy — it sees only ticker symbols, never your finances). Works for ETFs and stocks alike. An optional free [Finnhub](https://finnhub.io/register) key adds a direct quote source.
 - Net worth history is snapshotted daily in USD, so switching display currency never distorts the chart.
 
 ## Taxes

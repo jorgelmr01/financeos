@@ -286,7 +286,7 @@ const Pages = {
 
     const syncNote = s.settings.lastQuoteSync
       ? "prices synced " + fmtDateShort(parseISO(s.settings.lastQuoteSync))
-      : "edit prices inline, or add a Finnhub key in Settings for live quotes";
+      : "press ↻ Update prices for live quotes & dividends — no key needed";
 
     const stats =
       '<div class="grid cols-4 section">' +
@@ -609,9 +609,9 @@ const Pages = {
       ]) +
       card("◮", "Portfolio & live prices", [
         "Add each stock or ETF with the <strong>shares and average price you paid</strong>, in the listing's own currency (US tickers are USD).",
-        "Press <strong>↻ Update prices</strong> to pull live quotes and annual dividends. It needs a free API key from <strong>finnhub.io/register</strong> — paste it in Settings (⋯ menu). No key? Edit prices inline anytime.",
+        "Press <strong>↻ Update prices</strong> to pull live quotes and annual dividends — <strong>no API key needed</strong>. Stocks and ETFs both work: dividends come from the actual payments of the last 12 months (Yahoo data via a public proxy that sees only ticker symbols). An optional free <strong>finnhub.io</strong> key in Settings adds a direct quote source.",
         "Values and returns are converted to your display currency with daily ECB exchange rates.",
-        "Dividends feed the Earnings page and your annual-earnings milestone automatically. Some tickers — many ETFs especially — don't expose dividend data on free API plans; when the refresh reports none, set <strong>Dividend / share / year</strong> yourself in the position editor (✎).",
+        "Dividends feed the Earnings page and your annual-earnings milestone automatically. If a ticker still reports no dividend, set <strong>Dividend / share / year</strong> yourself in the position editor (✎) — manual values are never overwritten.",
       ]) +
       card("✦", "Earnings & taxes", [
         "Income streams support <strong>monthly</strong> (any day), <strong>every 15 days</strong> (15th & month-end), <strong>every 14 days</strong> and <strong>weekly</strong> schedules.",

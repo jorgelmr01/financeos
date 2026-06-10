@@ -122,25 +122,17 @@ const App = {
       }
 
       case "refresh-prices": {
-        if (!(Store.state.settings.finnhubKey || "").trim()) {
-          UI.settingsForm();
-          UI.toast("Paste a free Finnhub API key first — get one at finnhub.io/register");
-          break;
-        }
         if (!Store.state.holdings.length) { UI.toast("No positions to update yet"); break; }
-        UI.toast("Fetching live prices…");
+        UI.toast("Fetching live prices & dividends…");
         Store.fetchQuotes().then(res => {
-          if (res.error === "bad-key") UI.toast("Finnhub rejected the key — check it in Settings");
-          else if (res.error) UI.toast("Price update failed — are you online?");
-          else {
+          if (res.prices === 0 && res.divs === 0) {
+            UI.toast("Couldn't reach any price service — check your connection and try again");
+          } else {
             let msg = "Updated " + res.prices + " price" + (res.prices === 1 ? "" : "s") + ", " + res.divs + " dividend" + (res.divs === 1 ? "" : "s");
             if (res.failed.length) msg += " · no quote for " + res.failed.join(", ");
             UI.toast(msg);
-            if (res.metricBlocked) {
-              UI.toast("Your Finnhub plan doesn't expose dividend data — set div/share manually via ✎ on each position");
-            } else if (res.noDiv && res.noDiv.length) {
-              UI.toast("No dividend data for " + res.noDiv.join(", ") + " — common for ETFs; set div/share manually via ✎");
-            }
+            if (res.keyBad) UI.toast("Finnhub rejected your key — data came from the Yahoo fallback; fix the key in Settings");
+            if (res.noDiv && res.noDiv.length) UI.toast("No dividend data found for " + res.noDiv.join(", ") + " — set div/share via ✎ if it pays one");
           }
           App.render();
         });
