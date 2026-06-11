@@ -503,7 +503,7 @@ const Pages = {
       '<span class="panel-sub">' + fmtMoney(total30, { sign: true }) + " expected</span></div>" +
       '<div class="timeline">' + timelineRows + "</div></div>";
 
-    return stats + chart + '<div class="grid cols-2 section" style="align-items:start">' + streams + timeline + "</div>" + interestPanel + divPanel;
+    return stats + chart + '<div class="grid cols-2 stack-wide section" style="align-items:start">' + streams + timeline + "</div>" + interestPanel + divPanel;
   },
 
   /* ================= MILESTONES ================= */
