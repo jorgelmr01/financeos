@@ -1,6 +1,6 @@
 /* FinanceOS service worker — offline app shell + runtime caching.
    Bump CACHE when shipping new assets so clients pick them up. */
-const CACHE = 'financeos-v2';
+const CACHE = 'financeos-v3';
 
 /* Local app shell — everything needed to boot fully offline. */
 const SHELL = [
@@ -47,22 +47,29 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  /* Navigations: network-first so updates land, fall back to cached shell offline. */
-  if (req.mode === 'navigate') {
+  /* Google Fonts are immutable — cache-first is safe and fastest. */
+  if (url.origin !== self.location.origin) {
     e.respondWith(
-      fetch(req).catch(() => caches.match('./index.html', { ignoreSearch: true }))
+      caches.match(req).then((hit) => hit || fetch(req).then((res) => {
+        if (res && res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(req, copy)); }
+        return res;
+      }))
     );
     return;
   }
 
-  /* Everything else (local assets + Google Fonts): cache-first, then fill the cache. */
+  /* Our own HTML/CSS/JS: network-first so a new deploy shows up on the next
+     reload, falling back to the cache only when offline. This avoids the
+     "I deployed but still see the old app" trap of a cache-first worker. */
   e.respondWith(
-    caches.match(req).then((hit) => hit || fetch(req).then((res) => {
-      if (res && res.ok && (res.type === 'basic' || res.type === 'cors')) {
+    fetch(req).then((res) => {
+      if (res && res.ok && res.type === 'basic') {
         const copy = res.clone();
         caches.open(CACHE).then((c) => c.put(req, copy));
       }
       return res;
-    }).catch(() => hit))
+    }).catch(() => caches.match(req, { ignoreSearch: true }).then((hit) =>
+      hit || (req.mode === 'navigate' ? caches.match('./index.html', { ignoreSearch: true }) : undefined)
+    ))
   );
 });

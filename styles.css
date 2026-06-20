@@ -144,6 +144,7 @@ body {
   display: grid;
   grid-template-columns: 248px 1fr;
   min-height: 100vh;
+  min-height: 100dvh; /* iOS: exclude Safari's dynamic toolbar from the height */
 }
 
 /* ---------- sidebar ---------- */
@@ -151,7 +152,7 @@ body {
   display: flex; flex-direction: column;
   border-right: 1px solid var(--hairline);
   padding: 28px 18px 18px;
-  position: sticky; top: 0; height: 100vh;
+  position: sticky; top: 0; height: 100vh; height: 100dvh;
   background: linear-gradient(180deg, rgba(18, 23, 19, 0.6), rgba(10, 13, 11, 0.2));
 }
 
@@ -268,7 +269,7 @@ body {
   color: var(--text-mute); letter-spacing: 0.14em; text-transform: uppercase;
   margin-top: 7px;
 }
-.topbar-right { display: flex; gap: 10px; }
+.topbar-right { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
 
 /* ---------- buttons ---------- */
 .btn {
@@ -749,6 +750,14 @@ body {
 /* ---------- mobile touch & input ergonomics ---------- */
 html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 button, a, .nav-item, .tool-btn, .icon-btn, .swatch { -webkit-tap-highlight-color: transparent; }
+
+/* On touch (no real hover), don't leave hover lifts/rotations stuck after a tap. */
+@media (hover: none) {
+  .btn:hover, .acct-card:hover, .ccard:hover, .pct-chip:hover,
+  .badge.earned:hover, .learn-card:hover, .stat:hover {
+    transform: none;
+  }
+}
 
 @media (max-width: 760px) {
   /* 16px form controls stop iOS Safari from auto-zooming the page on focus */
