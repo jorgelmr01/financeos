@@ -15,7 +15,7 @@ const Pages = {
         '<div class="empty-glyph">§</div>' +
         "<h3>Welcome to your command center</h3>" +
         "<p>Add your first account, credit card, or position — or load sample data to explore what FinanceOS can do.</p>" +
-        '<div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">' +
+        '<div class="empty-actions">' +
           '<button class="btn primary" data-action="sample">Load sample data</button>' +
           '<button class="btn" data-action="add-account">Add an account</button>' +
         "</div></div></div>";
@@ -68,6 +68,11 @@ const Pages = {
     const healthBars = fh.factors.length
       ? '<div class="score-bars health-bars">' + fh.factors.map(f => this._scoreBar(f.label, f.score, null, f.detail)).join("") + "</div>"
       : "";
+    // biggest lever = the weakest factor, with a concrete next step
+    const leverTip = { cashflow: "spend a bit less or earn more to lift your savings rate", debt: "pay down a card balance to cut utilization", safety: "grow savings toward 6 months of expenses", growth: "keep net worth trending up" };
+    let lever = null;
+    fh.factors.forEach(f => { if (f.score < 0.95 && (!lever || f.score < lever.score)) lever = f; });
+    const leverHtml = lever ? '<div class="health-lever"><span class="micro-label">Biggest lever</span> <strong>' + esc(lever.label) + "</strong> — " + esc(leverTip[lever.key] || "small steps add up") + "</div>" : "";
 
     // ---- net worth since the last snapshot ----
     const snaps = s.snapshots || [];
@@ -106,9 +111,9 @@ const Pages = {
               '<div class="score-label ' + fg.tone + '">' + fg.label + "</div>" +
               '<div class="health-sub">' + (fh.score == null
                 ? "Add accounts, income and a few expenses to unlock your score."
-                : "One number across cash flow, debt, safety net &amp; growth.") + "</div>" +
+                : "One number across cash flow, debt, safety net &amp; growth." + this._hint("Your Financial Health blends four signals: cash flow (savings rate), debt load (card utilization), safety net (months of runway) and growth (net-worth trend). Each is skipped until it has data.")) + "</div>" +
             "</div>" +
-          "</div>" + healthBars +
+          "</div>" + healthBars + leverHtml +
         "</div>" +
         '<div class="hero-networth">' +
           '<span class="micro-label">Net worth</span>' +
@@ -237,7 +242,7 @@ const Pages = {
           "</div>" +
           '<div class="acct-foot">' +
             '<span class="accrued-note">accrued ' + fmtMoneyIn(accrued * netF, a.currency, { sign: true }) + (taxI > 0 ? " (after " + taxI + "% tax)" : "") + " since " + fmtDateShort(parseISO(a.balanceAsOf) || todayMid()) + "</span>" +
-            (accrued * netF >= 0.01 ? '<button class="btn small ghost" data-action="capitalize" data-id="' + a.id + '" title="Add accrued net interest to the balance">Capitalize</button>' : "") +
+            (accrued * netF >= 0.01 ? '<button class="btn small ghost" data-action="capitalize" data-id="' + a.id + '" title="Add accrued net interest to the balance">Capitalize</button>' + this._hint("Capitalize means add the interest you've earned so far onto your balance, so it starts earning interest too — do this when your bank actually credits it.") : "") +
           "</div>"
         : "";
       return '<div class="acct-card">' +
@@ -297,7 +302,8 @@ const Pages = {
             (c.apr ? " · APR " + c.apr + "%" : "") + "</div>" +
         "</div>" +
         '<div class="util-track"><div class="util-fill ' + utilClass + '" style="width:' + Math.min(100, util * 100).toFixed(1) + '%"></div></div>' +
-        '<div class="accrued-note" style="margin-top:6px">' + Math.round(util * 100) + "% used · " + fmtMoneyIn(Math.max(0, c.limit - c.balance), c.currency, { compact: true }) + " available</div>" +
+        '<div class="accrued-note" style="margin-top:6px">' + Math.round(util * 100) + "% used · " + (util >= 0.7 ? "high" : util >= 0.3 ? "moderate" : "healthy") + " · " + fmtMoneyIn(Math.max(0, c.limit - c.balance), c.currency, { compact: true }) + " available" +
+          (Number(c.apr) > 0 ? ' · <span class="neg">~' + fmtMoneyIn(c.balance * (Number(c.apr) / 100) / 12, c.currency, { compact: true }) + "/mo interest</span>" : "") + "</div>" +
         '<div class="ccard-dates">' +
           '<div class="date-pill' + pillClass(dCut) + '"><span class="micro-label">Statement cut</span>' +
             '<span class="dp-val">' + fmtDateShort(cut) + '</span> <span class="dp-in">' + (dCut === 0 ? "today" : "in " + dCut + "d") + "</span></div>" +
@@ -605,7 +611,7 @@ const Pages = {
     const bars = buckets.map((b, i) => {
       const hS = b.total > 0 ? b.sched / maxB * 100 : 0;
       const hP = b.total > 0 ? (b.interest + b.div) / maxB * 100 : 0;
-      return '<div class="proj-col' + (i === sel ? " sel" : "") + '" data-action="earn-bucket" data-i="' + i + '" title="' + esc(bLabel(b) + " · " + fmtMoney(b.total, { compact: true })) + '">' +
+      return '<div class="proj-col' + (i === sel ? " sel" : "") + '" data-action="earn-bucket" data-i="' + i + '" tabindex="0" role="button" aria-label="' + esc(bLabel(b) + ", " + fmtMoney(b.total, { compact: true }) + " total. Scheduled " + fmtMoney(b.sched, { compact: true }) + ", interest " + fmtMoney(b.interest, { compact: true }) + ", dividends " + fmtMoney(b.div, { compact: true })) + '" title="' + esc(bLabel(b) + " · " + fmtMoney(b.total, { compact: true })) + '">' +
         '<div class="proj-stack" style="height:' + Math.max(2, hS + hP).toFixed(1) + '%">' +
           '<div class="seg-income" style="flex:' + (b.sched || 0.001) + '"></div>' +
           '<div class="seg-interest" style="flex:' + ((b.interest + b.div) || 0.001) + '"></div>' +
@@ -643,6 +649,39 @@ const Pages = {
       detail +
       (endBal > 0 ? '<div class="proj-note">Tap a bar for its breakdown. Projected savings balance after ' + years + "y, interest reinvested: <strong>" + fmtMoney(endBal, { compact: true }) + "</strong> (no new contributions assumed).</div>" : '<div class="proj-note">Tap a bar for its breakdown.</div>') +
     "</div>";
+  },
+
+  /* small tap-to-explain "?" chip — reuses the chart tooltip */
+  _hint(text) {
+    return ' <button type="button" class="info-chip" data-tip="' + esc(text) + '" aria-label="Explain: ' + esc(text) + '">?</button>';
+  },
+
+  /* income-by-source breakdown + passive vs active split */
+  _incomeSources(s, eb) {
+    const byCat = {};
+    s.incomes.forEach(i => { const c = i.category || "Other"; byCat[c] = (byCat[c] || 0) + conv(monthlyEquivalentNet(i) * 12, i.currency); });
+    const passiveCat = { Rent: 1, Dividends: 1 };
+    const sources = [];
+    Object.keys(byCat).forEach(c => { if (byCat[c] > 0) sources.push({ label: c, val: byCat[c], passive: !!passiveCat[c] }); });
+    if (eb.intNet > 0) sources.push({ label: "Interest", val: eb.intNet, passive: true });
+    if (eb.divNet > 0) sources.push({ label: "Dividends", val: eb.divNet, passive: true });
+    if (eb.investNet > 0) sources.push({ label: "Investment", val: eb.investNet, passive: true });
+    sources.sort((a, b) => b.val - a.val);
+    const total = sources.reduce((x, y) => x + y.val, 0);
+    if (!(total > 0)) return "";
+    const passive = sources.filter(x => x.passive).reduce((x, y) => x + y.val, 0);
+    const pShare = Math.round(passive / total * 100);
+    const seg = sources.map((x, i) => {
+      const pc = x.val / total * 100;
+      return '<span style="width:' + pc.toFixed(2) + '%;background:' + CHART_COLORS[i % CHART_COLORS.length] +
+        '" data-tip="' + esc(x.label) + " · <strong>" + fmtMoney(x.val, { compact: true }) + "/yr</strong> · " + pc.toFixed(0) + '%" aria-label="' + esc(x.label + " " + fmtMoney(x.val, { compact: true }) + " per year, " + pc.toFixed(0) + " percent") + '"></span>';
+    }).join("");
+    const legend = sources.map((x, i) =>
+      '<span class="lg"><span class="dot" style="background:' + CHART_COLORS[i % CHART_COLORS.length] + '"></span>' + esc(x.label) + " · " + fmtMoney(x.val, { compact: true }) + "/yr" + (x.passive ? " · passive" : "") + "</span>").join("");
+    return '<div class="panel section"><div class="panel-head"><div class="panel-title">Where your income comes from <span class="panel-sub">net, per year</span></div>' +
+      '<span class="chip-split">▲ Passive <strong class="pos">' + pShare + "%</strong> · Active " + (100 - pShare) + "%</span></div>" +
+      '<div class="comp-bar" role="img" aria-label="Income by source: passive ' + pShare + ' percent, active ' + (100 - pShare) + ' percent">' + seg + "</div>" +
+      '<div class="comp-legend" style="margin-top:14px">' + legend + "</div></div>";
   },
 
   /* ================= EARNINGS ================= */
@@ -786,7 +825,7 @@ const Pages = {
       '<span class="panel-sub">' + fmtMoney(total30, { sign: true }) + " expected</span></div>" +
       '<div class="timeline">' + timelineRows + "</div></div>";
 
-    return stats + chart + '<div class="grid cols-2 stack-wide section" style="align-items:start">' + streams + timeline + "</div>" + interestPanel + divPanel;
+    return stats + this._incomeSources(s, eb) + chart + '<div class="grid cols-2 stack-wide section" style="align-items:start">' + streams + timeline + "</div>" + interestPanel + divPanel;
   },
 
   /* ================= BUDGET & EXPENSES ================= */
@@ -1080,8 +1119,9 @@ const Pages = {
       if (v == null || !isFinite(v)) return '<div class="trend-col"><div class="trend-bar trend-empty" data-tip="' + esc(row.label) + ' · <strong>—</strong>"></div></div>';
       const h = Math.max(1.5, Math.min(100, v / max * 100));
       const c = opts.color ? opts.color(row, v) : "var(--mint)";
+      const lbl = row.label + " " + (opts.fmt ? opts.fmt(v) : String(v)) + (partial ? " (in progress)" : "");
       const tip = esc(row.label) + " · <strong>" + esc(opts.fmt ? opts.fmt(v) : String(v)) + "</strong>" + (partial ? " (in progress)" : "");
-      return '<div class="trend-col"><div class="trend-bar' + (partial ? " trend-partial" : "") + '" style="height:' + h.toFixed(1) + "%;background:" + c + '" data-tip="' + tip + '"></div></div>';
+      return '<div class="trend-col"><div class="trend-bar' + (partial ? " trend-partial" : "") + '" tabindex="0" role="img" aria-label="' + esc(lbl) + '" style="height:' + h.toFixed(1) + "%;background:" + c + '" data-tip="' + tip + '"></div></div>';
     }).join("");
     const axis = series.map(r => "<span>" + esc(r.short) + "</span>").join("");
     return '<div class="trend"><div class="trend-plot">' + refLines + cols + '</div><div class="trend-axis">' + axis + "</div></div>";

@@ -472,9 +472,9 @@ const App = {
       e.target.value = "";
     });
 
-    /* escape closes the modal, then the nav drawer */
+    /* escape closes the modal, then the nav drawer, then any chart tooltip */
     document.addEventListener("keydown", e => {
-      if (e.key === "Escape") { UI.closeModal(); App.setNav(false); }
+      if (e.key === "Escape") { UI.closeModal(); App.setNav(false); App.hideTip(); }
     });
 
     if (res.locked) this.showLock();
