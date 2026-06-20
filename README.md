@@ -38,7 +38,7 @@ Your data still lives only on the device, in that browser's storage — installi
 | **Credit Cards** | Limits, balances, utilization bars, statement-cut & payment-due countdowns with alerts (≤5 days for cut, ≤7 for payment, high-utilization warnings) |
 | **Portfolio** | Stocks & ETFs with shares + price paid in the listing's currency; **live quotes & dividends** (no key needed) or edit prices inline; allocation chart, **return-by-position chart**, after-tax returns, best/worst. **Tap any position** for a detail view with a **price-evolution chart** (1M/6M/1Y/5Y) and full per-stock stats |
 | **Earnings** | Salaries & recurring income (monthly, every 15 days / quincena, every 14 days, weekly) with **gross/net + tax-rate handling**, mapped to receiving accounts; interest & dividend engines, 30-day deposit timeline, 12-month net projection chart |
-| **Budget** | Expenses by category with a **spending-health score** (savings rate · runway · needs-vs-wants), insights & advice, a 50/30/20 breakdown and per-category budgets. Fill a **downloadable spreadsheet template** (or have your AI fill it from your statements) and upload it — re-uploads never duplicate rows |
+| **Budget** | Expenses by category with a **spending-health score** (savings rate · runway · needs-vs-wants), insights & advice, a 50/30/20 breakdown and per-category budgets. Fill a **downloadable spreadsheet template** (or have your AI fill it from your statements), or **import a statement PDF directly** *(Beta — Amex/Klar/Openbank, parsed 100% on-device)* — re-uploads never duplicate rows |
 | **Milestones** | Gamification: your estimated global percentile for net worth and gross annual earnings, distance to the next "top X%" bracket, and 19 achievements for healthy financial habits |
 | **Learn** | Four interactive scenario games (~3 min each) on paychecks, credit cards, market crashes and inflation — every choice shows its 10-year impact — plus **Wealth Builder**, a 20-year investing sandbox with random crashes, emergencies and a mattress-saver baseline to beat. Scores earn XP and levels. |
 | **Guide** | A built-in manual: how each page works, credit-card date mechanics, currencies, taxes, and how to keep your data safe |
@@ -57,6 +57,12 @@ Most people quit budgeting apps because logging every expense is miserable. Fina
 1. **Download the template** (Budget → Template) — a spreadsheet with columns `Date, Description, Category, Amount, Currency`, embedded instructions, and the full category list. It opens in Excel, Google Sheets or Numbers.
 2. **Fill it** however you like — by hand, or paste it together with your **credit-card statement** into ChatGPT/Claude and ask it to return the rows. The exact prompt is one click away in the Upload dialog.
 3. **Upload the CSV.** Every row is fingerprinted (date + amount + category + description + currency), so importing the **same file twice, or overlapping months, never creates duplicates** — while genuine same-day repeats are still kept.
+
+### Or just drop in your statement PDF *(Beta)*
+
+Skip the spreadsheet entirely: **Budget → Import PDF** reads a credit-card or bank statement and turns it into expenses for you. It's tuned for **American Express**, **Klar** and **Openbank** statements, with a generic reader for other banks. You get a **review screen** — every transaction with a guessed category, payments and transfers pre-unchecked, amounts you can verify — and nothing is saved until you press *Import* (with the same duplicate-proof fingerprinting).
+
+The whole thing runs **entirely on your device**: the PDF is parsed in your browser with a self-hosted copy of [PDF.js](https://mozilla.github.io/pdf.js/) (bundled under `/vendor`). The file is **never uploaded, never sent to a server, and never stored anywhere but on your device** — exactly what you'd want for a financial statement. Scanned, image-only statements have no text to read, so those fall back to the spreadsheet template.
 
 You then get a **spending-health score (0–100)** built from your savings rate, how many months your liquid assets could cover spending (runway), and your **needs-vs-wants** split, plus plain-language insights, a 50/30/20 view, biggest-category callouts, month-over-month trends, and optional **per-category monthly budgets**. Two achievements (*Budgeter*, *Frugal*) tie it into the milestones.
 

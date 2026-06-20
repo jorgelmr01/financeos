@@ -841,12 +841,13 @@ const Pages = {
         "<h3>Track where your money goes</h3>" +
         "<p>Most people hate logging expenses by hand — so don't. Download the ready-made spreadsheet template, fill it in Excel or Google Sheets (or have your favourite AI fill it from your credit-card statements), and upload it. FinanceOS scores your spending, spots your biggest categories, and never double-counts a row.</p>" +
         '<div class="empty-actions">' +
-          '<button class="btn primary" data-action="expense-template">↓ Download template</button>' +
-          '<button class="btn" data-action="expense-import">↑ Upload filled sheet</button>' +
+          '<button class="btn primary" data-action="statement-import">' + icon("card") + ' Import statement PDF <span class="beta-pill">Beta</span></button>' +
+          '<button class="btn" data-action="expense-template">↓ Download template</button>' +
+          '<button class="btn ghost" data-action="expense-import">↑ Upload filled sheet</button>' +
           '<button class="btn ghost" data-action="add-expense">+ Add one manually</button>' +
         "</div>" +
-        '<p class="empty-tip">Tip: paste the template and your statement into ChatGPT or Claude and ask it to return the rows for you. ' +
-          '<a href="#" data-action="expense-import">See how →</a></p>' +
+        '<p class="empty-tip">Upload a card statement and FinanceOS reads it for you — privately, on your device. Nothing is ever uploaded. ' +
+          'Or paste the template and your statement into ChatGPT/Claude. <a href="#" data-action="expense-import">See how →</a></p>' +
       "</div></div>";
     }
 
@@ -860,8 +861,8 @@ const Pages = {
     const tools =
       '<div class="budget-controls-right">' +
         '<button class="btn small ghost" data-action="set-budgets">Set budgets</button>' +
-        '<button class="btn small ghost" data-action="expense-template">↓ Template</button>' +
-        '<button class="btn small" data-action="expense-import">↑ Upload</button>' +
+        '<button class="btn small ghost" data-action="expense-import">↑ Upload sheet</button>' +
+        '<button class="btn small" data-action="statement-import">' + icon("card") + ' Import PDF</button>' +
       "</div>";
 
     if (view === "trends") {

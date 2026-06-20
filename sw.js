@@ -1,6 +1,6 @@
 /* FinanceOS service worker — offline app shell + runtime caching.
    Bump CACHE when shipping new assets so clients pick them up. */
-const CACHE = 'financeos-v16';
+const CACHE = 'financeos-v17';
 
 /* Local app shell — everything needed to boot fully offline. */
 const SHELL = [
@@ -8,9 +8,12 @@ const SHELL = [
   './index.html',
   './styles.css',
   './manifest.webmanifest',
+  './vendor/pdf.min.js',
+  './vendor/pdf.worker.min.js',
   './js/utils.js',
   './js/store.js',
   './js/budget.js',
+  './js/statements.js',
   './js/ui.js',
   './js/learn.js',
   './js/pages.js',

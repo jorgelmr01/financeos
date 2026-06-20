@@ -456,7 +456,11 @@ const UI = {
       '<div class="import-actions">' +
         '<button type="button" class="btn small ghost" data-action="copy-ai-prompt">⧉ Copy prompt</button>' +
         '<button type="button" class="btn small ghost" data-action="expense-template">↓ Download template</button>' +
-      "</div>";
+      "</div>" +
+      '<div class="import-or"><span>or skip the spreadsheet</span></div>' +
+      '<button type="button" class="btn small full-w" data-action="statement-import">' + icon("card") +
+        ' Import a statement PDF <span class="beta-pill">Beta</span></button>' +
+      '<p class="modal-note" style="margin-top:8px;font-size:12px;color:var(--text-faint)">Reads Amex, Klar &amp; Openbank statements on your device — nothing is uploaded.</p>';
     this.openModal("Upload expenses", body, {
       submitLabel: "Choose CSV file…",
       onSubmit() {
@@ -464,6 +468,137 @@ const UI = {
         document.getElementById("expense-file").click();
       },
     });
+  },
+
+  /* ---------- Statement import (Beta): PDF parsed entirely on-device ---------- */
+  statementImportIntro() {
+    if (!Statements.available()) {
+      this.toast("PDF reader still loading — try again in a moment");
+      return;
+    }
+    const body =
+      '<p class="modal-note">Upload a credit-card or bank statement <strong>PDF</strong> and FinanceOS reads the transactions for you. ' +
+      "You review and tweak everything before anything is saved.</p>" +
+      '<div class="privacy-card">' + icon("lock") +
+        "<div><strong>100% on your device.</strong> The PDF is parsed right here in your browser — it is never uploaded, " +
+        "sent to a server, or stored anywhere but on this device.</div></div>" +
+      '<ul class="import-steps">' +
+        "<li>Works best with <strong>Amex</strong>, <strong>Klar</strong> and <strong>Openbank</strong> statements — other banks use a generic reader.</li>" +
+        "<li>Payments and card transfers are detected and left <strong>unchecked</strong> (they aren't expenses).</li>" +
+        "<li>Re-uploading is safe — duplicate rows are never added twice.</li>" +
+      "</ul>" +
+      '<p class="modal-note" style="margin-top:10px;color:var(--text-faint);font-size:12px">Scanned (image-only) statements can\'t be read — use the spreadsheet template for those.</p>';
+    this.openModal('Import from statement <span class="beta-pill">Beta</span>', body, {
+      submitLabel: "Choose PDF…",
+      onSubmit() {
+        UI.closeModal();
+        document.getElementById("statement-file").click();
+      },
+    });
+  },
+
+  _catOptions(selected) {
+    return EXPENSE_CATEGORIES.map(c =>
+      '<option value="' + c.name + '"' + (c.name === selected ? " selected" : "") + ">" + c.name + "</option>").join("");
+  },
+
+  statementReview(parse) {
+    if (parse.scanned || !parse.rows.length) {
+      const msg = (parse.warnings && parse.warnings[0]) || "No transactions could be read from this PDF.";
+      const body =
+        '<div class="privacy-card warn">' + icon("eye") + "<div>" + esc(msg) + "</div></div>" +
+        '<p class="modal-note">You can still add these expenses with the spreadsheet template — fill it yourself or let your AI fill it from the statement.</p>' +
+        '<div class="import-actions">' +
+          '<button type="button" class="btn small ghost" data-action="expense-template">↓ Download template</button>' +
+          '<button type="button" class="btn small ghost" data-action="copy-ai-prompt">⧉ Copy AI prompt</button>' +
+        "</div>";
+      this.openModal("Couldn't read that statement", body, { submitLabel: "OK", onSubmit() { UI.closeModal(); } });
+      return;
+    }
+
+    const rowsHtml = parse.rows.map((r, i) => {
+      const tag = r.type === "payment" ? '<span class="stmt-tag pay">payment</span>'
+                : r.type === "refund" ? '<span class="stmt-tag ref">refund</span>' : "";
+      const amtCls = r.amount < 0 ? " neg" : "";
+      const dateLabel = (function () { const d = parseISO(r.date); return d ? fmtDateShort(d) : r.date; })();
+      const disabled = (r.type === "payment");                  // category irrelevant for payments
+      return '<div class="stmt-row" data-i="' + i + '">' +
+        '<input type="checkbox" class="stmt-inc"' + (r.include ? " checked" : "") + ' aria-label="Include ' + esc(r.description) + '">' +
+        '<span class="stmt-date">' + esc(dateLabel) + "</span>" +
+        '<span class="stmt-desc">' + esc(r.description) + tag + "</span>" +
+        '<select class="stmt-cat"' + (disabled ? " disabled" : "") + ">" + this._catOptions(r.category) + "</select>" +
+        '<span class="stmt-amt' + amtCls + '">' + fmtMoneyIn(r.amount, r.currency) + "</span>" +
+      "</div>";
+    }).join("");
+
+    const nCharge = parse.rows.filter(r => r.include).length;
+    const warn = (parse.warnings && parse.warnings.length)
+      ? '<div class="privacy-card warn">' + icon("eye") + "<div>" + esc(parse.warnings[0]) + "</div></div>" : "";
+
+    const body =
+      '<div class="stmt-summary"><span class="stmt-bank">' + icon("card") + " " + esc(parse.bankLabel) + "</span>" +
+        '<span class="stmt-meta">' + parse.rows.length + " transactions found · " + parse.currency + "</span></div>" +
+      '<div class="privacy-card slim">' + icon("lock") + "<div>Parsed on your device — nothing was uploaded. Review and edit, then import.</div></div>" +
+      warn +
+      '<div class="stmt-bulk"><button type="button" class="link-btn" data-stmt-bulk="all">Select all</button>' +
+        '<button type="button" class="link-btn" data-stmt-bulk="charges">Only purchases</button>' +
+        '<button type="button" class="link-btn" data-stmt-bulk="none">None</button></div>' +
+      '<div class="stmt-table">' + rowsHtml + "</div>" +
+      '<div class="stmt-foot-note" id="stmt-count">' + nCharge + " selected</div>";
+
+    this.openModal('Review transactions <span class="beta-pill">Beta</span>', body, {
+      submitLabel: "Import selected",
+      onSubmit() { UI.commitStatement(parse); },
+    });
+
+    // wire bulk actions + live count (modal lives inside #modal-root)
+    const root = document.getElementById("modal-root");
+    const updateCount = () => {
+      const n = root.querySelectorAll(".stmt-inc:checked").length;
+      const el = document.getElementById("stmt-count");
+      if (el) el.textContent = n + " selected";
+    };
+    root.querySelectorAll("[data-stmt-bulk]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const mode = btn.getAttribute("data-stmt-bulk");
+        root.querySelectorAll(".stmt-row").forEach(row => {
+          const cb = row.querySelector(".stmt-inc");
+          const isPay = row.querySelector(".stmt-tag.pay");
+          if (mode === "all") cb.checked = true;
+          else if (mode === "none") cb.checked = false;
+          else if (mode === "charges") cb.checked = !isPay && !row.querySelector(".stmt-tag.ref");
+        });
+        updateCount();
+      });
+    });
+    root.querySelectorAll(".stmt-inc").forEach(cb => cb.addEventListener("change", updateCount));
+  },
+
+  commitStatement(parse) {
+    const root = document.getElementById("modal-root");
+    const picked = [];
+    root.querySelectorAll(".stmt-row").forEach(row => {
+      const cb = row.querySelector(".stmt-inc");
+      if (!cb || !cb.checked) return;
+      const i = +row.getAttribute("data-i");
+      const base = parse.rows[i];
+      if (!base) return;
+      const sel = row.querySelector(".stmt-cat");
+      picked.push({
+        date: base.date,
+        description: base.description,
+        category: sel && sel.value ? sel.value : base.category,
+        amount: base.amount,
+        currency: base.currency,
+      });
+    });
+    UI.closeModal();
+    if (!picked.length) { this.toast("Nothing selected"); return; }
+    const res = Statements.commit(picked);
+    let msg = "Imported " + res.added + " expense" + (res.added === 1 ? "" : "s");
+    if (res.skipped) msg += " · " + res.skipped + " duplicate" + (res.skipped === 1 ? "" : "s") + " skipped";
+    this.toast(msg);
+    if (res.added) { App.budgetMonth = null; App.navigate("budget"); }
   },
 
   confirm(title, message, onYes) {

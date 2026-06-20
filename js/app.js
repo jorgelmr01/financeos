@@ -262,6 +262,10 @@ const App = {
         UI.expenseImportHelp();
         break;
 
+      case "statement-import":
+        UI.statementImportIntro();
+        break;
+
       case "expense-pick-file":
         UI.closeModal();
         document.getElementById("expense-file").click();
@@ -477,6 +481,24 @@ const App = {
       };
       reader.readAsText(f);
       e.target.value = "";
+    });
+
+    /* statement PDF import (Beta) — parsed entirely on-device, never uploaded */
+    document.getElementById("statement-file").addEventListener("change", async e => {
+      const f = e.target.files[0];
+      e.target.value = "";
+      if (!f) return;
+      if (!/\.pdf$/i.test(f.name) && f.type !== "application/pdf") {
+        UI.toast("Please choose a PDF statement");
+        return;
+      }
+      UI.toast("Reading statement on your device…");
+      try {
+        const parse = await Statements.parse(f);
+        UI.statementReview(parse);
+      } catch (err) {
+        UI.toast("Couldn't read that PDF — it may be password-protected or corrupted");
+      }
     });
 
     /* escape closes the modal, then the nav drawer, then any chart tooltip */
