@@ -33,7 +33,7 @@ Your data still lives only on the device, in that browser's storage — installi
 
 | Page | What it does |
 |---|---|
-| **Overview** | Net worth, **net worth history chart**, asset composition, smart alerts, upcoming deposits, portfolio snapshot, global-percentile chip |
+| **Today** | A single **Financial Health score (0–100)** that rolls cash flow, debt, safety net and growth into one honest number, a "what needs attention now" feed, net-worth (with daily change) and history chart, asset composition, upcoming deposits and a one-tap **Log expense** |
 | **Accounts** | Checking / savings / investment accounts with APY — daily, monthly & yearly interest projections (net of tax), live accrual since the last balance update, one-click "Capitalize" |
 | **Credit Cards** | Limits, balances, utilization bars, statement-cut & payment-due countdowns with alerts (≤5 days for cut, ≤7 for payment, high-utilization warnings) |
 | **Portfolio** | Stocks & ETFs with shares + price paid in the listing's currency; **live quotes & dividends** via a free Finnhub key (or edit prices inline), allocation chart, after-tax returns, best/worst positions |

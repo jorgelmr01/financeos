@@ -62,11 +62,58 @@ const Pages = {
         ).join("")
       : '<div class="all-clear" style="color:var(--text-mute)">No deposits scheduled in the next 14 days.</div>';
 
+    // ---- unified Financial Health score ----
+    const fh = financialHealth();
+    const fg = healthGrade(fh.score);
+    const healthBars = fh.factors.length
+      ? '<div class="score-bars health-bars">' + fh.factors.map(f => this._scoreBar(f.label, f.score, null, f.detail)).join("") + "</div>"
+      : "";
+
+    // ---- net worth since the last snapshot ----
+    const snaps = s.snapshots || [];
+    const nwDelta = snaps.length >= 2 ? fromUSD(snaps[snaps.length - 1].usd - snaps[snaps.length - 2].usd) : null;
+
+    // ---- "today" lead: greeting + what needs attention now ----
+    const hr = new Date().getHours();
+    const greet = hr < 12 ? "Good morning" : hr < 18 ? "Good afternoon" : "Good evening";
+    const dangers = alerts.filter(a => a.level === "danger").length;
+    const warns = alerts.filter(a => a.level === "warn").length;
+    const status = dangers ? (dangers + " thing" + (dangers > 1 ? "s need" : " needs") + " your attention today")
+      : warns ? "A couple of things to keep an eye on"
+      : "You're on track — nothing urgent today";
+    const todayFeed = alerts.length ? alertsHtml
+      : '<div class="all-clear"><span class="pulse"></span>All clear — no payments due, utilization healthy.' +
+        (upcoming.length ? " Next money in on " + fmtDateShort(upcoming[0].d) + "." : "") + "</div>";
+
+    const todayStrip =
+      '<div class="today section">' +
+        '<div class="today-head">' +
+          '<div class="today-intro"><div class="today-greet">' + greet + '</div><div class="today-status">' + status + '.</div></div>' +
+          '<div class="today-actions">' +
+            '<button class="btn small primary" data-action="add-expense">+ Log expense</button>' +
+            '<button class="btn small ghost" data-action="nav" data-page="budget">Budget →</button>' +
+          "</div>" +
+        "</div>" +
+        '<div class="today-feed">' + todayFeed + "</div>" +
+      "</div>";
+
     return (
+      todayStrip +
       '<div class="hero section">' +
+        '<div class="hero-health">' +
+          '<div class="health-top">' + this._scoreRing(fh.score, fg.tone, fg.grade) +
+            '<div class="health-meat"><span class="micro-label">Financial health</span>' +
+              '<div class="score-label ' + fg.tone + '">' + fg.label + "</div>" +
+              '<div class="health-sub">' + (fh.score == null
+                ? "Add accounts, income and a few expenses to unlock your score."
+                : "One number across cash flow, debt, safety net &amp; growth.") + "</div>" +
+            "</div>" +
+          "</div>" + healthBars +
+        "</div>" +
         '<div class="hero-networth">' +
-          '<span class="micro-label">Total Net Worth</span>' +
-          '<div class="hero-amount ' + (t.netWorth < 0 ? "neg" : "") + '">' + fmtMoney(t.netWorth) + "</div>" +
+          '<span class="micro-label">Net worth</span>' +
+          '<div class="hero-amount ' + (t.netWorth < 0 ? "neg" : "") + '">' + fmtMoney(t.netWorth) +
+            (nwDelta != null ? '<span class="nw-delta ' + (nwDelta >= 0 ? "pos" : "neg") + '">' + fmtMoney(nwDelta, { sign: true, compact: true }) + " today</span>" : "") + "</div>" +
           '<div class="hero-breakdown">' +
             '<div class="b-item"><span class="micro-label">Assets</span><span class="b-val pos">' + fmtMoney(t.assets) + "</span></div>" +
             '<div class="b-item"><span class="micro-label">Card debt</span><span class="b-val ' + (t.debt > 0 ? "neg" : "") + '">−' + fmtMoney(t.debt) + "</span></div>" +
@@ -74,13 +121,7 @@ const Pages = {
           "</div>" +
           compBar +
           '<button class="pct-chip" data-action="nav" data-page="milestones">✶ ' +
-            topShareLabel(percentileFromTable(toUSD(t.netWorth), NETWORTH_PCT_TABLE)) +
-            " worldwide by net worth — see your milestones →</button>" +
-        "</div>" +
-        '<div class="panel alerts-panel">' +
-          '<div class="panel-head"><div class="panel-title">Attention</div>' +
-          '<span class="panel-sub">' + alerts.length + " alert" + (alerts.length === 1 ? "" : "s") + "</span></div>" +
-          alertsHtml +
+            topShareLabel(percentileFromTable(toUSD(t.netWorth), NETWORTH_PCT_TABLE)) + " worldwide — see milestones →</button>" +
         "</div>" +
       "</div>" +
 
@@ -88,7 +129,7 @@ const Pages = {
         '<div class="stat"><span class="micro-label">Liquid cash</span><div class="stat-value">' + fmtMoney(t.cash + t.savings + t.investCash) + '</div><div class="stat-note">' + s.accounts.length + " account" + (s.accounts.length === 1 ? "" : "s") + "</div></div>" +
         '<div class="stat"><span class="micro-label">Portfolio value</span><div class="stat-value">' + fmtMoney(t.marketValue) + '</div><div class="stat-note ' + (t.pnl >= 0 ? "pos" : "neg") + '">' + fmtMoney(t.pnl, { sign: true }) + " (" + fmtPct(t.invested ? t.pnl / t.invested * 100 : 0, 1) + ")</div></div>" +
         '<div class="stat"><span class="micro-label">Credit available</span><div class="stat-value">' + fmtMoney(Math.max(0, t.creditLimit - t.debt)) + '</div><div class="stat-note">of ' + fmtMoney(t.creditLimit, { compact: true }) + " total limit</div></div>" +
-        '<div class="stat"><span class="micro-label">Monthly income (net)</span><div class="stat-value gold">' + fmtMoney(eb.monthlyNet) + '</div><div class="stat-note">after tax · incl. interest & dividends</div></div>' +
+        '<div class="stat"><span class="micro-label">Monthly income (net)</span><div class="stat-value gold">' + fmtMoney(eb.monthlyNet) + '</div><div class="stat-note">after tax · incl. interest &amp; dividends</div></div>' +
       "</div>" +
 
       this._nwChartPanel() +
@@ -588,14 +629,9 @@ const Pages = {
 
     // ---- score hero ----
     const pct = (x) => Math.round(x * 100) + "%";
-    const scoreNum = sc.score == null ? "—" : sc.score;
-    const ringDeg = sc.score == null ? 0 : Math.round(sc.score * 3.6);
-    const ringColor = g.tone === "pos" ? "var(--mint)" : g.tone === "gold" ? "var(--gold)" : g.tone === "neg" ? "var(--rose)" : "var(--text-mute)";
     const hero =
       '<div class="score-hero section">' +
-        '<div class="score-ring" style="background:conic-gradient(' + ringColor + ' ' + ringDeg + 'deg, var(--surface-3) 0)">' +
-          '<div class="score-ring-in"><div class="score-num ' + g.tone + '">' + scoreNum + '</div><div class="score-grade">' + g.grade + "</div></div>" +
-        "</div>" +
+        this._scoreRing(sc.score, g.tone, g.grade) +
         '<div class="score-meat">' +
           '<div class="micro-label">Spending health · ' + monthLabel(mk) + "</div>" +
           '<div class="score-label ' + g.tone + '">' + g.label + "</div>" +
@@ -706,6 +742,15 @@ const Pages = {
     const val = valueText != null ? valueText : Math.round(r * 100) + "%";
     return '<div class="sbar"><div class="sbar-top"><span>' + label + '</span><span class="sbar-val">' + val + "</span></div>" +
       '<div class="sbar-track"><span style="width:' + (r * 100) + "%;background:" + color + '"></span></div></div>';
+  },
+
+  /* shared score dial — used by the Budget score and the Overview health score */
+  _scoreRing(score, tone, grade) {
+    const deg = score == null ? 0 : Math.round(Math.max(0, Math.min(100, score)) * 3.6);
+    const color = tone === "pos" ? "var(--mint)" : tone === "gold" ? "var(--gold)" : tone === "neg" ? "var(--rose)" : "var(--text-mute)";
+    return '<div class="score-ring" style="background:conic-gradient(' + color + " " + deg + 'deg, var(--surface-3) 0)">' +
+      '<div class="score-ring-in"><div class="score-num ' + tone + '">' + (score == null ? "—" : score) + "</div>" +
+      (grade ? '<div class="score-grade">' + grade + "</div>" : "") + "</div></div>";
   },
 
   /* ---------- historic trends (WHOOP-style) ---------- */

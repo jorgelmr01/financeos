@@ -7,11 +7,11 @@ const App = {
   budgetView: "month", // "month" | "trends"
 
   PAGE_META: {
-    overview:   { title: "Overview",     actions: "" },
+    overview:   { title: "Today",        actions: "" },
     accounts:   { title: "Accounts",     actions: '<button class="btn primary" data-action="add-account">+ Add account</button>' },
     cards:      { title: "Credit Cards", actions: '<button class="btn primary" data-action="add-card">+ Add card</button>' },
     portfolio:  { title: "Portfolio",    actions: '<button class="btn" data-action="refresh-prices">↻ Update prices</button><button class="btn primary" data-action="add-holding">+ Add position</button>' },
-    earnings:   { title: "Earnings",     actions: '<button class="btn primary" data-action="add-income">+ Add income stream</button>' },
+    earnings:   { title: "Income",       actions: '<button class="btn primary" data-action="add-income">+ Add income stream</button>' },
     budget:     { title: "Budget",       actions: '<button class="btn" data-action="expense-template">↓ Template</button><button class="btn" data-action="expense-import">↑ Upload</button><button class="btn primary" data-action="add-expense">+ Add expense</button>' },
     milestones: { title: "Milestones",   actions: "" },
     learn:      { title: "Learn",        actions: "" },

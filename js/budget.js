@@ -333,6 +333,60 @@ function scoreGrade(score) {
   return { grade: "E", label: "Over-spending", tone: "neg" };
 }
 
+function healthGrade(score) {
+  if (score == null) return { grade: "—", label: "Getting started", tone: "mute" };
+  if (score >= 85) return { grade: "A", label: "Thriving", tone: "pos" };
+  if (score >= 70) return { grade: "B", label: "Healthy", tone: "pos" };
+  if (score >= 55) return { grade: "C", label: "Steady", tone: "gold" };
+  if (score >= 40) return { grade: "D", label: "Stretched", tone: "gold" };
+  return { grade: "E", label: "Needs attention", tone: "neg" };
+}
+
+/* ---------- ONE unified Financial Health score ----------
+   Rolls the app's separate signals (cash flow, debt, safety net, growth)
+   into a single 0–100 number so there's one honest "how am I doing?". Each
+   factor is skipped when there's no data for it, and the rest are reweighted,
+   so the score is fair whether you track everything or just a couple things. */
+function financialHealth() {
+  const t = computeTotals();
+  const eb = earningsBreakdown();
+  const cm = monthKeyOf(toISO(todayMid()));
+  const monthExp = (typeof expensesForMonth === "function")
+    ? expensesForMonth(cm).reduce((a, e) => a + conv(Number(e.amount) || 0, e.currency), 0) : 0;
+  const incomeMo = eb.monthlyNet;
+  const factors = [];
+
+  if (incomeMo > 0 && monthExp > 0) {
+    const sr = (incomeMo - monthExp) / incomeMo;
+    factors.push({ key: "cashflow", label: "Cash flow", weight: 30, score: clamp01(sr / 0.2),
+      detail: Math.round(sr * 100) + "% of income saved" });
+  }
+  if (t.creditLimit > 0) {
+    const util = t.debt / t.creditLimit;
+    factors.push({ key: "debt", label: "Debt load", weight: 25, score: clamp01(1 - util / 0.5),
+      detail: Math.round(util * 100) + "% of credit used" });
+  }
+  const outflow = monthExp > 0 ? monthExp : (incomeMo > 0 ? incomeMo * 0.8 : 0);
+  if (outflow > 0) {
+    const months = (t.cash + t.savings) / outflow;
+    factors.push({ key: "safety", label: "Safety net", weight: 25, score: clamp01(months / 6),
+      detail: months.toFixed(1) + " mo runway" });
+  }
+  const snaps = Store.state.snapshots || [];
+  if (snaps.length >= 2) {
+    const last = snaps[snaps.length - 1].usd;
+    const ago = snaps[Math.max(0, snaps.length - 31)].usd;
+    const chg = ago ? (last - ago) / Math.abs(ago) : 0;
+    factors.push({ key: "growth", label: "Growth", weight: 20, score: clamp01((chg + 0.02) / 0.07),
+      detail: (chg >= 0 ? "+" : "") + Math.round(chg * 100) + "% / 30d" });
+  }
+
+  if (!factors.length) return { score: null, factors: [] };
+  const w = factors.reduce((a, f) => a + f.weight, 0);
+  const score = Math.round(factors.reduce((a, f) => a + f.score * f.weight, 0) / w * 100);
+  return { score: score, factors: factors };
+}
+
 /* ---------- insights ---------- */
 
 function budgetInsights(mk) {
