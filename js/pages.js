@@ -543,6 +543,29 @@ const Pages = {
       "</div></div>";
     }
 
+    // view: this-month detail or historic trends
+    const view = App.budgetView === "trends" ? "trends" : "month";
+    const viewToggle =
+      '<div class="seg-toggle">' +
+        '<button class="seg-btn' + (view === "month" ? " on" : "") + '" data-action="budget-view" data-view="month">This month</button>' +
+        '<button class="seg-btn' + (view === "trends" ? " on" : "") + '" data-action="budget-view" data-view="trends">Trends</button>' +
+      "</div>";
+    const tools =
+      '<div class="budget-controls-right">' +
+        '<button class="btn small ghost" data-action="set-budgets">Set budgets</button>' +
+        '<button class="btn small ghost" data-action="expense-template">↓ Template</button>' +
+        '<button class="btn small" data-action="expense-import">↑ Upload</button>' +
+      "</div>";
+
+    if (view === "trends") {
+      const controls =
+        '<div class="budget-controls section">' + viewToggle +
+          '<span class="budget-count">' + months.length + " month" + (months.length === 1 ? "" : "s") + " tracked</span>" +
+          tools +
+        "</div>";
+      return controls + this._budgetTrends();
+    }
+
     // selected month — default to the most recent with data
     let mk = App.budgetMonth;
     if (!mk || months.indexOf(mk) === -1) mk = months[0];
@@ -556,15 +579,11 @@ const Pages = {
     const monthOpts = months.map(m =>
       '<option value="' + m + '"' + (m === mk ? " selected" : "") + ">" + monthLabel(m) + "</option>").join("");
     const controls =
-      '<div class="budget-controls section">' +
+      '<div class="budget-controls section">' + viewToggle +
         '<select id="budget-month" class="budget-month">' + monthOpts + "</select>" +
         '<span class="budget-count">' + exps.length + " expense" + (exps.length === 1 ? "" : "s") +
           (isCurrent ? " · month in progress" : "") + "</span>" +
-        '<div class="budget-controls-right">' +
-          '<button class="btn small ghost" data-action="set-budgets">Set budgets</button>' +
-          '<button class="btn small ghost" data-action="expense-template">↓ Template</button>' +
-          '<button class="btn small" data-action="expense-import">↑ Upload</button>' +
-        "</div>" +
+        tools +
       "</div>";
 
     // ---- score hero ----
@@ -689,6 +708,130 @@ const Pages = {
       '<div class="sbar-track"><span style="width:' + (r * 100) + "%;background:" + color + '"></span></div></div>';
   },
 
+  /* ---------- historic trends (WHOOP-style) ---------- */
+  _budgetTrends() {
+    const series = budgetSeries(12);
+    const pct = (x) => (x == null ? "—" : Math.round(x * 100) + "%");
+
+    // ---- comparison cards: this month vs trailing average ----
+    const cmp = budgetComparison(3);
+    let cards = "";
+    if (cmp) {
+      const card = (label, cur, base, fmt, lowerBetter) => {
+        if (cur == null || base == null) return "";
+        const diff = cur - base;
+        const up = diff > 0;
+        const good = lowerBetter ? diff < 0 : diff > 0;
+        const arrow = Math.abs(diff) < (lowerBetter ? 0.0001 : 0.0001) ? "→" : (up ? "↑" : "↓");
+        const tone = Math.abs(diff) < 1e-9 ? "" : good ? "pos" : "neg";
+        return '<div class="cmp-card"><div class="micro-label">' + label + "</div>" +
+          '<div class="cmp-cur">' + fmt(cur) + "</div>" +
+          '<div class="cmp-delta ' + tone + '">' + arrow + " " + fmt(Math.abs(diff)) + ' <span>vs ' + cmp.months + "-mo avg</span></div></div>";
+      };
+      const money = (v) => fmtMoney(v, { compact: true });
+      cards =
+        '<div class="grid cols-3 section cmp-grid">' +
+          card("Spending", cmp.cur.spend, cmp.spendAvg, money, true) +
+          card("Savings rate", cmp.cur.savingsRate, cmp.saveAvg, pct, false) +
+          card("Spending score", cmp.cur.score, cmp.scoreAvg, (v) => Math.round(v), false) +
+        "</div>";
+    }
+
+    // ---- charts ----
+    const spendChart = this._trendBars(series, {
+      value: (r) => r.spend,
+      color: (r, v) => { const b = totalBudget(); return (b > 0 && v > b) ? "var(--rose)" : "var(--mint)"; },
+      refs: (function () {
+        const out = []; const b = totalBudget(); const a = avgOf(series.filter(x => x.hasData), "spend");
+        if (a) out.push({ value: a, color: "var(--text-mute)", label: "avg" });
+        if (b > 0) out.push({ value: b, color: "var(--gold)", label: "budget" });
+        return out;
+      })(),
+      fmt: (v) => fmtMoney(v, { compact: true }),
+    });
+    const scoreChart = this._trendBars(series, {
+      value: (r) => r.score,
+      max: 100,
+      color: (r, v) => { const t = scoreGrade(v).tone; return t === "pos" ? "var(--mint)" : t === "gold" ? "var(--gold)" : "var(--rose)"; },
+      fmt: (v) => Math.round(v),
+    });
+    const saveChart = this._trendLine(series, { value: (r) => r.savingsRate, fmt: (v) => pct(v) });
+
+    const panel = (title, sub, body) =>
+      '<div class="panel section"><div class="panel-head"><div class="panel-title">' + title + "</div>" +
+      (sub ? '<span class="panel-sub">' + sub + "</span>" : "") + "</div>" + body + "</div>";
+
+    // ---- category movers ----
+    const movers = categoryMovers(3);
+    const up = movers.filter(m => m.delta > 0).slice(0, 5);
+    const down = movers.filter(m => m.delta < 0).slice(0, 5);
+    const moverRow = (m) =>
+      '<div class="mover"><span class="mover-name">' + esc(m.meta.icon + " " + m.name) + "</span>" +
+      '<span class="mover-delta ' + (m.delta > 0 ? "neg" : "pos") + '">' + (m.delta > 0 ? "+" : "−") + fmtMoney(Math.abs(m.delta), { compact: true }) + "</span></div>";
+    const moversPanel = (up.length || down.length)
+      ? '<div class="grid cols-2 stack-wide section" style="align-items:start">' +
+          panel("Spending more", "vs your recent average", up.length ? up.map(moverRow).join("") : '<div class="all-clear" style="color:var(--text-mute)">Nothing up.</div>') +
+          panel("Spending less", "vs your recent average", down.length ? down.map(moverRow).join("") : '<div class="all-clear" style="color:var(--text-mute)">Nothing down.</div>') +
+        "</div>"
+      : "";
+
+    // ---- streaks ----
+    const st = budgetStreaks();
+    const chips = [];
+    if (st.saveStreak >= 1) chips.push('<div class="streak-chip pos"><div class="streak-n">' + st.saveStreak + "</div><div class=\"streak-lbl\">month" + (st.saveStreak === 1 ? "" : "s") + " saving in a row</div></div>");
+    if (st.hasBudget) chips.push('<div class="streak-chip ' + (st.underStreak >= 1 ? "pos" : "") + '"><div class="streak-n">' + st.underStreak + "</div><div class=\"streak-lbl\">month" + (st.underStreak === 1 ? "" : "s") + " with every budget met</div></div>");
+    if (st.best && st.best.savingsRate != null) chips.push('<div class="streak-chip gold"><div class="streak-n">' + pct(st.best.savingsRate) + "</div><div class=\"streak-lbl\">best savings rate · " + esc(st.best.short) + "</div></div>");
+    const streaksPanel = chips.length ? panel("Streaks", st.count + " months tracked", '<div class="streak-row">' + chips.join("") + "</div>") : "";
+
+    return cards +
+      panel("Monthly spending", "last " + series.length + " months", spendChart) +
+      '<div class="grid cols-2 stack-wide section" style="align-items:start">' +
+        panel("Spending-health score", "0–100 per month", scoreChart) +
+        panel("Savings rate", "share of income kept", saveChart) +
+      "</div>" +
+      moversPanel + streaksPanel;
+  },
+
+  /* bar trend: series rows -> bars; opts {value, color, refs, fmt, max} */
+  _trendBars(series, opts) {
+    const vals = series.map(opts.value).filter(v => v != null && isFinite(v));
+    if (vals.length < 2) return '<div class="all-clear" style="color:var(--text-mute)">Not enough history yet — import another month to unlock this trend.</div>';
+    const refs = opts.refs || [];
+    let max = opts.max != null ? opts.max : Math.max.apply(null, vals.concat(refs.map(r => r.value)));
+    if (!(max > 0)) max = 1;
+    const refLines = refs.filter(r => r.value > 0 && r.value <= max * 1.02).map(r =>
+      '<div class="trend-ref" style="bottom:' + (r.value / max * 100).toFixed(1) + '%;border-color:' + r.color + '"><span style="color:' + r.color + '">' + esc(r.label) + "</span></div>").join("");
+    const cols = series.map(row => {
+      const v = opts.value(row);
+      if (v == null || !isFinite(v)) return '<div class="trend-col"><div class="trend-bar trend-empty" title="' + esc(row.label) + ': —"></div></div>';
+      const h = Math.max(1.5, Math.min(100, v / max * 100));
+      const c = opts.color ? opts.color(row, v) : "var(--mint)";
+      return '<div class="trend-col"><div class="trend-bar" style="height:' + h.toFixed(1) + "%;background:" + c + '" title="' + esc(row.label + ": " + (opts.fmt ? opts.fmt(v) : v)) + '"></div></div>';
+    }).join("");
+    const axis = series.map(r => "<span>" + esc(r.short) + "</span>").join("");
+    return '<div class="trend"><div class="trend-plot">' + refLines + cols + '</div><div class="trend-axis">' + axis + "</div></div>";
+  },
+
+  /* line trend (handles negatives), for rates */
+  _trendLine(series, opts) {
+    const data = series.map((r, i) => ({ i: i, v: opts.value(r), row: r })).filter(d => d.v != null && isFinite(d.v));
+    if (data.length < 2) return '<div class="all-clear" style="color:var(--text-mute)">Not enough history yet — import another month to unlock this trend.</div>';
+    const vs = data.map(d => d.v);
+    const min = Math.min.apply(null, vs.concat([0])), max = Math.max.apply(null, vs.concat([0]));
+    const span = (max - min) || 1;
+    const n = series.length, W = 1000, H = 150, PAD = 12;
+    const X = (i) => PAD + (n <= 1 ? 0 : i * (W - 2 * PAD) / (n - 1));
+    const Y = (v) => H - PAD - ((v - min) / span) * (H - 2 * PAD);
+    const line = data.map(d => X(d.i).toFixed(1) + "," + Y(d.v).toFixed(1)).join(" ");
+    const zeroY = Y(0).toFixed(1);
+    const lastV = data[data.length - 1].v;
+    return '<div class="trend"><svg class="trend-svg" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none">' +
+      '<line x1="' + PAD + '" y1="' + zeroY + '" x2="' + (W - PAD) + '" y2="' + zeroY + '" stroke="var(--hairline-strong)" stroke-width="1.5" stroke-dasharray="5 5"/>' +
+      '<polyline points="' + line + '" fill="none" stroke="' + (lastV >= 0 ? "#8fe3a6" : "#e8836f") + '" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>' +
+      "</svg>" +
+      '<div class="trend-axis">' + series.map(r => "<span>" + esc(r.short) + "</span>").join("") + "</div></div>";
+  },
+
   /* ================= MILESTONES ================= */
   milestones() {
     const s = Store.state;
@@ -809,6 +952,7 @@ const Pages = {
         "Even easier: paste the template and your <strong>credit-card statement</strong> into ChatGPT or Claude and ask it to return the rows — the exact prompt is in the Upload dialog. Drop the result under the header and upload.",
         "<strong>Re-uploading is safe.</strong> FinanceOS fingerprints every row, so importing the same file twice — or overlapping months — never creates duplicates, while genuine same-day repeats are kept.",
         "You get a <strong>spending-health score</strong> from your savings rate, runway and needs-vs-wants split, plus insights, a 50/30/20 breakdown, and per-category budgets. Set monthly limits with <strong>Set budgets</strong>.",
+        "Switch to <strong>Trends</strong> to compare months: this month vs your trailing average, spending &amp; score charts, the categories you're spending more/less on, and saving streaks.",
       ]) +
       card("◍", "Currencies", [
         "Every account, card, position and income stream has its <strong>own currency</strong> — mix MXN accounts with USD stocks freely.",

@@ -60,6 +60,8 @@ Most people quit budgeting apps because logging every expense is miserable. Fina
 
 You then get a **spending-health score (0–100)** built from your savings rate, how many months your liquid assets could cover spending (runway), and your **needs-vs-wants** split, plus plain-language insights, a 50/30/20 view, biggest-category callouts, month-over-month trends, and optional **per-category monthly budgets**. Two achievements (*Budgeter*, *Frugal*) tie it into the milestones.
 
+Flip the Budget page to **Trends** for a WHOOP-style historic view: this month measured against your **trailing 3-month average** (spending, savings rate, score), **monthly spending and score charts** (with average and budget reference lines), a **savings-rate line**, the **categories you're spending more/less on** versus your recent baseline, and **streaks** (months saving in a row, months with every budget met, best savings month).
+
 ## Taxes
 
 Declare each income stream as **gross** (with an effective withholding rate) or **net** — projections, timeline and charts always show what actually lands. Global rates for **interest, dividends, and capital gains** live in Settings and flow through every projection in the app.

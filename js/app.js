@@ -4,6 +4,7 @@
 const App = {
   page: "overview",
   budgetMonth: null,   // selected month on the Budget page (YYYY-MM)
+  budgetView: "month", // "month" | "trends"
 
   PAGE_META: {
     overview:   { title: "Overview",     actions: "" },
@@ -203,6 +204,8 @@ const App = {
         });
         break;
       }
+
+      case "budget-view": this.budgetView = el.dataset.view; this.render(); break;
 
       case "add-expense": UI.expenseForm(); break;
       case "edit-expense": UI.expenseForm(Store.find("expenses", id)); break;

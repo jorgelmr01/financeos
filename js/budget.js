@@ -185,6 +185,108 @@ function totalBudget() {
   return Object.keys(b).reduce((a, k) => a + (budgetForCategory(k) || 0), 0);
 }
 
+/* ---------- historic series (WHOOP-style trends) ---------- */
+
+function monthAdd(mk, delta) {
+  const p = String(mk).split("-");
+  let y = +p[0], m = (+p[1] - 1) + delta;
+  y += Math.floor(m / 12);
+  m = ((m % 12) + 12) % 12;
+  return y + "-" + String(m + 1).padStart(2, "0");
+}
+
+function monthShort(mk) {
+  const p = String(mk).split("-");
+  return MONTHS_SHORT[(+p[1]) - 1] + (p[1] === "01" || +p[1] === 1 ? " ’" + String(p[0]).slice(2) : "");
+}
+
+/* One row per month from first activity to the current month (gaps filled with 0). */
+function budgetSeries(maxMonths) {
+  const all = expenseMonths();
+  if (!all.length) return [];
+  const sorted = all.slice().sort();
+  const end = monthKeyOf(toISO(todayMid()));
+  let start = sorted[0];
+  if (start > end) start = end;
+  const months = [];
+  for (let mk = start, i = 0; mk <= end && i < 240; mk = monthAdd(mk, 1), i++) months.push(mk);
+  const tail = (maxMonths && months.length > maxMonths) ? months.slice(-maxMonths) : months;
+  return tail.map(mk => {
+    const sc = budgetScore(mk);
+    const spread = sc.needs + sc.wants;
+    return {
+      mk: mk, label: monthLabel(mk), short: monthShort(mk),
+      spend: sc.monthlyExpenses, score: sc.score, savingsRate: sc.savingsRate,
+      needs: sc.needs, wants: sc.wants, income: sc.monthlyIncomeNet, runway: sc.runwayMonths,
+      wantsShare: spread > 0 ? sc.wants / spread : 0,
+      hasData: sc.monthlyExpenses !== 0 || expensesForMonth(mk).length > 0,
+    };
+  });
+}
+
+function avgOf(rows, key) {
+  const vals = rows.map(r => r[key]).filter(v => v != null && isFinite(v));
+  if (!vals.length) return null;
+  return vals.reduce((a, b) => a + b, 0) / vals.length;
+}
+
+/* Latest month vs the trailing average of the prior `n` months with data. */
+function budgetComparison(n) {
+  const s = budgetSeries(null);
+  if (s.length < 2) return null;
+  const cur = s[s.length - 1];
+  const prior = s.slice(0, s.length - 1).filter(m => m.hasData).slice(-(n || 3));
+  if (!prior.length) return null;
+  return {
+    cur: cur, months: prior.length,
+    spendAvg: avgOf(prior, "spend"),
+    saveAvg: avgOf(prior, "savingsRate"),
+    scoreAvg: avgOf(prior.filter(m => m.score != null), "score"),
+    wantsAvg: avgOf(prior, "wantsShare"),
+  };
+}
+
+/* Per-category change: current month vs trailing average of prior `n` months. */
+function categoryMovers(n) {
+  const s = budgetSeries(null).filter(m => m.hasData);
+  if (s.length < 2) return [];
+  const curMk = s[s.length - 1].mk;
+  const priorMks = s.slice(0, s.length - 1).slice(-(n || 3)).map(m => m.mk);
+  if (!priorMks.length) return [];
+  const cur = {}, prior = {};
+  categoryTotalsSorted(expensesForMonth(curMk)).forEach(c => { cur[c.name] = c.amount; });
+  priorMks.forEach(mk => categoryTotalsSorted(expensesForMonth(mk)).forEach(c => {
+    prior[c.name] = (prior[c.name] || 0) + c.amount;
+  }));
+  const names = {};
+  Object.keys(cur).forEach(k => names[k] = 1);
+  Object.keys(prior).forEach(k => names[k] = 1);
+  return Object.keys(names).map(name => {
+    const c = cur[name] || 0, avg = (prior[name] || 0) / priorMks.length;
+    return { name: name, meta: categoryMeta(name), cur: c, avg: avg, delta: c - avg };
+  }).filter(x => Math.abs(x.delta) >= 1).sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+}
+
+/* Consistency streaks, counting back from the most recent month with data. */
+function budgetStreaks() {
+  const s = budgetSeries(null).filter(m => m.hasData);
+  let save = 0, under = 0;
+  for (let i = s.length - 1; i >= 0; i--) { if (s[i].savingsRate != null && s[i].savingsRate > 0) save++; else break; }
+  // "all budgets met" = every category you set a limit on stayed within it that month
+  const budgeted = Object.keys(Store.state.budgets || {}).filter(k => budgetForCategory(k) != null);
+  if (budgeted.length) {
+    for (let i = s.length - 1; i >= 0; i--) {
+      const totals = {};
+      categoryTotalsSorted(expensesForMonth(s[i].mk)).forEach(c => { totals[c.name] = c.amount; });
+      const ok = budgeted.every(cat => (totals[cat] || 0) <= budgetForCategory(cat));
+      if (ok) under++; else break;
+    }
+  }
+  let best = null;
+  s.forEach(m => { if (m.savingsRate != null && (!best || m.savingsRate > best.savingsRate)) best = m; });
+  return { saveStreak: save, underStreak: under, hasBudget: budgeted.length > 0, best: best, count: s.length };
+}
+
 /* ---------- score ---------- */
 
 function clamp01(x) { return Math.max(0, Math.min(1, x)); }

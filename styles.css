@@ -940,6 +940,85 @@ button, a, .nav-item, .tool-btn, .icon-btn, .swatch { -webkit-tap-highlight-colo
 }
 .budget-foot { margin-top: 14px; display: flex; justify-content: flex-end; }
 
+/* ---------- budget trends (segmented toggle, comparison cards, charts) ---------- */
+.seg-toggle {
+  display: inline-flex; background: var(--surface-3); border-radius: 100px;
+  padding: 3px; border: 1px solid var(--hairline);
+}
+.seg-btn {
+  border: none; background: none; cursor: pointer;
+  font-family: var(--font-body); font-size: 12.5px; font-weight: 600;
+  color: var(--text-dim); padding: 7px 15px; border-radius: 100px;
+  transition: background 0.18s, color 0.18s;
+}
+.seg-btn.on { background: var(--mint); color: #0b120d; }
+
+.cmp-grid { gap: 14px; }
+.cmp-card {
+  border: 1px solid var(--hairline); border-radius: var(--r-md);
+  padding: 16px 18px; background: linear-gradient(150deg, var(--surface) 0%, transparent 100%);
+}
+.cmp-cur { font-family: var(--font-mono); font-size: 25px; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 6px; }
+.cmp-delta { font-family: var(--font-mono); font-size: 12px; margin-top: 5px; color: var(--text-mute); }
+.cmp-delta.pos { color: var(--mint-bright); }
+.cmp-delta.neg { color: var(--rose); }
+.cmp-delta span { color: var(--text-mute); }
+
+.trend { width: 100%; }
+.trend-plot {
+  position: relative; display: flex; align-items: flex-end; gap: 6px;
+  height: 158px; padding: 16px 2px 0;
+}
+.trend-col { flex: 1; min-width: 0; display: flex; align-items: flex-end; justify-content: center; height: 100%; }
+.trend-bar {
+  width: 100%; max-width: 40px; min-height: 2px; border-radius: 5px 5px 2px 2px;
+  background: var(--mint); transition: filter 0.15s;
+}
+.trend-col:hover .trend-bar { filter: brightness(1.2); }
+.trend-bar.trend-empty { background: var(--surface-3); height: 3px; }
+.trend-ref {
+  position: absolute; left: 2px; right: 2px; height: 0;
+  border-top: 1px dashed currentColor; opacity: 0.7; pointer-events: none;
+}
+.trend-ref span {
+  position: absolute; right: 0; top: -8px;
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.06em;
+  background: var(--surface); padding: 0 5px; text-transform: uppercase;
+}
+.trend-svg { display: block; width: 100%; height: 150px; }
+.trend-axis {
+  display: flex; gap: 6px; margin-top: 8px;
+}
+.trend-axis span {
+  flex: 1; min-width: 0; text-align: center;
+  font-family: var(--font-mono); font-size: 9px; color: var(--text-mute);
+  letter-spacing: 0.02em; white-space: nowrap; overflow: hidden;
+}
+
+.mover {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 9px 2px; border-bottom: 1px solid var(--hairline);
+}
+.mover:last-child { border-bottom: none; }
+.mover-name { font-size: 13.5px; }
+.mover-delta { font-family: var(--font-mono); font-size: 13px; font-variant-numeric: tabular-nums; }
+
+.streak-row { display: flex; gap: 14px; flex-wrap: wrap; }
+.streak-chip {
+  flex: 1; min-width: 140px;
+  border: 1px solid var(--hairline); border-radius: var(--r-md);
+  padding: 14px 16px; background: var(--surface);
+}
+.streak-chip.pos { border-color: rgba(143, 227, 166, 0.3); }
+.streak-chip.gold { border-color: rgba(229, 201, 123, 0.3); }
+.streak-n {
+  font-family: var(--font-mono); font-size: 26px; font-weight: 700; line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.streak-chip.pos .streak-n { color: var(--mint-bright); }
+.streak-chip.gold .streak-n { color: var(--gold); }
+.streak-lbl { font-size: 11.5px; color: var(--text-mute); margin-top: 6px; }
+
 .modal-note { color: var(--text-dim); font-size: 13.5px; margin-bottom: 14px; }
 .import-steps { color: var(--text-dim); font-size: 13.5px; padding-left: 20px; display: grid; gap: 7px; }
 .import-steps code { font-family: var(--font-mono); font-size: 12px; background: var(--surface-3); padding: 1px 5px; border-radius: 5px; }
@@ -956,7 +1035,7 @@ body.privacy :is(.hero-amount, .stat-value, .chip-value, .acct-balance,
   .ccard-balance, .tl-amount, .tbl .num, .b-val, .ai-val, .bar-total,
   .pct-big, .accrued-note, .ccard-limit, .stat-note, .comp-legend .lg,
   .pct-sub, .pct-next, .pct-breakdown, .fx-sub, .nw-chart, .nw-chart-scale,
-  .score-sub, .bcat-amt, .sbar-val) {
+  .score-sub, .bcat-amt, .sbar-val, .cmp-cur, .cmp-delta, .mover-delta, .streak-n) {
   filter: blur(9px);
   transition: filter 0.25s;
 }
