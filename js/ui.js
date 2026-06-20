@@ -6,13 +6,14 @@ const UI = {
 
   openModal(title, bodyHtml, opts) {
     opts = opts || {};
+    this._lastFocus = document.activeElement;   // restore on close
     const root = document.getElementById("modal-root");
     root.innerHTML =
       '<div class="modal-overlay" data-action="close-modal-overlay">' +
-        '<div class="modal" role="dialog" aria-modal="true">' +
+        '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">' +
           '<div class="modal-head">' +
-            '<div class="modal-title">' + title + "</div>" +
-            '<button class="icon-btn" data-action="close-modal" title="Close">✕</button>' +
+            '<div class="modal-title" id="modal-title">' + title + "</div>" +
+            '<button class="icon-btn" data-action="close-modal" title="Close" aria-label="Close dialog">✕</button>' +
           "</div>" +
           '<form id="modal-form"><div class="modal-body">' + bodyHtml + "</div>" +
           '<div class="modal-foot">' +
@@ -27,13 +28,30 @@ const UI = {
       e.preventDefault();
       if (UI.onSubmit) UI.onSubmit(new FormData(form), form);
     });
-    const first = form.querySelector("input, select");
+    // keep Tab focus inside the dialog
+    const modal = root.querySelector(".modal");
+    modal.addEventListener("keydown", e => {
+      if (e.key !== "Tab") return;
+      const f = modal.querySelectorAll(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
+      const list = Array.prototype.filter.call(f, el => el.offsetParent !== null);
+      if (!list.length) return;
+      const first = list[0], last = list[list.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    });
+    const first = form.querySelector("input, select, textarea");
     if (first) first.focus();
+    else { const cb = modal.querySelector('[data-action="close-modal"]'); if (cb) cb.focus(); }
   },
 
   closeModal() {
     document.getElementById("modal-root").innerHTML = "";
     this.onSubmit = null;
+    if (this._lastFocus && typeof this._lastFocus.focus === "function") {
+      try { this._lastFocus.focus(); } catch (e) { /* element gone */ }
+    }
+    this._lastFocus = null;
   },
 
   toast(msg) {

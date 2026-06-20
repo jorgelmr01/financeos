@@ -482,8 +482,29 @@ function collectAlerts() {
       });
     }
   });
+  // budget overspending this month (Budget feature; functions live in budget.js)
+  if (typeof categoryTotalsSorted === "function" && (s.expenses || []).length) {
+    const cm = toISO(todayMid()).slice(0, 7);
+    const monthExps = s.expenses.filter(e => monthKeyOf(e.date) === cm);
+    if (monthExps.length) {
+      const over = categoryTotalsSorted(monthExps).filter(c => {
+        const b = budgetForCategory(c.name);
+        return b && c.amount > b;
+      });
+      if (over.length) {
+        const names = over.slice(0, 3).map(c => c.name).join(", ") + (over.length > 3 ? " +" + (over.length - 3) + " more" : "");
+        alerts.push({
+          level: "warn",
+          text: "<strong>Over budget</strong> in " + esc(names),
+          meta: "This month's spending tops your limit in " + over.length + " categor" + (over.length === 1 ? "y" : "ies") + " — review on the Budget page",
+          when: 60,
+        });
+      }
+    }
+  }
+
   // backup hygiene
-  const hasData = s.accounts.length || s.cards.length || s.holdings.length || s.incomes.length;
+  const hasData = s.accounts.length || s.cards.length || s.holdings.length || s.incomes.length || (s.expenses || []).length;
   if (hasData) {
     const last = parseISO(s.settings.lastExport);
     const stale = !last || daysBetween(last, todayMid()) > 30;

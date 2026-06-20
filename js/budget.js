@@ -81,6 +81,10 @@ function parseExpenseDate(raw) {
     y = +y; mo = +mo; da = +da;
     if (y < 100) y += 2000;
     if (mo < 1 || mo > 12 || da < 1 || da > 31) return null;
+    // reject impossible calendar days (e.g. Jun 31, Feb 30) — Date would roll
+    // them into the next month, mis-dating the expense
+    const dt = new Date(y, mo - 1, da);
+    if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== da) return null;
     return y + "-" + pad(mo) + "-" + pad(da);
   };
   let m;

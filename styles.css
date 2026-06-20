@@ -107,6 +107,24 @@ body.light :is(.alloc-bar span, .comp-bar span, .comp-legend .dot) {
 
 html, body { height: 100%; }
 
+/* ---------- accessibility ---------- */
+/* Visible keyboard focus ring (mouse clicks don't trigger :focus-visible). */
+:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
+/* form controls keep their own mint glow ring instead of a double outline */
+.field input:focus-visible, .field select:focus-visible,
+.currency-select:focus-visible, .budget-month:focus-visible, .ai-prompt:focus-visible { outline: none; }
+
+/* Respect users who prefer less motion — kill the grain loop and entrance anims. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .grain, .atmosphere { animation: none; }
+}
+
 body {
   background: var(--bg);
   color: var(--text);

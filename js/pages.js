@@ -599,7 +599,7 @@ const Pages = {
       '<div class="grid cols-4 section">' +
         '<div class="stat"><span class="micro-label">Spent · ' + monthLabel(mk) + '</span><div class="stat-value">' + fmtMoney(sc.monthlyExpenses) + '</div><div class="stat-note">' + exps.length + " expenses</div></div>" +
         '<div class="stat"><span class="micro-label">Savings rate</span><div class="stat-value ' + (sc.savingsRate == null ? "" : sc.savingsRate >= 0.2 ? "pos" : sc.savingsRate < 0 ? "neg" : "gold") + '">' + (sc.savingsRate == null ? "—" : pct(sc.savingsRate)) + '</div><div class="stat-note">' + (sc.savingsRate == null ? "add income to compute" : "of net income") + "</div></div>" +
-        '<div class="stat"><span class="micro-label">Biggest category</span><div class="stat-value">' + (topCat ? esc(topCat.meta.icon + " " + topCat.name) : "—") + '</div><div class="stat-note">' + (topCat ? fmtMoney(topCat.amount, { compact: true }) + " · " + pct(topCat.amount / spend) : "") + "</div></div>" +
+        '<div class="stat"><span class="micro-label">Biggest category</span><div class="stat-value">' + (topCat ? esc(topCat.meta.icon + " " + topCat.name) : "—") + '</div><div class="stat-note">' + (topCat ? fmtMoney(topCat.amount, { compact: true }) + (spend > 0 ? " · " + pct(topCat.amount / spend) : "") : "") + "</div></div>" +
         '<div class="stat"><span class="micro-label">Runway</span><div class="stat-value ' + (sc.runwayMonths >= 6 ? "pos" : sc.runwayMonths < 3 ? "neg" : "gold") + '">' + (isFinite(sc.runwayMonths) ? sc.runwayMonths.toFixed(1) + " mo" : "∞") + '</div><div class="stat-note">liquid assets at this rate</div></div>' +
       "</div>";
 

@@ -85,17 +85,17 @@
         <div class="chip-value" id="sidebar-networth">—</div>
       </div>
       <div class="sidebar-tools">
-        <select id="currency-select" class="currency-select" title="Display currency">
+        <select id="currency-select" class="currency-select" title="Display currency" aria-label="Display currency">
           <option value="USD">USD $</option>
           <option value="MXN">MXN $</option>
           <option value="EUR">EUR €</option>
           <option value="GBP">GBP £</option>
         </select>
-        <button class="tool-btn" id="theme-btn" data-action="toggle-theme" title="Switch to light mode">☀</button>
-        <button class="tool-btn" id="privacy-btn" data-action="toggle-privacy" title="Hide / show amounts">◑</button>
-        <button class="tool-btn" id="lock-btn" data-action="lock-now" title="Lock now" style="display:none">⛨</button>
+        <button class="tool-btn" id="theme-btn" data-action="toggle-theme" title="Switch to light mode" aria-label="Switch theme">☀</button>
+        <button class="tool-btn" id="privacy-btn" data-action="toggle-privacy" title="Hide / show amounts" aria-label="Toggle privacy mode">◑</button>
+        <button class="tool-btn" id="lock-btn" data-action="lock-now" title="Lock now" aria-label="Lock now" style="display:none">⛨</button>
         <div class="data-menu">
-          <button class="tool-btn" data-action="toggle-data-menu" title="Data options">⋯</button>
+          <button class="tool-btn" data-action="toggle-data-menu" title="Data options" aria-label="Data options" aria-haspopup="true">⋯</button>
           <div class="data-menu-pop" id="data-menu-pop">
             <button data-action="app-settings">Settings — taxes &amp; API key…</button>
             <button data-action="pin-settings">PIN lock…</button>
@@ -124,7 +124,7 @@
 </div>
 
 <div id="modal-root"></div>
-<div id="toast-root"></div>
+<div id="toast-root" aria-live="polite" aria-atomic="false"></div>
 <div id="lock-root"></div>
 <input type="file" id="import-file" accept="application/json" hidden>
 <input type="file" id="expense-file" accept=".csv,text/csv,text/plain" hidden>
