@@ -253,6 +253,42 @@ const Store = {
     return null;
   },
 
+  /* Historical close prices for a symbol (Yahoo chart via CORS proxy). Returns
+     { symbol, range, currency, points:[{t,c}] } or null. Cached per symbol+range. */
+  _histCache: {},
+  async fetchHistory(symbol, range) {
+    range = range || "6mo";
+    const key = String(symbol).toUpperCase() + "|" + range;
+    if (this._histCache[key]) return this._histCache[key];
+    const interval = range === "1mo" ? "1d" : range === "6mo" ? "1d" : range === "1y" ? "1wk" : "1mo";
+    const url = "https://query1.finance.yahoo.com/v8/finance/chart/" +
+      encodeURIComponent(symbol) + "?range=" + range + "&interval=" + interval;
+    const proxies = [
+      u => "https://corsproxy.io/?url=" + encodeURIComponent(u),
+      u => "https://api.allorigins.win/raw?url=" + encodeURIComponent(u),
+    ];
+    for (const mk of proxies) {
+      try {
+        const r = await fetch(mk(url));
+        if (!r.ok) continue;
+        const j = await r.json();
+        const res = j && j.chart && j.chart.result && j.chart.result[0];
+        const ts = res && res.timestamp;
+        const closes = res && res.indicators && res.indicators.quote && res.indicators.quote[0] && res.indicators.quote[0].close;
+        if (!ts || !closes) continue;
+        const points = [];
+        for (let i = 0; i < ts.length; i++) {
+          if (closes[i] != null) points.push({ t: ts[i] * 1000, c: closes[i] });
+        }
+        if (points.length < 2) continue;
+        const out = { symbol: String(symbol).toUpperCase(), range: range, currency: (res.meta && res.meta.currency) || "", points: points };
+        this._histCache[key] = out;
+        return out;
+      } catch (e) { /* proxy down — try the next one */ }
+    }
+    return null;
+  },
+
   /* Quotes + annual dividends. Finnhub first when a key is set; Yahoo (proxied)
      fills anything missing — including ETF dividends and the keyless case. */
   async fetchQuotes() {

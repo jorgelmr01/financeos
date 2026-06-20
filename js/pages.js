@@ -316,6 +316,12 @@ const Pages = {
         "<h3>No positions yet</h3><p>Add the stocks and ETFs you own with the price you paid. FinanceOS computes your returns as you update prices.</p>" +
         '<button class="btn primary" data-action="add-holding">+ Add your first position</button></div></div>';
     }
+    // per-stock detail view
+    if (App.holdingDetail) {
+      const hd = Store.find("holdings", App.holdingDetail);
+      if (hd) return this._portfolioDetail(hd);
+      App.holdingDetail = null;
+    }
     const t = computeTotals();
     const retPct = t.invested ? t.pnl / t.invested * 100 : 0;
     const taxCG = (s.settings.tax && Number(s.settings.tax.capGains)) || 0;
@@ -367,7 +373,7 @@ const Pages = {
       const cost = conv(h.shares * h.costBasis, h.currency), mv = conv(h.shares * h.currentPrice, h.currency);
       const pnl = mv - cost, pct = cost ? pnl / cost * 100 : 0;
       return "<tr>" +
-        '<td><div style="display:flex;align-items:center;gap:11px"><span class="sym-badge">' + esc(h.symbol.slice(0, 5)) + "</span>" +
+        '<td><div class="pos-link" data-action="view-holding" data-id="' + h.id + '" title="See details &amp; price chart"><span class="sym-badge">' + esc(h.symbol.slice(0, 5)) + "</span>" +
           '<div><div class="cell-main">' + esc(h.name || h.symbol) + '</div><div class="cell-sub">' +
           (h.kind === "etf" ? "ETF" : "Stock") + " · " + esc(h.currency) +
           (Number(h.divPerShare) > 0 ? " · div " + fmtMoneyIn(h.divPerShare, h.currency) + "/sh" : "") +
@@ -392,7 +398,141 @@ const Pages = {
         "<th>Position</th><th class=\"num\">Shares</th><th class=\"num\">Paid</th><th class=\"num\">Price now</th><th class=\"num\">Value</th><th class=\"num\">Return</th><th></th>" +
       "</tr></thead><tbody>" + rows + "</tbody></table></div></div>";
 
-    return stats + alloc + table;
+    return stats + this._returnsChart(sorted) + alloc + table;
+  },
+
+  /* horizontal diverging return-by-position chart (click → detail) */
+  _returnsChart(sorted) {
+    const rows = sorted.map(h => {
+      const cost = conv(h.shares * h.costBasis, h.currency), mv = conv(h.shares * h.currentPrice, h.currency);
+      return { h: h, pct: cost ? (mv - cost) / cost * 100 : 0 };
+    });
+    const maxAbs = Math.max.apply(null, rows.map(r => Math.abs(r.pct)).concat([1]));
+    const bars = rows.map(r => {
+      const w = Math.min(50, Math.abs(r.pct) / maxAbs * 50);
+      const pos = r.pct >= 0;
+      return '<div class="ret-row" data-action="view-holding" data-id="' + r.h.id + '" title="See details">' +
+        '<div class="ret-name"><span class="sym-badge sm">' + esc(r.h.symbol.slice(0, 5)) + "</span></div>" +
+        '<div class="ret-track"><div class="ret-zero"></div>' +
+          (pos ? '<div class="ret-bar pos" style="left:50%;width:' + w.toFixed(1) + '%"></div>'
+               : '<div class="ret-bar neg" style="right:50%;width:' + w.toFixed(1) + '%"></div>') +
+        "</div>" +
+        '<div class="ret-val ' + (pos ? "pos" : "neg") + '">' + fmtPct(r.pct, 1) + "</div>" +
+      "</div>";
+    }).join("");
+    return '<div class="panel section"><div class="panel-head"><div class="panel-title">Return by position</div>' +
+      '<span class="panel-sub">tap a position for details &amp; price history</span></div>' + bars + "</div>";
+  },
+
+  /* ---------- single-stock detail ---------- */
+  _portfolioDetail(h) {
+    const cur = h.currency;
+    const shares = Number(h.shares) || 0, paid = Number(h.costBasis) || 0, now = Number(h.currentPrice) || 0;
+    const cost = conv(shares * paid, cur), mv = conv(shares * now, cur);
+    const pnl = mv - cost, pct = cost ? pnl / cost * 100 : 0;
+    const taxCG = (Store.state.settings.tax && Number(Store.state.settings.tax.capGains)) || 0;
+    const div = Number(h.divPerShare) || 0;
+    const annualDiv = conv(shares * div, cur);
+    const yieldPct = now ? div / now * 100 : 0;
+    const allocPct = mv / (computeTotals().marketValue || 1) * 100;
+    const range = App.priceRange || "6mo";
+    const rangeLabels = { "1mo": "1M", "6mo": "6M", "1y": "1Y", "5y": "5Y" };
+    const rangeBtns = ["1mo", "6mo", "1y", "5y"].map(r =>
+      '<button class="range-btn' + (r === range ? " on" : "") + '" data-action="price-range" data-range="' + r + '">' + rangeLabels[r] + "</button>").join("");
+
+    // synchronous fallback chart: your cost basis at purchase → current price
+    const pd = parseISO(h.purchaseDate);
+    const fb = [];
+    if (pd && paid > 0) fb.push({ t: pd.getTime(), c: paid });
+    fb.push({ t: todayMid().getTime(), c: now });
+
+    const stat = (l, v, n, tone) =>
+      '<div class="stat"><span class="micro-label">' + l + '</span><div class="stat-value ' + (tone || "") + '" style="font-size:21px">' + v + "</div>" +
+      (n ? '<div class="stat-note">' + n + "</div>" : "") + "</div>";
+
+    return (
+      '<div class="section"><button class="btn small ghost" data-action="back-portfolio">← All positions</button></div>' +
+      '<div class="panel section">' +
+        '<div class="detail-head">' +
+          '<span class="sym-badge lg">' + esc(h.symbol.slice(0, 5)) + "</span>" +
+          '<div class="detail-title"><div class="detail-name">' + esc(h.name || h.symbol) + "</div>" +
+            '<div class="detail-meta">' + esc(h.symbol) + " · " + (h.kind === "etf" ? "ETF" : "Stock") + " · " + esc(cur) +
+              (h.accountId ? " · " + esc(Store.accountName(h.accountId)) : "") +
+              (h.purchaseDate ? " · since " + fmtDateShort(parseISO(h.purchaseDate)) : "") + "</div></div>" +
+          '<div class="detail-actions">' +
+            '<button class="icon-btn" data-action="edit-holding" data-id="' + h.id + '" title="Edit">✎</button>' +
+            '<button class="icon-btn danger" data-action="del-holding" data-id="' + h.id + '" title="Delete">✕</button></div>' +
+        "</div>" +
+        '<div class="detail-price"><div class="detail-now">' + fmtMoneyIn(now, cur) + "</div>" +
+          '<div class="detail-chg ' + (pnl >= 0 ? "pos" : "neg") + '">' + fmtMoney(pnl, { sign: true, compact: true }) + " (" + fmtPct(pct, 1) + ") all-time</div></div>" +
+        '<div class="price-range-bar">' + rangeBtns + "</div>" +
+        '<div id="price-chart" class="price-chart-mount" data-symbol="' + esc(h.symbol) + '" data-range="' + range + '" data-cur="' + esc(cur) + '">' +
+          this._priceLineChart(fb, { cur: cur }) +
+          '<div class="price-loading">Loading live price history…</div>' +
+        "</div>" +
+      "</div>" +
+      '<div class="grid cols-4 section">' +
+        stat("Market value", fmtMoney(mv), allocPct.toFixed(1) + "% of portfolio") +
+        stat("Total return", fmtMoney(pnl, { sign: true }), fmtPct(pct) + (taxCG > 0 && pnl > 0 ? " · " + fmtMoney(pnl * (1 - taxCG / 100), { sign: true, compact: true }) + " after tax" : ""), pnl >= 0 ? "pos" : "neg") +
+        stat("Shares", fmtNum(shares), "avg cost " + fmtMoneyIn(paid, cur)) +
+        stat("Dividends / yr", annualDiv > 0 ? fmtMoney(annualDiv) : "—", yieldPct > 0 ? yieldPct.toFixed(2) + "% yield" : "no dividend") +
+      "</div>" +
+      '<div class="panel section"><div class="panel-head"><div class="panel-title">Update price</div><span class="panel-sub">in ' + esc(cur) + ' · or refresh all from Yahoo</span></div>' +
+        '<div class="detail-update"><input class="price-input" type="number" step="any" min="0" value="' + now + '" data-price-id="' + h.id + '">' +
+        '<button class="btn small" data-action="refresh-prices">↻ Update all prices</button></div></div>'
+    );
+  },
+
+  /* price line chart from [{t,c}] points (t = ms) */
+  _priceLineChart(points, opts) {
+    opts = opts || {};
+    const cur = opts.cur || displayCurrency();
+    if (!points || points.length < 2) return '<div class="all-clear" style="color:var(--text-mute)">No price history to chart yet.</div>';
+    const cs = points.map(p => p.c);
+    const min = Math.min.apply(null, cs), max = Math.max.apply(null, cs);
+    const span = (max - min) || 1;
+    const W = 1000, H = 230, PAD = 10, n = points.length;
+    const X = (i) => PAD + (n <= 1 ? 0 : i * (W - 2 * PAD) / (n - 1));
+    const Y = (c) => H - PAD - ((c - min) / span) * (H - 2 * PAD);
+    const line = points.map((p, i) => X(i).toFixed(1) + "," + Y(p.c).toFixed(1)).join(" ");
+    const area = line + " " + X(n - 1).toFixed(1) + "," + (H - PAD) + " " + X(0).toFixed(1) + "," + (H - PAD);
+    const up = cs[n - 1] >= cs[0];
+    const col = up ? "#8fe3a6" : "#e8836f";
+    return '<svg class="price-chart" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none">' +
+      '<defs><linearGradient id="phfill" x1="0" y1="0" x2="0" y2="1">' +
+        '<stop offset="0%" stop-color="' + col + '" stop-opacity="0.22"/><stop offset="100%" stop-color="' + col + '" stop-opacity="0"/></linearGradient></defs>' +
+      '<polygon points="' + area + '" fill="url(#phfill)"/>' +
+      '<polyline points="' + line + '" fill="none" stroke="' + col + '" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>' +
+      "</svg>" +
+      '<div class="price-scale"><span>' + fmtDateShort(new Date(points[0].t)) + "</span>" +
+        '<span>low ' + fmtMoneyIn(min, cur) + " · high " + fmtMoneyIn(max, cur) + "</span>" +
+        "<span>" + fmtDateShort(new Date(points[n - 1].t)) + "</span></div>";
+  },
+
+  /* called by App.render() after the page mounts — fetch live history async */
+  afterRender(page) {
+    if (page !== "portfolio") return;
+    const mount = document.getElementById("price-chart");
+    if (mount && mount.dataset.symbol) this.loadPriceChart(mount);
+  },
+
+  loadPriceChart(mount) {
+    const sym = mount.dataset.symbol, range = mount.dataset.range, cur = mount.dataset.cur;
+    Store.fetchHistory(sym, range).then((data) => {
+      const live = document.getElementById("price-chart");
+      if (!live || live.dataset.symbol !== sym || live.dataset.range !== range) return; // re-rendered
+      if (data && data.points && data.points.length >= 2) {
+        live.innerHTML = this._priceLineChart(data.points, { cur: cur }) +
+          '<div class="price-source">' + data.points.length + " pts · Yahoo Finance</div>";
+      } else {
+        const l = live.querySelector(".price-loading");
+        if (l) l.textContent = "Couldn't load live history (offline or blocked) — showing your cost vs current price.";
+      }
+    }).catch(() => {
+      const l = document.getElementById("price-chart");
+      const e = l && l.querySelector(".price-loading");
+      if (e) e.textContent = "Couldn't load price history right now.";
+    });
   },
 
   /* ================= EARNINGS ================= */

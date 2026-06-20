@@ -5,6 +5,8 @@ const App = {
   page: "overview",
   budgetMonth: null,   // selected month on the Budget page (YYYY-MM)
   budgetView: "month", // "month" | "trends"
+  holdingDetail: null, // open position id on the Portfolio page
+  priceRange: "6mo",   // price-history range for the detail chart
 
   PAGE_META: {
     overview:   { title: "Today",        actions: "" },
@@ -20,6 +22,7 @@ const App = {
 
   navigate(page) {
     this.page = page;
+    this.holdingDetail = null;   // always land on the portfolio list, not a stale detail
     document.querySelectorAll(".nav-item").forEach(b =>
       b.classList.toggle("active", b.dataset.page === page));
     this.render();
@@ -40,6 +43,7 @@ const App = {
     document.getElementById("page-title").textContent = meta.title;
     document.getElementById("topbar-actions").innerHTML = meta.actions;
     document.getElementById("page").innerHTML = Pages[this.page]();
+    if (Pages.afterRender) Pages.afterRender(this.page);
 
     // compute initial values for any live learn-widgets just rendered
     document.querySelectorAll(".lw").forEach(el => {
@@ -180,6 +184,10 @@ const App = {
         });
         break;
       }
+
+      case "view-holding": this.holdingDetail = id; this.render(); window.scrollTo({ top: 0 }); break;
+      case "back-portfolio": this.holdingDetail = null; this.render(); window.scrollTo({ top: 0 }); break;
+      case "price-range": this.priceRange = el.dataset.range; this.render(); break;
 
       case "add-holding": UI.holdingForm(); break;
       case "edit-holding": UI.holdingForm(Store.find("holdings", id)); break;
