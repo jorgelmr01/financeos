@@ -535,6 +535,103 @@ const Pages = {
     });
   },
 
+  /* ---------- income projection: compounds interest, interactive ---------- */
+  _incomeProjection(s, eb, tax, now) {
+    const years = [1, 3, 5].indexOf(App.earnHorizon) !== -1 ? App.earnHorizon : 1;
+    const horizonMonths = years * 12;
+    const bucketSize = years <= 1 ? 1 : years <= 3 ? 3 : 6;   // monthly / quarterly / semiannual
+    const taxI = Number(tax.interest) || 0;
+    const divMoNet = eb.divNet / 12;                          // flat monthly dividends (net)
+
+    // interest-bearing balances (native ccy), compounded monthly so interest grows
+    const accs = s.accounts.filter(a => Number(a.apy) > 0)
+      .map(a => ({ apy: Number(a.apy), cur: a.currency, bal: Number(a.balance) || 0 }));
+
+    const monthly = [];
+    for (let i = 0; i < horizonMonths; i++) {
+      const mStart = new Date(now.getFullYear(), now.getMonth() + i, 1);
+      const mEnd = new Date(now.getFullYear(), now.getMonth() + i + 1, 0);
+      let sched = 0;
+      s.incomes.forEach(st => {
+        sched += incomeOccurrences(st, (i === 0 && mStart < now) ? now : mStart, mEnd).length * conv(netPerDeposit(st), st.currency);
+      });
+      let interest = 0;
+      accs.forEach(a => {
+        const mInt = a.bal * (Math.pow(1 + a.apy / 100, 1 / 12) - 1);
+        const net = mInt * (1 - taxI / 100);
+        interest += conv(net, a.cur);
+        a.bal += net;   // compound the retained interest
+      });
+      monthly.push({ sched: sched, interest: interest, div: divMoNet, start: mStart, end: mEnd });
+    }
+    const endBal = accs.reduce((x, a) => x + conv(a.bal, a.cur), 0);
+
+    const buckets = [];
+    for (let i = 0; i < horizonMonths; i += bucketSize) {
+      const sl = monthly.slice(i, i + bucketSize);
+      buckets.push({
+        sched: sl.reduce((x, m) => x + m.sched, 0),
+        interest: sl.reduce((x, m) => x + m.interest, 0),
+        div: sl.reduce((x, m) => x + m.div, 0),
+        start: sl[0].start, end: sl[sl.length - 1].end,
+      });
+    }
+    buckets.forEach(b => { b.total = b.sched + b.interest + b.div; });
+    const grandTotal = buckets.reduce((x, b) => x + b.total, 0);
+    const maxB = Math.max.apply(null, buckets.map(b => b.total).concat([1]));
+
+    let sel = App.earnSel;
+    if (sel == null || sel < 0 || sel >= buckets.length) sel = 0;
+
+    const yr2 = (d) => "’" + String(d.getFullYear()).slice(2);
+    const bLabel = (b) => MONTHS_SHORT[b.start.getMonth()] + (bucketSize > 1 || b.start.getMonth() === 0 ? " " + yr2(b.start) : "");
+
+    const grid = [1, 2 / 3, 1 / 3].map(f =>
+      '<div class="proj-grid" style="top:' + ((1 - f) * 100).toFixed(1) + '%"><span>' + fmtMoney(maxB * f, { compact: true }) + "</span></div>").join("");
+
+    const bars = buckets.map((b, i) => {
+      const hS = b.total > 0 ? b.sched / maxB * 100 : 0;
+      const hP = b.total > 0 ? (b.interest + b.div) / maxB * 100 : 0;
+      return '<div class="proj-col' + (i === sel ? " sel" : "") + '" data-action="earn-bucket" data-i="' + i + '" title="' + esc(bLabel(b) + " · " + fmtMoney(b.total, { compact: true })) + '">' +
+        '<div class="proj-stack" style="height:' + Math.max(2, hS + hP).toFixed(1) + '%">' +
+          '<div class="seg-income" style="flex:' + (b.sched || 0.001) + '"></div>' +
+          '<div class="seg-interest" style="flex:' + ((b.interest + b.div) || 0.001) + '"></div>' +
+        "</div></div>";
+    }).join("");
+    const axis = buckets.map(b => "<span>" + esc(bLabel(b)) + "</span>").join("");
+
+    const b = buckets[sel];
+    const rStart = sel === 0 && b.start < now ? now : b.start;
+    const row = (label, val, color) =>
+      '<div class="proj-row"><span><span class="proj-dot" style="background:' + color + '"></span>' + label + "</span><span class=\"proj-val\">" + fmtMoney(val) + "</span></div>";
+    const detail =
+      '<div class="proj-detail"><div class="proj-detail-head">' +
+        '<div><div class="micro-label">' + fmtDateShort(rStart) + " – " + fmtDateShort(b.end) + "</div>" +
+          '<div class="proj-detail-total">' + fmtMoney(b.total) + "</div></div>" +
+        '<div class="micro-label" style="text-align:right">selected ' + (bucketSize === 1 ? "month" : bucketSize === 3 ? "quarter" : "half-year") + "</div></div>" +
+      '<div class="proj-detail-rows">' +
+        row("Scheduled income", b.sched, "var(--mint)") +
+        row("Interest" + (taxI > 0 ? " (net)" : ""), b.interest, "var(--gold)") +
+        row("Dividends" + ((Number(tax.dividends) || 0) > 0 ? " (net)" : ""), b.div, "#e5c97b") +
+      "</div></div>";
+
+    const horizonBtns = [[1, "1Y"], [3, "3Y"], [5, "5Y"]].map(o =>
+      '<button class="range-btn' + (years === o[0] ? " on" : "") + '" data-action="earn-horizon" data-years="' + o[0] + '">' + o[1] + "</button>").join("");
+
+    return '<div class="panel section">' +
+      '<div class="panel-head"><div class="panel-title">Income projection <span class="panel-sub">net of taxes · interest compounds monthly</span></div>' +
+        '<div class="price-range-bar">' + horizonBtns + "</div></div>" +
+      '<div class="comp-legend" style="margin:2px 0 14px">' +
+        '<span class="lg"><span class="dot" style="background:var(--mint)"></span>Scheduled</span>' +
+        '<span class="lg"><span class="dot" style="background:var(--gold)"></span>Interest + dividends</span>' +
+        '<span class="lg" style="margin-left:auto">Total over ' + years + 'y · <strong style="color:var(--text)">' + fmtMoney(grandTotal, { compact: true }) + "</strong></span></div>" +
+      '<div class="proj-plot">' + grid + '<div class="proj-bars">' + bars + "</div></div>" +
+      '<div class="proj-axis">' + axis + "</div>" +
+      detail +
+      (endBal > 0 ? '<div class="proj-note">Tap a bar for its breakdown. Projected savings balance after ' + years + "y, interest reinvested: <strong>" + fmtMoney(endBal, { compact: true }) + "</strong> (no new contributions assumed).</div>" : '<div class="proj-note">Tap a bar for its breakdown.</div>') +
+    "</div>";
+  },
+
   /* ================= EARNINGS ================= */
   earnings() {
     const s = Store.state;
@@ -553,34 +650,8 @@ const Pages = {
         '<div class="stat"><span class="micro-label">Investment returns</span><div class="stat-value ' + (t.pnl >= 0 ? "pos" : "neg") + '">' + fmtMoney(t.pnl, { sign: true }) + '</div><div class="stat-note">unrealized' + (tax.capGains > 0 && t.pnl > 0 ? " · " + fmtMoney(t.pnl * (1 - tax.capGains / 100), { sign: true, compact: true }) + " after tax" : ", all time") + "</div></div>" +
       "</div>";
 
-    /* ---- 12-month projection chart (net of taxes) ---- */
-    const months = [];
-    for (let i = 0; i < 12; i++) {
-      const mStart = new Date(now.getFullYear(), now.getMonth() + i, 1);
-      const mEnd = new Date(now.getFullYear(), now.getMonth() + i + 1, 0);
-      let inc = 0;
-      s.incomes.forEach(stream => {
-        inc += incomeOccurrences(stream, mStart < now ? now : mStart, mEnd).length * conv(netPerDeposit(stream), stream.currency);
-      });
-      months.push({ label: MONTHS_SHORT[mStart.getMonth()], income: inc, passive: passiveMo });
-    }
-    const maxMonth = Math.max(...months.map(m => m.income + m.passive), 1);
-    const chart =
-      '<div class="panel section"><div class="panel-head"><div class="panel-title">12-month income projection <span class="panel-sub">net of taxes</span></div>' +
-      '<div class="comp-legend" style="margin:0"><span class="lg"><span class="dot" style="background:var(--mint)"></span>Scheduled</span>' +
-      '<span class="lg"><span class="dot" style="background:var(--gold)"></span>Interest + dividends</span></div></div>' +
-      '<div class="chart-bars">' +
-      months.map(m => {
-        const hI = (m.income / maxMonth * 100).toFixed(1);
-        const hT = (m.passive / maxMonth * 100).toFixed(1);
-        return '<div class="cbar"><div class="bar-total">' + fmtMoney(m.income + m.passive, { compact: true }) + "</div>" +
-          '<div class="bar-stack" style="height:' + Math.max(2, Number(hI) + Number(hT)).toFixed(1) + '%">' +
-            '<div class="seg-income" style="flex:' + (m.income || 0.001) + '"></div>' +
-            '<div class="seg-interest" style="flex:' + (m.passive || 0.001) + '"></div>' +
-          "</div>" +
-          '<div class="bar-label">' + m.label + "</div></div>";
-      }).join("") +
-      "</div></div>";
+    /* ---- income projection chart (compounding, interactive) ---- */
+    const chart = this._incomeProjection(s, eb, tax, now);
 
     /* ---- income streams management ---- */
     const streamsRows = s.incomes.length ? s.incomes.map(inc => {

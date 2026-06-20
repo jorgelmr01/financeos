@@ -7,6 +7,8 @@ const App = {
   budgetView: "month", // "month" | "trends"
   holdingDetail: null, // open position id on the Portfolio page
   priceRange: "6mo",   // price-history range for the detail chart
+  earnHorizon: 1,      // income projection horizon in years (1|3|5)
+  earnSel: 0,          // selected projection bucket
 
   PAGE_META: {
     overview:   { title: "Today",        actions: "" },
@@ -200,6 +202,9 @@ const App = {
         });
         break;
       }
+
+      case "earn-horizon": this.earnHorizon = parseInt(el.dataset.years, 10) || 1; this.earnSel = 0; this.render(); break;
+      case "earn-bucket": this.earnSel = parseInt(el.dataset.i, 10) || 0; this.render(); break;
 
       case "add-income": UI.incomeForm(); break;
       case "edit-income": UI.incomeForm(Store.find("incomes", id)); break;

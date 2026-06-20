@@ -744,6 +744,41 @@ body {
 .cbar .bar-label { font-family: var(--font-mono); font-size: 9.5px; color: var(--text-mute); letter-spacing: 0.08em; }
 .cbar .bar-total { font-family: var(--font-mono); font-size: 9.5px; color: var(--text-dim); }
 
+/* ---------- income projection (compounding, interactive) ---------- */
+.proj-plot { position: relative; height: 190px; padding-top: 8px; }
+.proj-grid { position: absolute; left: 0; right: 0; border-top: 1px dashed var(--hairline); }
+.proj-grid span {
+  position: absolute; right: 0; top: -8px;
+  font-family: var(--font-mono); font-size: 9.5px; color: var(--text-mute);
+  background: var(--surface); padding: 0 5px;
+}
+.proj-bars { position: relative; display: flex; align-items: flex-end; gap: 6px; height: 100%; }
+.proj-col { flex: 1; min-width: 0; display: flex; align-items: flex-end; justify-content: center; height: 100%; cursor: pointer; }
+.proj-stack {
+  width: 100%; max-width: 34px; min-height: 2px;
+  display: flex; flex-direction: column-reverse;
+  border-radius: 5px 5px 2px 2px; overflow: hidden; transition: filter 0.15s;
+}
+.proj-col:hover .proj-stack { filter: brightness(1.18); }
+.proj-col.sel .proj-stack { outline: 2px solid var(--mint-bright); outline-offset: 1px; }
+.proj-stack .seg-income { background: var(--mint); opacity: 0.9; }
+.proj-stack .seg-interest { background: var(--gold); opacity: 0.9; }
+.proj-axis { display: flex; gap: 6px; margin-top: 8px; }
+.proj-axis span {
+  flex: 1; min-width: 0; text-align: center;
+  font-family: var(--font-mono); font-size: 9.5px; color: var(--text-mute);
+  white-space: nowrap; overflow: hidden;
+}
+.proj-detail { margin-top: 18px; border-top: 1px solid var(--hairline); padding-top: 16px; }
+.proj-detail-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.proj-detail-total { font-family: var(--font-mono); font-size: 24px; font-weight: 600; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.proj-detail-rows { margin-top: 14px; display: grid; gap: 9px; }
+.proj-row { display: flex; justify-content: space-between; gap: 12px; font-size: 13.5px; }
+.proj-row span:first-child { color: var(--text-dim); }
+.proj-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 9px; vertical-align: middle; }
+.proj-val { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.proj-note { margin-top: 14px; font-size: 12.5px; color: var(--text-mute); }
+
 /* ---------- empty states ---------- */
 .empty {
   border: 1px dashed var(--hairline-strong); border-radius: var(--r-lg);
@@ -1124,7 +1159,7 @@ body.privacy :is(.hero-amount, .stat-value, .chip-value, .acct-balance,
   .pct-big, .accrued-note, .ccard-limit, .stat-note, .comp-legend .lg,
   .pct-sub, .pct-next, .pct-breakdown, .fx-sub, .nw-chart, .nw-chart-scale,
   .score-sub, .bcat-amt, .sbar-val, .cmp-cur, .cmp-delta, .mover-delta, .streak-n, .nw-delta,
-  .detail-chg, .ret-val) {
+  .detail-chg, .ret-val, .proj-detail-total, .proj-val, .proj-grid span, .proj-note) {
   filter: blur(9px);
   transition: filter 0.25s;
 }
