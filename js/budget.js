@@ -416,13 +416,20 @@ function financialHealth() {
     factors.push({ key: "safety", label: "Safety net", weight: 25, score: clamp01(months / 6),
       detail: months.toFixed(1) + " mo runway" });
   }
+  // Growth = net-worth TREND from daily snapshots (not income/expenses, which
+  // don't auto-move balances). Needs ~10 days of history before it means
+  // anything, and a flat trend reads as neutral — not a failure.
   const snaps = Store.state.snapshots || [];
   if (snaps.length >= 2) {
-    const last = snaps[snaps.length - 1].usd;
-    const ago = snaps[Math.max(0, snaps.length - 31)].usd;
-    const chg = ago ? (last - ago) / Math.abs(ago) : 0;
-    factors.push({ key: "growth", label: "Growth", weight: 20, score: clamp01((chg + 0.02) / 0.07),
-      detail: (chg >= 0 ? "+" : "") + Math.round(chg * 100) + "% / 30d" });
+    const last = snaps[snaps.length - 1];
+    const ago = snaps[Math.max(0, snaps.length - 31)];
+    const days = Math.max(1, daysBetween(parseISO(ago.d), parseISO(last.d)));
+    if (days >= 10 && ago.usd) {
+      const chg = (last.usd - ago.usd) / Math.abs(ago.usd);
+      factors.push({ key: "growth", label: "Growth", weight: 20,
+        score: clamp01(0.5 + chg / 0.04),
+        detail: (chg >= 0 ? "+" : "") + (Math.abs(chg) < 0.1 ? (chg * 100).toFixed(1) : Math.round(chg * 100)) + "% / " + days + "d" });
+    }
   }
 
   if (!factors.length) return { score: null, factors: [] };
