@@ -749,17 +749,20 @@ body {
   /* sidebar becomes a hidden off-canvas drawer, opened with the ☰ button */
   .sidebar {
     position: fixed; top: 0; left: 0; bottom: 0; z-index: 60;
-    width: 274px; max-width: 84vw; height: 100vh; height: 100dvh;
+    width: 268px; max-width: 82vw; height: 100vh; height: 100dvh;
     flex-direction: column;
-    border-right: 1px solid var(--hairline); border-bottom: none;
-    background: var(--bg-raise);
+    border-right: 1px solid var(--hairline-strong); border-bottom: none;
+    /* solid panel — must fully cover the page it slides over (the desktop
+       sidebar is translucent by design, but a drawer can't be) */
+    background: var(--surface);
     overflow-y: auto;
     padding: 22px 18px calc(18px + env(safe-area-inset-bottom));
     transform: translateX(-100%);
     transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
     will-change: transform;
   }
-  body.nav-open .sidebar { transform: translateX(0); box-shadow: var(--shadow-pop); }
+  body.light .sidebar { background: var(--surface); }   /* beat the translucent light gradient */
+  body.nav-open .sidebar { transform: translateX(0); box-shadow: 16px 0 48px -12px rgba(0, 0, 0, 0.55); }
   .nav { flex-direction: column; }
   .nav-item { width: 100%; }
   .sidebar-foot { flex-direction: column; align-items: stretch; gap: 12px; }
