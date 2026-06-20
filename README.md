@@ -38,6 +38,7 @@ Your data still lives only on the device, in that browser's storage — installi
 | **Credit Cards** | Limits, balances, utilization bars, statement-cut & payment-due countdowns with alerts (≤5 days for cut, ≤7 for payment, high-utilization warnings) |
 | **Portfolio** | Stocks & ETFs with shares + price paid in the listing's currency; **live quotes & dividends** via a free Finnhub key (or edit prices inline), allocation chart, after-tax returns, best/worst positions |
 | **Earnings** | Salaries & recurring income (monthly, every 15 days / quincena, every 14 days, weekly) with **gross/net + tax-rate handling**, mapped to receiving accounts; interest & dividend engines, 30-day deposit timeline, 12-month net projection chart |
+| **Budget** | Expenses by category with a **spending-health score** (savings rate · runway · needs-vs-wants), insights & advice, a 50/30/20 breakdown and per-category budgets. Fill a **downloadable spreadsheet template** (or have your AI fill it from your statements) and upload it — re-uploads never duplicate rows |
 | **Milestones** | Gamification: your estimated global percentile for net worth and gross annual earnings, distance to the next "top X%" bracket, and 19 achievements for healthy financial habits |
 | **Learn** | Four interactive scenario games (~3 min each) on paychecks, credit cards, market crashes and inflation — every choice shows its 10-year impact — plus **Wealth Builder**, a 20-year investing sandbox with random crashes, emergencies and a mattress-saver baseline to beat. Scores earn XP and levels. |
 | **Guide** | A built-in manual: how each page works, credit-card date mechanics, currencies, taxes, and how to keep your data safe |
@@ -48,6 +49,16 @@ Your data still lives only on the device, in that browser's storage — installi
 - Totals convert to your display currency using **daily ECB exchange rates** (Frankfurter API, no key needed), refreshed automatically with an offline fallback.
 - **Live stock/ETF prices and annual dividends with no API key**: "↻ Update prices" pulls quotes and the actual dividend payments of the trailing 12 months (Yahoo Finance data via a public CORS proxy — it sees only ticker symbols, never your finances). Works for ETFs and stocks alike. An optional free [Finnhub](https://finnhub.io/register) key adds a direct quote source.
 - Net worth history is snapshotted daily in USD, so switching display currency never distorts the chart.
+
+## Budgeting without the data entry
+
+Most people quit budgeting apps because logging every expense is miserable. FinanceOS skips that:
+
+1. **Download the template** (Budget → Template) — a spreadsheet with columns `Date, Description, Category, Amount, Currency`, embedded instructions, and the full category list. It opens in Excel, Google Sheets or Numbers.
+2. **Fill it** however you like — by hand, or paste it together with your **credit-card statement** into ChatGPT/Claude and ask it to return the rows. The exact prompt is one click away in the Upload dialog.
+3. **Upload the CSV.** Every row is fingerprinted (date + amount + category + description + currency), so importing the **same file twice, or overlapping months, never creates duplicates** — while genuine same-day repeats are still kept.
+
+You then get a **spending-health score (0–100)** built from your savings rate, how many months your liquid assets could cover spending (runway), and your **needs-vs-wants** split, plus plain-language insights, a 50/30/20 view, biggest-category callouts, month-over-month trends, and optional **per-category monthly budgets**. Two achievements (*Budgeter*, *Frugal*) tie it into the milestones.
 
 ## Taxes
 

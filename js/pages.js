@@ -524,6 +524,171 @@ const Pages = {
     return stats + chart + '<div class="grid cols-2 stack-wide section" style="align-items:start">' + streams + timeline + "</div>" + interestPanel + divPanel;
   },
 
+  /* ================= BUDGET & EXPENSES ================= */
+  budget() {
+    const s = Store.state;
+    const months = expenseMonths();
+
+    if (!months.length) {
+      return '<div class="section"><div class="empty"><div class="empty-glyph">◓</div>' +
+        "<h3>Track where your money goes</h3>" +
+        "<p>Most people hate logging expenses by hand — so don't. Download the ready-made spreadsheet template, fill it in Excel or Google Sheets (or have your favourite AI fill it from your credit-card statements), and upload it. FinanceOS scores your spending, spots your biggest categories, and never double-counts a row.</p>" +
+        '<div class="empty-actions">' +
+          '<button class="btn primary" data-action="expense-template">↓ Download template</button>' +
+          '<button class="btn" data-action="expense-import">↑ Upload filled sheet</button>' +
+          '<button class="btn ghost" data-action="add-expense">+ Add one manually</button>' +
+        "</div>" +
+        '<p class="empty-tip">Tip: paste the template and your statement into ChatGPT or Claude and ask it to return the rows for you. ' +
+          '<a href="#" data-action="expense-import">See how →</a></p>' +
+      "</div></div>";
+    }
+
+    // selected month — default to the most recent with data
+    let mk = App.budgetMonth;
+    if (!mk || months.indexOf(mk) === -1) mk = months[0];
+    const exps = expensesForMonth(mk).slice().sort((a, b) => (a.date < b.date ? 1 : -1));
+    const sc = budgetScore(mk);
+    const g = scoreGrade(sc.score);
+    const cats = categoryTotalsSorted(exps);
+    const spend = sc.spend || 0;
+    const isCurrent = mk === toISO(todayMid()).slice(0, 7);
+
+    const monthOpts = months.map(m =>
+      '<option value="' + m + '"' + (m === mk ? " selected" : "") + ">" + monthLabel(m) + "</option>").join("");
+    const controls =
+      '<div class="budget-controls section">' +
+        '<select id="budget-month" class="budget-month">' + monthOpts + "</select>" +
+        '<span class="budget-count">' + exps.length + " expense" + (exps.length === 1 ? "" : "s") +
+          (isCurrent ? " · month in progress" : "") + "</span>" +
+        '<div class="budget-controls-right">' +
+          '<button class="btn small ghost" data-action="set-budgets">Set budgets</button>' +
+          '<button class="btn small ghost" data-action="expense-template">↓ Template</button>' +
+          '<button class="btn small" data-action="expense-import">↑ Upload</button>' +
+        "</div>" +
+      "</div>";
+
+    // ---- score hero ----
+    const pct = (x) => Math.round(x * 100) + "%";
+    const scoreNum = sc.score == null ? "—" : sc.score;
+    const ringDeg = sc.score == null ? 0 : Math.round(sc.score * 3.6);
+    const ringColor = g.tone === "pos" ? "var(--mint)" : g.tone === "gold" ? "var(--gold)" : g.tone === "neg" ? "var(--rose)" : "var(--text-mute)";
+    const hero =
+      '<div class="score-hero section">' +
+        '<div class="score-ring" style="background:conic-gradient(' + ringColor + ' ' + ringDeg + 'deg, var(--surface-3) 0)">' +
+          '<div class="score-ring-in"><div class="score-num ' + g.tone + '">' + scoreNum + '</div><div class="score-grade">' + g.grade + "</div></div>" +
+        "</div>" +
+        '<div class="score-meat">' +
+          '<div class="micro-label">Spending health · ' + monthLabel(mk) + "</div>" +
+          '<div class="score-label ' + g.tone + '">' + g.label + "</div>" +
+          '<div class="score-sub">' +
+            (sc.savingsRate != null
+              ? "You saved <strong>" + pct(sc.savingsRate) + "</strong> of net income and spent <strong>" + fmtMoney(sc.monthlyExpenses, { compact: true }) + "</strong> of <strong>" + fmtMoney(sc.monthlyIncomeNet, { compact: true }) + "</strong>."
+              : "Spent <strong>" + fmtMoney(sc.monthlyExpenses, { compact: true }) + "</strong> this month. Add income streams in Earnings for a savings-rate score.") +
+          "</div>" +
+          '<div class="score-bars">' +
+            this._scoreBar("Savings rate", sc.savingsRate == null ? null : sc.savingsRate, 0.2, sc.savingsRate == null ? null : pct(sc.savingsRate)) +
+            this._scoreBar("Runway", isFinite(sc.runwayMonths) ? Math.min(1, sc.runwayMonths / 6) : 1, null, isFinite(sc.runwayMonths) ? sc.runwayMonths.toFixed(1) + " mo" : "∞") +
+            this._scoreBar("Wants share", spend > 0 ? sc.wantsShare : 0, 0.3, pct(sc.wantsShare), true) +
+          "</div>" +
+        "</div>" +
+      "</div>";
+
+    // ---- stat tiles ----
+    const topCat = cats[0];
+    const stats =
+      '<div class="grid cols-4 section">' +
+        '<div class="stat"><span class="micro-label">Spent · ' + monthLabel(mk) + '</span><div class="stat-value">' + fmtMoney(sc.monthlyExpenses) + '</div><div class="stat-note">' + exps.length + " expenses</div></div>" +
+        '<div class="stat"><span class="micro-label">Savings rate</span><div class="stat-value ' + (sc.savingsRate == null ? "" : sc.savingsRate >= 0.2 ? "pos" : sc.savingsRate < 0 ? "neg" : "gold") + '">' + (sc.savingsRate == null ? "—" : pct(sc.savingsRate)) + '</div><div class="stat-note">' + (sc.savingsRate == null ? "add income to compute" : "of net income") + "</div></div>" +
+        '<div class="stat"><span class="micro-label">Biggest category</span><div class="stat-value">' + (topCat ? esc(topCat.meta.icon + " " + topCat.name) : "—") + '</div><div class="stat-note">' + (topCat ? fmtMoney(topCat.amount, { compact: true }) + " · " + pct(topCat.amount / spend) : "") + "</div></div>" +
+        '<div class="stat"><span class="micro-label">Runway</span><div class="stat-value ' + (sc.runwayMonths >= 6 ? "pos" : sc.runwayMonths < 3 ? "neg" : "gold") + '">' + (isFinite(sc.runwayMonths) ? sc.runwayMonths.toFixed(1) + " mo" : "∞") + '</div><div class="stat-note">liquid assets at this rate</div></div>' +
+      "</div>";
+
+    // ---- 50/30/20 needs vs wants ----
+    const needsPct = spend > 0 ? sc.needs / spend : 0;
+    const wantsPct = spend > 0 ? sc.wants / spend : 0;
+    const bucketPanel =
+      '<div class="panel section"><div class="panel-head"><div class="panel-title">Needs vs wants</div>' +
+        '<span class="panel-sub">50/30/20 guide · wants near 30% of income</span></div>' +
+        '<div class="comp-bar">' +
+          '<span style="width:' + (needsPct * 100) + '%;background:var(--sky)"></span>' +
+          '<span style="width:' + (wantsPct * 100) + '%;background:var(--gold)"></span>' +
+        "</div>" +
+        '<div class="comp-legend">' +
+          '<span class="lg"><span class="dot" style="background:var(--sky)"></span>Needs ' + fmtMoney(sc.needs, { compact: true }) + " · " + pct(needsPct) + "</span>" +
+          '<span class="lg"><span class="dot" style="background:var(--gold)"></span>Wants ' + fmtMoney(sc.wants, { compact: true }) + " · " + pct(wantsPct) + "</span>" +
+        "</div>" +
+      "</div>";
+
+    // ---- category breakdown (actual vs budget) ----
+    const maxCat = cats.reduce((m, c) => Math.max(m, c.amount), 0) || 1;
+    const catRows = cats.map(c => {
+      const budget = budgetForCategory(c.name);
+      const over = budget != null && c.amount > budget;
+      const ratio = budget != null ? Math.min(1, c.amount / budget) : c.amount / maxCat;
+      const barColor = budget != null ? (over ? "var(--rose)" : "var(--mint)") : "var(--sky)";
+      return '<div class="bcat">' +
+        '<div class="bcat-head"><span class="bcat-name">' + esc(c.meta.icon) + " " + esc(c.name) + "</span>" +
+          '<span class="bcat-amt' + (over ? " neg" : "") + '">' + fmtMoney(c.amount, { compact: true }) +
+            (budget != null ? ' <span class="bcat-budget">/ ' + fmtMoney(budget, { compact: true }) + "</span>" : "") + "</span></div>" +
+        '<div class="bcat-track"><span style="width:' + (ratio * 100) + '%;background:' + barColor + '"></span></div>' +
+      "</div>";
+    }).join("");
+    const catPanel =
+      '<div class="panel section"><div class="panel-head"><div class="panel-title">By category</div>' +
+        '<span class="panel-sub">' + (totalBudget() > 0 ? "vs your budgets" : "share of spending") + "</span></div>" +
+        (catRows || '<div class="all-clear" style="color:var(--text-mute)">No expenses this month.</div>') +
+      "</div>";
+
+    // ---- insights ----
+    const insights = budgetInsights(mk);
+    const insightRows = insights.length ? insights.map(i =>
+      '<div class="alert-row"><span class="alert-dot ' + i.level + '"></span>' +
+        '<div class="alert-body"><strong>' + esc(i.title) + "</strong><div class=\"alert-meta\" style=\"font-family:var(--font-body);font-size:13px;color:var(--text-dim);letter-spacing:0\">" + i.text + "</div></div></div>").join("") :
+      '<div class="all-clear"><span class="pulse"></span>Looking good — nothing to flag.</div>';
+    const insightPanel =
+      '<div class="panel section alerts-panel"><div class="panel-head"><div class="panel-title">Insights & advice</div></div>' + insightRows + "</div>";
+
+    // ---- expense list ----
+    const rows = exps.map(e =>
+      "<tr>" +
+        '<td class="num" style="white-space:nowrap">' + fmtDateShort(e.date) + "</td>" +
+        '<td><div class="cell-main">' + esc(e.description || "—") + "</div></td>" +
+        '<td><span class="bcat-tag">' + esc(categoryMeta(e.category).icon + " " + e.category) + "</span></td>" +
+        '<td class="num">' + fmtMoneyIn(e.amount, e.currency) + "</td>" +
+        '<td class="actions-cell"><button class="icon-btn" data-action="edit-expense" data-id="' + e.id + '" title="Edit">✎</button>' +
+          '<button class="icon-btn danger" data-action="del-expense" data-id="' + e.id + '" title="Remove">✕</button></td>' +
+      "</tr>").join("");
+    const listPanel =
+      '<div class="panel section"><div class="panel-head"><div class="panel-title">' + monthLabel(mk) + ' expenses</div>' +
+        '<span class="panel-sub">' + fmtMoney(sc.monthlyExpenses) + " · " + exps.length + " items</span></div>" +
+        '<div style="overflow-x:auto"><table class="tbl"><thead><tr>' +
+          '<th class="num">Date</th><th>Description</th><th>Category</th><th class="num">Amount</th><th class="actions-cell"></th>' +
+        "</tr></thead><tbody>" + rows + "</tbody></table></div>" +
+        '<div class="budget-foot"><button class="btn small ghost danger-ghost" data-action="clear-expenses">Clear all expenses</button></div>' +
+      "</div>";
+
+    return controls + hero + stats +
+      '<div class="grid cols-2 stack-wide section" style="align-items:start">' + catPanel + insightPanel + "</div>" +
+      bucketPanel + listPanel;
+  },
+
+  // a labelled mini progress bar for the score hero
+  _scoreBar(label, ratio, target, valueText, invert) {
+    if (ratio == null) {
+      return '<div class="sbar"><div class="sbar-top"><span>' + label + "</span><span>—</span></div>" +
+        '<div class="sbar-track"><span style="width:0%"></span></div></div>';
+    }
+    const r = Math.max(0, Math.min(1, ratio));
+    // invert=true means lower is better (e.g. wants share)
+    let color;
+    if (invert) color = r <= target ? "var(--mint)" : r <= target * 1.6 ? "var(--gold)" : "var(--rose)";
+    else if (target != null) color = r >= target ? "var(--mint)" : r >= target * 0.5 ? "var(--gold)" : "var(--rose)";
+    else color = r >= 0.66 ? "var(--mint)" : r >= 0.33 ? "var(--gold)" : "var(--rose)";
+    const val = valueText != null ? valueText : Math.round(r * 100) + "%";
+    return '<div class="sbar"><div class="sbar-top"><span>' + label + '</span><span class="sbar-val">' + val + "</span></div>" +
+      '<div class="sbar-track"><span style="width:' + (r * 100) + "%;background:" + color + '"></span></div></div>';
+  },
+
   /* ================= MILESTONES ================= */
   milestones() {
     const s = Store.state;
@@ -638,6 +803,12 @@ const Pages = {
         "When adding income, say whether the amount is <strong>gross</strong> (before tax, with your effective rate) or <strong>net</strong> (take-home). Projections and the timeline always show what actually lands.",
         "Set tax rates for <strong>interest, dividends and capital gains</strong> in Settings — every projection becomes after-tax.",
         "The 12-month chart projects net scheduled income + net interest + net dividends, prorating the current month.",
+      ]) +
+      card("◓", "Budget & expenses", [
+        "Hate logging expenses? <strong>Download the spreadsheet template</strong> (Budget → Template), fill it in Excel / Sheets / Numbers, and upload it. Columns are Date, Description, Category, Amount, Currency.",
+        "Even easier: paste the template and your <strong>credit-card statement</strong> into ChatGPT or Claude and ask it to return the rows — the exact prompt is in the Upload dialog. Drop the result under the header and upload.",
+        "<strong>Re-uploading is safe.</strong> FinanceOS fingerprints every row, so importing the same file twice — or overlapping months — never creates duplicates, while genuine same-day repeats are kept.",
+        "You get a <strong>spending-health score</strong> from your savings rate, runway and needs-vs-wants split, plus insights, a 50/30/20 breakdown, and per-category budgets. Set monthly limits with <strong>Set budgets</strong>.",
       ]) +
       card("◍", "Currencies", [
         "Every account, card, position and income stream has its <strong>own currency</strong> — mix MXN accounts with USD stocks freely.",

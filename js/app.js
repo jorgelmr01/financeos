@@ -3,6 +3,7 @@
 
 const App = {
   page: "overview",
+  budgetMonth: null,   // selected month on the Budget page (YYYY-MM)
 
   PAGE_META: {
     overview:   { title: "Overview",     actions: "" },
@@ -10,6 +11,7 @@ const App = {
     cards:      { title: "Credit Cards", actions: '<button class="btn primary" data-action="add-card">+ Add card</button>' },
     portfolio:  { title: "Portfolio",    actions: '<button class="btn" data-action="refresh-prices">↻ Update prices</button><button class="btn primary" data-action="add-holding">+ Add position</button>' },
     earnings:   { title: "Earnings",     actions: '<button class="btn primary" data-action="add-income">+ Add income stream</button>' },
+    budget:     { title: "Budget",       actions: '<button class="btn" data-action="expense-template">↓ Template</button><button class="btn" data-action="expense-import">↑ Upload</button><button class="btn primary" data-action="add-expense">+ Add expense</button>' },
     milestones: { title: "Milestones",   actions: "" },
     learn:      { title: "Learn",        actions: "" },
     guide:      { title: "Guide",        actions: "" },
@@ -191,6 +193,47 @@ const App = {
         break;
       }
 
+      case "add-expense": UI.expenseForm(); break;
+      case "edit-expense": UI.expenseForm(Store.find("expenses", id)); break;
+      case "del-expense": {
+        const e = Store.find("expenses", id);
+        Store.remove("expenses", id);
+        UI.toast("Expense removed" + (e ? " — " + fmtMoneyIn(e.amount, e.currency) : ""));
+        App.render();
+        break;
+      }
+
+      case "expense-template":
+        BudgetIO.downloadTemplate();
+        UI.toast("Template downloaded — fill it in Excel/Sheets or let your AI do it, then Upload");
+        break;
+
+      case "expense-import":
+        UI.expenseImportHelp();
+        break;
+
+      case "expense-pick-file":
+        UI.closeModal();
+        document.getElementById("expense-file").click();
+        break;
+
+      case "copy-ai-prompt":
+        (navigator.clipboard ? navigator.clipboard.writeText(BudgetIO.aiPrompt()) : Promise.reject())
+          .then(() => UI.toast("AI prompt copied — paste it with your statement"))
+          .catch(() => UI.toast("Select the prompt text and copy it manually"));
+        break;
+
+      case "set-budgets": UI.budgetsForm(); break;
+
+      case "clear-expenses":
+        UI.confirm("Clear all expenses?", "Every imported and manually-added expense will be removed. Your budgets and everything else stay. This can't be undone.", () => {
+          Store.state.expenses = [];
+          Store.save();
+          UI.toast("All expenses cleared");
+          App.render();
+        });
+        break;
+
       case "toggle-data-menu":
         document.getElementById("data-menu-pop").classList.toggle("open");
         break;
@@ -325,6 +368,10 @@ const App = {
         Store.save();
         this.render();
       }
+      if (e.target.id === "budget-month") {
+        this.budgetMonth = e.target.value;
+        this.render();
+      }
     });
 
     /* import file */
@@ -341,6 +388,30 @@ const App = {
           this.render();
         } catch (err) {
           UI.toast("Import failed — not a valid FinanceOS backup");
+        }
+      };
+      reader.readAsText(f);
+      e.target.value = "";
+    });
+
+    /* expense spreadsheet import (CSV) — dedup-aware */
+    document.getElementById("expense-file").addEventListener("change", e => {
+      const f = e.target.files[0];
+      if (!f) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const res = BudgetIO.importText(reader.result);
+        if (res.errors.length && res.added === 0 && res.skipped === 0) {
+          UI.toast(res.errors[0]);
+        } else {
+          let msg = "Imported " + res.added + " expense" + (res.added === 1 ? "" : "s");
+          if (res.skipped) msg += " · " + res.skipped + " duplicate" + (res.skipped === 1 ? "" : "s") + " skipped";
+          UI.toast(msg);
+          if (res.errors.length) UI.toast(res.errors[0]);
+          if (res.added) {
+            App.budgetMonth = null; // jump to the latest month with data
+            App.navigate("budget");
+          }
         }
       };
       reader.readAsText(f);

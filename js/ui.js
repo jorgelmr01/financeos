@@ -363,6 +363,91 @@ const UI = {
     }
   },
 
+  expenseForm(e) {
+    e = e || {};
+    const isEdit = !!e.id;
+    const catOpts = EXPENSE_CATEGORIES.map(c =>
+      '<option value="' + esc(c.name) + '"' + (e.category === c.name ? " selected" : "") + ">" + c.icon + " " + esc(c.name) + "</option>").join("");
+    const body = '<div class="f-grid">' +
+      this.field("Date", '<input name="date" type="date" required value="' + esc(e.date || toISO(todayMid())) + '">') +
+      this.field("Amount", '<input name="amount" type="number" inputmode="decimal" step="0.01" required value="' + (e.amount != null ? e.amount : "") + '" placeholder="0.00">', "Positive for spending · minus for a refund") +
+      this.field("Description", '<input name="description" maxlength="80" value="' + esc(e.description || "") + '" placeholder="Where it went">', null, true) +
+      this.field("Category", '<select name="category">' + catOpts + "</select>") +
+      this.field("Currency", this.currencySelect("currency", e.currency)) +
+      "</div>";
+    this.openModal(isEdit ? "Edit expense" : "Add expense", body, {
+      submitLabel: isEdit ? "Save changes" : "Add expense",
+      onSubmit(fd) {
+        const exp = {
+          date: fd.get("date"),
+          amount: parseFloat(fd.get("amount")) || 0,
+          description: (fd.get("description") || "").trim().slice(0, 80),
+          category: fd.get("category"),
+          currency: fd.get("currency"),
+          source: isEdit ? (e.source || "manual") : "manual",
+        };
+        exp.sig = expenseSig(exp);
+        if (isEdit) { Store.update("expenses", e.id, exp); UI.toast("Expense updated"); }
+        else { Store.add("expenses", exp); UI.toast("Expense added"); }
+        UI.closeModal();
+        App.render();
+      },
+    });
+  },
+
+  budgetsForm() {
+    const b = Store.state.budgets || {};
+    const firstCur = EXPENSE_CATEGORIES.map(c => b[c.name] && b[c.name].currency).find(Boolean) || displayCurrency();
+    const rows = EXPENSE_CATEGORIES.map((c, i) => {
+      const v = b[c.name] && b[c.name].amount != null ? b[c.name].amount : "";
+      return this.field(c.icon + " " + esc(c.name),
+        '<input name="b' + i + '" type="number" inputmode="decimal" step="0.01" min="0" value="' + v + '" placeholder="—">');
+    }).join("");
+    const body =
+      '<p class="modal-note">Set an optional monthly limit per category — leave blank for no limit. Your spending each month is tracked against these.</p>' +
+      this.field("Budget currency", this.currencySelect("budgetCurrency", firstCur), "Applies to every limit below", true) +
+      '<div class="f-grid">' + rows + "</div>";
+    this.openModal("Monthly budgets", body, {
+      submitLabel: "Save budgets",
+      onSubmit(fd) {
+        const cur = fd.get("budgetCurrency") || displayCurrency();
+        const next = {};
+        EXPENSE_CATEGORIES.forEach((c, i) => {
+          const v = parseFloat(fd.get("b" + i));
+          if (v > 0) next[c.name] = { amount: Math.round(v * 100) / 100, currency: cur };
+        });
+        Store.state.budgets = next;
+        Store.save();
+        UI.toast("Budgets saved");
+        UI.closeModal();
+        App.render();
+      },
+    });
+  },
+
+  expenseImportHelp() {
+    const body =
+      '<p class="modal-note">Fill the template in Excel, Google Sheets or Numbers — or let your favourite AI fill it from your card statements — then upload the CSV. Re-uploading is safe: duplicate rows are detected and never added twice.</p>' +
+      '<ol class="import-steps">' +
+        "<li><strong>Download</strong> the template — columns: Date, Description, Category, Amount, Currency.</li>" +
+        "<li><strong>Fill it</strong> yourself, or paste it plus your statement into ChatGPT/Claude using the prompt below.</li>" +
+        "<li><strong>Upload</strong> the saved <code>.csv</code> here.</li>" +
+      "</ol>" +
+      '<label class="micro-label" style="display:block;margin:16px 0 6px">Prompt for your AI</label>' +
+      '<textarea class="ai-prompt" readonly rows="7">' + esc(BudgetIO.aiPrompt()) + "</textarea>" +
+      '<div class="import-actions">' +
+        '<button type="button" class="btn small ghost" data-action="copy-ai-prompt">⧉ Copy prompt</button>' +
+        '<button type="button" class="btn small ghost" data-action="expense-template">↓ Download template</button>' +
+      "</div>";
+    this.openModal("Upload expenses", body, {
+      submitLabel: "Choose CSV file…",
+      onSubmit() {
+        UI.closeModal();
+        document.getElementById("expense-file").click();
+      },
+    });
+  },
+
   confirm(title, message, onYes) {
     this.openModal(title, '<p style="color:var(--text-dim);font-size:14px">' + message + "</p>", {
       submitLabel: "Confirm",

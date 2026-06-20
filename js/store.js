@@ -16,6 +16,8 @@ const Store = {
       cards: [],      // {id, name, issuer, limit, balance, cutDay, payDay, apr, color, currency}
       holdings: [],   // {id, symbol, name, kind, shares, costBasis, currentPrice, divPerShare, accountId, purchaseDate, currency}
       incomes: [],    // {id, name, category, amount, amountType, taxRate, accountId, frequency, payDay, startDate, currency}
+      expenses: [],   // {id, date, description, category, amount, currency, sig, source}
+      budgets: {},    // { [category]: { amount, currency } }  — monthly limit per category
       snapshots: [],  // [{d: ISO date, usd: net worth in USD}]
       learn: { scenarios: {}, sandbox: { best: 0, runs: 0 } },
       settings: {
@@ -33,13 +35,17 @@ const Store = {
     this.state.settings = Object.assign(d.settings, parsed.settings || {});
     this.state.settings.tax = Object.assign({ interest: 0, dividends: 0, capGains: 0 }, (parsed.settings || {}).tax || {});
     if (!Array.isArray(this.state.snapshots)) this.state.snapshots = [];
+    if (!Array.isArray(this.state.expenses)) this.state.expenses = [];
+    if (!this.state.budgets || typeof this.state.budgets !== "object") this.state.budgets = {};
     this.state.learn = Object.assign({ scenarios: {}, sandbox: {} }, this.state.learn || {});
     this.state.learn.sandbox = Object.assign({ best: 0, runs: 0 }, this.state.learn.sandbox || {});
     // migrate pre-multicurrency data: tag entities with the display currency
     const cur = this.state.settings.currency || "USD";
-    ["accounts", "cards", "holdings", "incomes"].forEach(coll =>
+    ["accounts", "cards", "holdings", "incomes", "expenses"].forEach(coll =>
       this.state[coll].forEach(x => { if (!x.currency) x.currency = cur; }));
     this.state.incomes.forEach(x => { if (!x.amountType) x.amountType = "net"; if (x.taxRate == null) x.taxRate = 0; });
+    // backfill dedup signatures on any expense missing one
+    this.state.expenses.forEach(e => { if (!e.sig && typeof expenseSig === "function") e.sig = expenseSig(e); });
     // interest pay schedule: default to monthly-on-the-last-day, matching the
     // month-end crediting the app used before this setting existed
     this.state.accounts.forEach(a => {
@@ -174,8 +180,14 @@ const Store = {
       cards: Array.isArray(data.cards) ? data.cards : d.cards,
       holdings: Array.isArray(data.holdings) ? data.holdings : d.holdings,
       incomes: Array.isArray(data.incomes) ? data.incomes : d.incomes,
+      expenses: Array.isArray(data.expenses) ? data.expenses : d.expenses,
+      budgets: (data.budgets && typeof data.budgets === "object") ? data.budgets : d.budgets,
+      snapshots: Array.isArray(data.snapshots) ? data.snapshots : d.snapshots,
+      learn: (data.learn && typeof data.learn === "object") ? data.learn : d.learn,
       settings: Object.assign(d.settings, data.settings || {}),
     };
+    // ensure every imported expense has a dedup signature
+    this.state.expenses.forEach(e => { if (!e.sig && typeof expenseSig === "function") e.sig = expenseSig(e); });
     // imported flags don't change this browser's actual lock state
     this.state.settings.pinEnabled = this.pinEnabled;
     this.save();
@@ -350,6 +362,37 @@ const Store = {
         }
         return out;
       })(),
+      expenses: (() => {
+        // two months of demo spending so the Budget page has something to score
+        const day = (mOffset, dom) => toISO(new Date(t.getFullYear(), t.getMonth() - mOffset, dom));
+        const raw = [
+          [0, 2, "Apartment rent", "Housing", 11500], [0, 3, "CFE electricity", "Utilities", 720],
+          [0, 4, "Internet — Totalplay", "Utilities", 599], [0, 5, "Walmart", "Groceries", 2840],
+          [0, 6, "Soriana", "Groceries", 1630], [0, 8, "Uber", "Transport", 410],
+          [0, 9, "Gasolina", "Transport", 980], [0, 10, "Cinépolis", "Entertainment", 320],
+          [0, 11, "Restaurante", "Dining", 760], [0, 12, "Starbucks", "Dining", 185],
+          [0, 13, "Netflix", "Subscriptions", 219], [0, 13, "Spotify", "Subscriptions", 129],
+          [0, 14, "Amazon MX", "Shopping", 1340], [0, 15, "Farmacia", "Health", 430],
+          [0, 16, "Gym", "Health", 650], [0, 18, "Café & pan", "Dining", 240],
+          [1, 2, "Apartment rent", "Housing", 11500], [1, 3, "CFE electricity", "Utilities", 690],
+          [1, 4, "Internet — Totalplay", "Utilities", 599], [1, 6, "Walmart", "Groceries", 3120],
+          [1, 9, "Gasolina", "Transport", 1050], [1, 12, "Restaurantes", "Dining", 1480],
+          [1, 14, "Liverpool", "Shopping", 2600], [1, 16, "Vuelo — Volaris", "Travel", 3850],
+          [1, 18, "Netflix", "Subscriptions", 219], [1, 20, "Farmacia", "Health", 380],
+        ];
+        return raw.map(r => {
+          const e = { id: uid(), date: day(r[0], r[1]), description: r[2], category: r[3], amount: r[4], currency: "MXN", source: "sample" };
+          if (typeof expenseSig === "function") e.sig = expenseSig(e);
+          return e;
+        });
+      })(),
+      budgets: {
+        Groceries: { amount: 4500, currency: "MXN" },
+        Dining: { amount: 1500, currency: "MXN" },
+        Transport: { amount: 1500, currency: "MXN" },
+        Shopping: { amount: 2000, currency: "MXN" },
+        Entertainment: { amount: 800, currency: "MXN" },
+      },
     };
     this.save();
   },
@@ -521,6 +564,13 @@ const ACHIEVEMENTS = [
   { id: "globalist", icon: "◍", title: "Globalist",
     desc: "Hold assets in two or more currencies",
     test: c => new Set([].concat(c.s.accounts, c.s.holdings).map(x => x.currency)).size >= 2 },
+  { id: "budgeter", icon: "◓", title: "Budgeter",
+    desc: "Log or import your first expenses",
+    test: c => (c.s.expenses || []).length >= 1 },
+  { id: "frugal", icon: "☘", title: "Frugal",
+    desc: "Reach a 20%+ savings rate in a month",
+    test: c => typeof expenseMonths === "function" &&
+      expenseMonths().some(m => { const sb = budgetScore(m); return sb.monthlyExpenses > 0 && sb.savingsRate != null && sb.savingsRate >= 0.2; }) },
   { id: "diversified", icon: "◮", title: "Diversified",
     desc: "Hold 5 or more positions",
     test: c => c.s.holdings.length >= 5 },

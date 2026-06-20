@@ -1,0 +1,458 @@
+/* FinanceOS — budgeting & expenses: categories, scoring, insights,
+   and a spreadsheet template that round-trips without ever duplicating rows. */
+"use strict";
+
+/* ---------- categories ----------
+   bucket drives the 50/30/20 needs-vs-wants math and the score. */
+const EXPENSE_CATEGORIES = [
+  { name: "Housing",          icon: "🏠", bucket: "needs" },
+  { name: "Utilities",        icon: "💡", bucket: "needs" },
+  { name: "Groceries",        icon: "🛒", bucket: "needs" },
+  { name: "Transport",        icon: "🚗", bucket: "needs" },
+  { name: "Health",           icon: "🏥", bucket: "needs" },
+  { name: "Insurance",        icon: "🛡️", bucket: "needs" },
+  { name: "Debt",             icon: "💳", bucket: "needs" },
+  { name: "Education",        icon: "🎓", bucket: "needs" },
+  { name: "Kids",             icon: "🧸", bucket: "needs" },
+  { name: "Fees",             icon: "🏦", bucket: "needs" },
+  { name: "Dining",           icon: "🍽️", bucket: "wants" },
+  { name: "Shopping",         icon: "🛍️", bucket: "wants" },
+  { name: "Entertainment",    icon: "🎬", bucket: "wants" },
+  { name: "Travel",           icon: "✈️", bucket: "wants" },
+  { name: "Subscriptions",    icon: "🔁", bucket: "wants" },
+  { name: "Personal Care",    icon: "🧴", bucket: "wants" },
+  { name: "Gifts & Donations", icon: "🎁", bucket: "wants" },
+  { name: "Other",            icon: "•",  bucket: "wants" },
+];
+
+/* common words people (and statements) use → canonical category */
+const CATEGORY_ALIASES = {
+  rent: "Housing", mortgage: "Housing", home: "Housing",
+  electricity: "Utilities", water: "Utilities", gas: "Utilities", internet: "Utilities", phone: "Utilities",
+  grocery: "Groceries", supermarket: "Groceries", food: "Groceries",
+  restaurant: "Dining", restaurants: "Dining", coffee: "Dining", takeout: "Dining", "eating out": "Dining", bar: "Dining",
+  fuel: "Transport", gasoline: "Transport", uber: "Transport", taxi: "Transport", transit: "Transport", parking: "Transport", car: "Transport",
+  doctor: "Health", pharmacy: "Health", medical: "Health", dentist: "Health", gym: "Health",
+  loan: "Debt", "credit card": "Debt", interest: "Debt",
+  school: "Education", tuition: "Education", course: "Education", books: "Education",
+  clothes: "Shopping", clothing: "Shopping", amazon: "Shopping", electronics: "Shopping",
+  movies: "Entertainment", games: "Entertainment", concert: "Entertainment", hobby: "Entertainment",
+  flight: "Travel", hotel: "Travel", vacation: "Travel", airbnb: "Travel",
+  subscription: "Subscriptions", netflix: "Subscriptions", spotify: "Subscriptions", streaming: "Subscriptions",
+  haircut: "Personal Care", salon: "Personal Care", beauty: "Personal Care",
+  gift: "Gifts & Donations", gifts: "Gifts & Donations", donation: "Gifts & Donations", charity: "Gifts & Donations",
+  fee: "Fees", fees: "Fees", bank: "Fees", commission: "Fees",
+  baby: "Kids", childcare: "Kids", daycare: "Kids", kid: "Kids",
+};
+
+const CATEGORY_BY_LOWER = (() => {
+  const m = {};
+  EXPENSE_CATEGORIES.forEach(c => { m[c.name.toLowerCase()] = c; });
+  return m;
+})();
+
+function categoryMeta(name) {
+  const c = CATEGORY_BY_LOWER[String(name || "").toLowerCase()];
+  return c || { name: name || "Other", icon: "•", bucket: "wants" };
+}
+
+/* Map a free-text category to a known one where possible, else keep it. */
+function canonicalCategory(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return "Other";
+  const lc = s.toLowerCase();
+  if (CATEGORY_BY_LOWER[lc]) return CATEGORY_BY_LOWER[lc].name;
+  if (CATEGORY_ALIASES[lc]) return CATEGORY_ALIASES[lc];
+  // partial alias match (e.g. "uber eats" -> contains "uber")
+  for (const k in CATEGORY_ALIASES) {
+    if (lc.indexOf(k) !== -1) return CATEGORY_ALIASES[k];
+  }
+  // unknown — keep a tidy version of what they typed
+  return s.length > 24 ? s.slice(0, 24) : s;
+}
+
+/* ---------- normalization & dedup signature ---------- */
+
+function parseExpenseDate(raw) {
+  const s = String(raw == null ? "" : raw).trim();
+  if (!s) return null;
+  const pad = (n) => String(n).padStart(2, "0");
+  const build = (y, mo, da) => {
+    y = +y; mo = +mo; da = +da;
+    if (y < 100) y += 2000;
+    if (mo < 1 || mo > 12 || da < 1 || da > 31) return null;
+    return y + "-" + pad(mo) + "-" + pad(da);
+  };
+  let m;
+  if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/))) return build(m[1], m[2], m[3]);
+  if ((m = s.match(/^(\d{4})[\/.](\d{1,2})[\/.](\d{1,2})$/))) return build(m[1], m[2], m[3]);
+  if ((m = s.match(/^(\d{1,2})[\/.](\d{1,2})[\/.](\d{2,4})$/))) {
+    let a = +m[1], b = +m[2];
+    // assume M/D/Y unless the first field can't be a month
+    return a > 12 ? build(m[3], b, a) : build(m[3], a, b);
+  }
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) return toISO(d);
+  return null;
+}
+
+function parseAmount(raw) {
+  const orig = String(raw == null ? "" : raw).trim();
+  if (!orig) return null;
+  const neg = /^\(.*\)$/.test(orig) || /-/.test(orig);
+  const cleaned = orig.replace(/[^0-9.]/g, "");
+  if (!cleaned) return null;
+  let n = parseFloat(cleaned);
+  if (isNaN(n)) return null;
+  if (neg) n = -n;
+  return Math.round(n * 100) / 100;
+}
+
+/* cyrb53 — compact, stable string hash for dedup keys */
+function hashStr(str) {
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+}
+
+/* Identity of an expense — same fields => same signature => deduped on import. */
+function expenseSig(e) {
+  const desc = String(e.description || "").trim().toLowerCase().replace(/\s+/g, " ");
+  const amt = (Math.round((Number(e.amount) || 0) * 100) / 100).toFixed(2);
+  return hashStr([e.date, amt, String(e.category || "").toLowerCase(), desc, e.currency].join("|"));
+}
+
+/* ---------- month helpers ---------- */
+
+function monthKeyOf(dateISO) { return String(dateISO || "").slice(0, 7); }
+
+function monthLabel(mk) {
+  const p = String(mk).split("-");
+  if (p.length < 2) return mk;
+  return MONTHS_SHORT[(+p[1]) - 1] + " " + p[0];
+}
+
+function expenseMonths() {
+  const set = {};
+  (Store.state.expenses || []).forEach(e => { set[monthKeyOf(e.date)] = true; });
+  return Object.keys(set).sort().reverse();
+}
+
+function expensesForMonth(mk) {
+  return (Store.state.expenses || []).filter(e => monthKeyOf(e.date) === mk);
+}
+
+/* ---------- aggregation (everything converted to display currency) ---------- */
+
+function categoryTotalsSorted(exps) {
+  const by = {};
+  exps.forEach(e => {
+    const cat = e.category || "Other";
+    by[cat] = (by[cat] || 0) + conv(Number(e.amount) || 0, e.currency);
+  });
+  return Object.keys(by).map(name => ({ name, amount: by[name], meta: categoryMeta(name) }))
+    .sort((a, b) => b.amount - a.amount);
+}
+
+function bucketTotals(exps) {
+  let needs = 0, wants = 0;
+  exps.forEach(e => {
+    const amt = conv(Number(e.amount) || 0, e.currency);
+    if (categoryMeta(e.category).bucket === "needs") needs += amt; else wants += amt;
+  });
+  return { needs, wants };
+}
+
+/* Monthly budget limit for a category, in display currency (or null if unset). */
+function budgetForCategory(name) {
+  const b = (Store.state.budgets || {})[name];
+  if (!b || !(Number(b.amount) > 0)) return null;
+  return convBetween(Number(b.amount), b.currency || displayCurrency(), displayCurrency());
+}
+
+function totalBudget() {
+  const b = Store.state.budgets || {};
+  return Object.keys(b).reduce((a, k) => a + (budgetForCategory(k) || 0), 0);
+}
+
+/* ---------- score ---------- */
+
+function clamp01(x) { return Math.max(0, Math.min(1, x)); }
+
+function budgetScore(mk) {
+  const t = computeTotals();
+  const eb = earningsBreakdown();
+  const exps = expensesForMonth(mk);
+  const monthlyExpenses = exps.reduce((a, e) => a + conv(Number(e.amount) || 0, e.currency), 0);
+  const monthlyIncomeNet = eb.monthlyNet;              // steady net cash flow, display currency
+  const liquid = t.accountsTotal + t.marketValue;      // assets you could actually draw on
+  const buckets = bucketTotals(exps);
+  const spend = buckets.needs + buckets.wants;
+  const wantsShare = spend > 0 ? buckets.wants / spend : 0;
+  const savingsRate = monthlyIncomeNet > 0 ? (monthlyIncomeNet - monthlyExpenses) / monthlyIncomeNet : null;
+  const runwayMonths = monthlyExpenses > 0 ? liquid / monthlyExpenses : Infinity;
+
+  const runwayComp = clamp01(runwayMonths / 12);       // 12 months liquid = full marks
+  const wantsComp = clamp01((0.6 - wantsShare) / 0.6); // 60%+ on wants = 0
+  let score = null, basis = "full";
+  if (monthlyExpenses > 0) {
+    if (savingsRate == null) {
+      score = Math.round(runwayComp * 70 + wantsComp * 30);
+      basis = "no-income";
+    } else {
+      const saveComp = clamp01(savingsRate / 0.4);     // 40% savings rate = full
+      score = Math.round(saveComp * 60 + runwayComp * 25 + wantsComp * 15);
+    }
+  }
+  return {
+    score, basis,
+    monthlyExpenses, monthlyIncomeNet, liquid,
+    savingsRate, runwayMonths, wantsShare,
+    needs: buckets.needs, wants: buckets.wants, spend,
+  };
+}
+
+function scoreGrade(score) {
+  if (score == null) return { grade: "—", label: "No spending logged", tone: "mute" };
+  if (score >= 90) return { grade: "A", label: "Excellent", tone: "pos" };
+  if (score >= 78) return { grade: "B", label: "Strong", tone: "pos" };
+  if (score >= 64) return { grade: "C", label: "Okay", tone: "gold" };
+  if (score >= 50) return { grade: "D", label: "Tight", tone: "gold" };
+  return { grade: "E", label: "Over-spending", tone: "neg" };
+}
+
+/* ---------- insights ---------- */
+
+function budgetInsights(mk) {
+  const exps = expensesForMonth(mk);
+  if (!exps.length) return [];
+  const sc = budgetScore(mk);
+  const cats = categoryTotalsSorted(exps);
+  const spend = sc.spend || 1;
+  const out = [];
+  const pct = (x) => Math.round(x * 100) + "%";
+
+  if (sc.savingsRate != null) {
+    if (sc.savingsRate >= 0.2) {
+      out.push({ level: "good", title: "Healthy savings rate", text: "You kept <strong>" + pct(sc.savingsRate) + "</strong> of your net income this month — at or above the 20% guideline. Keep it up." });
+    } else if (sc.savingsRate >= 0) {
+      const gap = Math.max(0, sc.monthlyIncomeNet * 0.2 - (sc.monthlyIncomeNet - sc.monthlyExpenses));
+      out.push({ level: "warn", title: "Thin savings rate", text: "You saved <strong>" + pct(sc.savingsRate) + "</strong> of income. Trimming about <strong>" + fmtMoney(gap, { compact: true }) + "</strong>/mo would reach a healthy 20%." });
+    } else {
+      out.push({ level: "danger", title: "Spending exceeds income", text: "You spent <strong>" + fmtMoney(sc.monthlyExpenses, { compact: true }) + "</strong> against <strong>" + fmtMoney(sc.monthlyIncomeNet, { compact: true }) + "</strong> of net income — you're drawing down savings." });
+    }
+  }
+
+  if (cats[0]) {
+    const share = cats[0].amount / spend;
+    out.push({
+      level: share > 0.4 ? "warn" : "info",
+      title: "Biggest category: " + cats[0].name,
+      text: cats[0].meta.icon + " <strong>" + esc(cats[0].name) + "</strong> is " + pct(share) + " of spending (" + fmtMoney(cats[0].amount, { compact: true }) + ")" + (share > 0.4 ? " — a big concentration worth reviewing." : "."),
+    });
+  }
+
+  out.push({
+    level: sc.wantsShare <= 0.3 ? "good" : sc.wantsShare <= 0.5 ? "info" : "warn",
+    title: "Needs vs wants",
+    text: "<strong>" + pct(sc.wantsShare) + "</strong> of spending went to wants. The 50/30/20 guide suggests keeping wants near 30% of income.",
+  });
+
+  if (isFinite(sc.runwayMonths)) {
+    out.push({
+      level: sc.runwayMonths >= 6 ? "good" : sc.runwayMonths >= 3 ? "info" : "warn",
+      title: "Runway",
+      text: "Your liquid assets could cover <strong>" + sc.runwayMonths.toFixed(1) + " months</strong> at this spending rate" + (sc.runwayMonths < 3 ? " — an emergency fund of 3–6 months is a great target." : ".") ,
+    });
+  }
+
+  // over-budget categories
+  const over = cats.filter(c => { const b = budgetForCategory(c.name); return b && c.amount > b; });
+  if (over.length) {
+    out.push({
+      level: "danger",
+      title: "Over budget: " + over.slice(0, 3).map(c => c.name).join(", "),
+      text: over.slice(0, 3).map(c => esc(c.name) + " " + fmtMoney(c.amount, { compact: true }) + " / " + fmtMoney(budgetForCategory(c.name), { compact: true })).join(" · "),
+    });
+  }
+
+  // month-over-month trend
+  const months = expenseMonths().slice().sort();
+  const idx = months.indexOf(mk);
+  if (idx > 0) {
+    const prev = months[idx - 1];
+    const prevTotal = expensesForMonth(prev).reduce((a, e) => a + conv(Number(e.amount) || 0, e.currency), 0);
+    if (prevTotal > 0) {
+      const chg = (sc.monthlyExpenses - prevTotal) / prevTotal;
+      if (Math.abs(chg) >= 0.05) {
+        out.push({
+          level: chg < 0 ? "good" : "info",
+          title: chg < 0 ? "Spending down vs " + monthLabel(prev) : "Spending up vs " + monthLabel(prev),
+          text: "You spent <strong>" + Math.round(Math.abs(chg) * 100) + "%</strong> " + (chg < 0 ? "less" : "more") + " than in " + monthLabel(prev) + " (" + fmtMoney(prevTotal, { compact: true }) + ").",
+        });
+      }
+    }
+  }
+
+  const order = { danger: 0, warn: 1, good: 2, info: 3 };
+  out.sort((a, b) => order[a.level] - order[b.level]);
+  return out.slice(0, 6);
+}
+
+/* ====================================================================
+   Spreadsheet template — download, AI prompt, and dedup-aware import
+   ==================================================================== */
+
+const BudgetIO = {
+  CATEGORY_LIST: EXPENSE_CATEGORIES.map(c => c.name).join(", "),
+
+  aiPrompt() {
+    return "I'm attaching my credit-card / bank statement(s). Fill a CSV with exactly these columns: " +
+      "Date,Description,Category,Amount,Currency — one row per transaction.\n" +
+      "Rules:\n" +
+      "• Date format YYYY-MM-DD.\n" +
+      "• Amount = a positive number for money spent (use a minus sign only for refunds).\n" +
+      "• Category MUST be one of: " + this.CATEGORY_LIST + ".\n" +
+      "• Currency is USD, MXN, EUR or GBP.\n" +
+      "• Skip card payments and transfers (they aren't expenses).\n" +
+      "Return ONLY the CSV rows (no header, no commentary) so I can paste them into my template.";
+  },
+
+  buildTemplateCSV() {
+    const cur = displayCurrency();
+    const L = [
+      "# FinanceOS — Expense Import Template",
+      "# -----------------------------------------------------------------",
+      "# HOW TO USE",
+      "# 1. Add ONE row per expense under the 'Date,Description,...' header line.",
+      "# 2. Date format: YYYY-MM-DD  (e.g. 2026-06-15).",
+      "# 3. Amount: a positive number for money spent (minus sign only for refunds).",
+      "# 4. Category: pick ONE from the list below.",
+      "# 5. Currency: USD, MXN, EUR or GBP. Leave blank to use " + cur + ".",
+      "# 6. Save as CSV, then in FinanceOS open Budget and Upload it.",
+      "# 7. Re-uploading is safe — duplicate rows are detected and never added twice.",
+      "#",
+      "# LET YOUR AI FILL IT FOR YOU:",
+      "#   Paste this template + your statement into ChatGPT or Claude and ask it to",
+      "#   return CSV rows (Date,Description,Category,Amount,Currency). Drop them under",
+      "#   the header below and upload. Lines starting with # are ignored on import.",
+      "#",
+      "# CATEGORIES: " + this.CATEGORY_LIST,
+      "#",
+      "# EXAMPLES (these are comments — they will NOT be imported):",
+      "#   2026-06-01,Trader Joe's,Groceries,82.40,USD",
+      "#   2026-06-02,Spotify,Subscriptions,11.99,USD",
+      "#   2026-06-03,Metro card,Transport,40.00,USD",
+      "# -----------------------------------------------------------------",
+      "Date,Description,Category,Amount,Currency",
+      "",
+    ];
+    return "﻿" + L.join("\r\n"); // BOM so Excel reads accents correctly
+  },
+
+  downloadTemplate() {
+    const blob = new Blob([this.buildTemplateCSV()], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "financeos-expense-template.csv";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  },
+
+  /* minimal but correct CSV parser (quoted fields, embedded commas/newlines) */
+  parseCSV(text) {
+    const rows = [];
+    let row = [], field = "", i = 0, inQ = false;
+    text = String(text).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    while (i < text.length) {
+      const c = text[i];
+      if (inQ) {
+        if (c === '"') {
+          if (text[i + 1] === '"') { field += '"'; i += 2; continue; }
+          inQ = false; i++; continue;
+        }
+        field += c; i++; continue;
+      }
+      if (c === '"') { inQ = true; i++; continue; }
+      if (c === ",") { row.push(field); field = ""; i++; continue; }
+      if (c === "\n") { row.push(field); rows.push(row); row = []; field = ""; i++; continue; }
+      field += c; i++;
+    }
+    row.push(field); rows.push(row);
+    return rows;
+  },
+
+  /* Parse + dedup-aware import. Never adds a row that already exists, and never
+     double-counts across re-uploads or overlapping files. */
+  importText(text) {
+    // an .xlsx is a binary zip ("PK") — guide the user to CSV instead
+    if (/^PK\x03\x04/.test(text)) {
+      return { added: 0, skipped: 0, errors: ["This looks like an .xlsx file. In Excel use File → Save As → CSV, then upload the .csv."], rows: 0 };
+    }
+    const rows = this.parseCSV(text);
+    const errors = [];
+    let added = 0, skipped = 0, dataRows = 0;
+
+    // locate the header row (first non-comment row containing Date & Amount)
+    let headerIdx = -1, cols = null;
+    for (let r = 0; r < rows.length; r++) {
+      const cells = rows[r].map(x => String(x).trim());
+      if (!cells.length || cells[0].charAt(0) === "#") continue;
+      const lower = cells.map(x => x.toLowerCase());
+      if (lower.indexOf("date") !== -1 && lower.indexOf("amount") !== -1) { headerIdx = r; cols = lower; break; }
+    }
+    const idx = (names) => {
+      if (!cols) return -1;
+      for (const n of names) { const k = cols.indexOf(n); if (k !== -1) return k; }
+      return -1;
+    };
+    const di = headerIdx === -1 ? 0 : idx(["date"]);
+    const ai = headerIdx === -1 ? 3 : idx(["amount", "amount spent", "value"]);
+    const ci = headerIdx === -1 ? 2 : idx(["category", "cat"]);
+    const ni = headerIdx === -1 ? 1 : idx(["description", "merchant", "name", "memo", "details"]);
+    const ui = headerIdx === -1 ? 4 : idx(["currency", "cur", "ccy"]);
+
+    // existing signatures → counts, so legitimate repeats survive but dupes don't
+    const have = {};
+    (Store.state.expenses || []).forEach(e => { have[e.sig] = (have[e.sig] || 0) + 1; });
+    const seen = {};
+    const toAdd = [];
+
+    const start = headerIdx === -1 ? 0 : headerIdx + 1;
+    for (let r = start; r < rows.length; r++) {
+      const cells = rows[r];
+      const first = String(cells[0] || "").trim();
+      if (first.charAt(0) === "#") continue;                       // comment line
+      if (cells.every(x => String(x).trim() === "")) continue;     // blank line
+      dataRows++;
+
+      const date = parseExpenseDate(cells[di]);
+      const amount = parseAmount(cells[ai]);
+      if (!date || amount == null || amount === 0) {
+        if (errors.length < 6) errors.push("Skipped row " + (r + 1) + " — needs a valid date and amount.");
+        continue;
+      }
+      const e = {
+        date,
+        description: String(cells[ni] != null ? cells[ni] : "").trim().slice(0, 80),
+        category: canonicalCategory(cells[ci]),
+        amount,
+        currency: (function (c) { c = String(c || "").trim().toUpperCase(); return CURRENCY_CODES.indexOf(c) !== -1 ? c : displayCurrency(); })(cells[ui]),
+        source: "import",
+      };
+      e.sig = expenseSig(e);
+      seen[e.sig] = (seen[e.sig] || 0) + 1;
+      if (seen[e.sig] <= (have[e.sig] || 0)) { skipped++; continue; }  // already have this many
+      toAdd.push(e);
+    }
+
+    toAdd.forEach(e => { Store.add("expenses", e); added++; });
+    return { added, skipped, errors, rows: dataRows };
+  },
+};
