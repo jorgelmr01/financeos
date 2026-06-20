@@ -152,6 +152,36 @@ function expensesForMonth(mk) {
   return (Store.state.expenses || []).filter(e => monthKeyOf(e.date) === mk);
 }
 
+/* ---------- month completeness ----------
+   The current calendar month is "in progress": comparing its partial spend
+   against a full month of income makes savings look artificially high. We
+   prorate by how much of the month has elapsed and default insights to the
+   most recent *complete* month. */
+function currentMonthKey() { return monthKeyOf(toISO(todayMid())); }
+function isMonthComplete(mk) { return mk < currentMonthKey(); }
+function monthFraction(mk) {
+  if (mk !== currentMonthKey()) return 1;
+  const t = todayMid();
+  const dim = lastDayOfMonth(t.getFullYear(), t.getMonth());
+  return Math.max(0.01, Math.min(1, t.getDate() / dim));
+}
+function monthDaysElapsed(mk) {
+  if (mk !== currentMonthKey()) {
+    const p = String(mk).split("-");
+    return lastDayOfMonth(+p[0], +p[1] - 1);
+  }
+  return todayMid().getDate();
+}
+function monthDaysTotal(mk) {
+  const p = String(mk).split("-");
+  return lastDayOfMonth(+p[0], +p[1] - 1);
+}
+/* Most recent month that has expenses AND is fully elapsed (or null). */
+function latestCompleteMonth() {
+  const m = expenseMonths().filter(isMonthComplete);  // expenseMonths() is newest-first
+  return m.length ? m[0] : null;
+}
+
 /* ---------- aggregation (everything converted to display currency) ---------- */
 
 function categoryTotalsSorted(exps) {
@@ -219,6 +249,7 @@ function budgetSeries(maxMonths) {
       spend: sc.monthlyExpenses, score: sc.score, savingsRate: sc.savingsRate,
       needs: sc.needs, wants: sc.wants, income: sc.monthlyIncomeNet, runway: sc.runwayMonths,
       wantsShare: spread > 0 ? sc.wants / spread : 0,
+      complete: sc.complete,
       hasData: sc.monthlyExpenses !== 0 || expensesForMonth(mk).length > 0,
     };
   });
@@ -230,12 +261,13 @@ function avgOf(rows, key) {
   return vals.reduce((a, b) => a + b, 0) / vals.length;
 }
 
-/* Latest month vs the trailing average of the prior `n` months with data. */
+/* Latest COMPLETE month vs the trailing average of the prior complete months —
+   excludes the in-progress month so partial data doesn't skew the comparison. */
 function budgetComparison(n) {
-  const s = budgetSeries(null);
+  const s = budgetSeries(null).filter(m => m.hasData && m.complete);
   if (s.length < 2) return null;
   const cur = s[s.length - 1];
-  const prior = s.slice(0, s.length - 1).filter(m => m.hasData).slice(-(n || 3));
+  const prior = s.slice(0, s.length - 1).slice(-(n || 3));
   if (!prior.length) return null;
   return {
     cur: cur, months: prior.length,
@@ -246,9 +278,9 @@ function budgetComparison(n) {
   };
 }
 
-/* Per-category change: current month vs trailing average of prior `n` months. */
+/* Per-category change: latest complete month vs trailing average of prior complete months. */
 function categoryMovers(n) {
-  const s = budgetSeries(null).filter(m => m.hasData);
+  const s = budgetSeries(null).filter(m => m.hasData && m.complete);
   if (s.length < 2) return [];
   const curMk = s[s.length - 1].mk;
   const priorMks = s.slice(0, s.length - 1).slice(-(n || 3)).map(m => m.mk);
@@ -269,7 +301,7 @@ function categoryMovers(n) {
 
 /* Consistency streaks, counting back from the most recent month with data. */
 function budgetStreaks() {
-  const s = budgetSeries(null).filter(m => m.hasData);
+  const s = budgetSeries(null).filter(m => m.hasData && m.complete);
   let save = 0, under = 0;
   for (let i = s.length - 1; i >= 0; i--) { if (s[i].savingsRate != null && s[i].savingsRate > 0) save++; else break; }
   // "all budgets met" = every category you set a limit on stayed within it that month
@@ -301,8 +333,14 @@ function budgetScore(mk) {
   const buckets = bucketTotals(exps);
   const spend = buckets.needs + buckets.wants;
   const wantsShare = spend > 0 ? buckets.wants / spend : 0;
-  const savingsRate = monthlyIncomeNet > 0 ? (monthlyIncomeNet - monthlyExpenses) / monthlyIncomeNet : null;
-  const runwayMonths = monthlyExpenses > 0 ? liquid / monthlyExpenses : Infinity;
+  // for an in-progress month, compare partial spend against the elapsed
+  // portion of income, and project spend to a full month for runway —
+  // so a half-finished month isn't read as a huge savings rate
+  const frac = monthFraction(mk);
+  const incomeBasis = monthlyIncomeNet * frac;
+  const fullSpend = frac > 0 ? monthlyExpenses / frac : monthlyExpenses;
+  const savingsRate = incomeBasis > 0 ? (incomeBasis - monthlyExpenses) / incomeBasis : null;
+  const runwayMonths = fullSpend > 0 ? liquid / fullSpend : Infinity;
 
   const runwayComp = clamp01(runwayMonths / 12);       // 12 months liquid = full marks
   const wantsComp = clamp01((0.6 - wantsShare) / 0.6); // 60%+ on wants = 0
@@ -321,6 +359,8 @@ function budgetScore(mk) {
     monthlyExpenses, monthlyIncomeNet, liquid,
     savingsRate, runwayMonths, wantsShare,
     needs: buckets.needs, wants: buckets.wants, spend,
+    complete: frac >= 1, frac: frac,
+    daysElapsed: monthDaysElapsed(mk), daysTotal: monthDaysTotal(mk),
   };
 }
 
@@ -350,14 +390,17 @@ function healthGrade(score) {
 function financialHealth() {
   const t = computeTotals();
   const eb = earningsBreakdown();
-  const cm = monthKeyOf(toISO(todayMid()));
+  // base cash-flow & safety on the latest COMPLETE month (fall back to a
+  // prorated current month) so a half-finished month doesn't inflate the score
+  const mk = latestCompleteMonth() || currentMonthKey();
+  const frac = monthFraction(mk);
   const monthExp = (typeof expensesForMonth === "function")
-    ? expensesForMonth(cm).reduce((a, e) => a + conv(Number(e.amount) || 0, e.currency), 0) : 0;
+    ? expensesForMonth(mk).reduce((a, e) => a + conv(Number(e.amount) || 0, e.currency), 0) : 0;
   const incomeMo = eb.monthlyNet;
   const factors = [];
 
   if (incomeMo > 0 && monthExp > 0) {
-    const sr = (incomeMo - monthExp) / incomeMo;
+    const sr = (incomeMo * frac - monthExp) / (incomeMo * frac);
     factors.push({ key: "cashflow", label: "Cash flow", weight: 30, score: clamp01(sr / 0.2),
       detail: Math.round(sr * 100) + "% of income saved" });
   }
@@ -366,7 +409,8 @@ function financialHealth() {
     factors.push({ key: "debt", label: "Debt load", weight: 25, score: clamp01(1 - util / 0.5),
       detail: Math.round(util * 100) + "% of credit used" });
   }
-  const outflow = monthExp > 0 ? monthExp : (incomeMo > 0 ? incomeMo * 0.8 : 0);
+  const fullSpend = monthExp > 0 ? monthExp / frac : 0;
+  const outflow = fullSpend > 0 ? fullSpend : (incomeMo > 0 ? incomeMo * 0.8 : 0);
   if (outflow > 0) {
     const months = (t.cash + t.savings) / outflow;
     factors.push({ key: "safety", label: "Safety net", weight: 25, score: clamp01(months / 6),

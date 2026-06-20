@@ -1018,6 +1018,8 @@ button, a, .nav-item, .tool-btn, .icon-btn, .swatch { -webkit-tap-highlight-colo
 }
 .trend-col:hover .trend-bar { filter: brightness(1.2); }
 .trend-bar.trend-empty { background: var(--surface-3); height: 3px; }
+/* in-progress (partial) month: faded + hatched so it reads as not-yet-settled */
+.trend-bar.trend-partial { opacity: 0.45; -webkit-mask-image: repeating-linear-gradient(45deg, #000 0 4px, transparent 4px 7px); mask-image: repeating-linear-gradient(45deg, #000 0 4px, transparent 4px 7px); }
 .trend-ref {
   position: absolute; left: 2px; right: 2px; height: 0;
   border-top: 1px dashed currentColor; opacity: 0.7; pointer-events: none;

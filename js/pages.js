@@ -607,23 +607,25 @@ const Pages = {
       return controls + this._budgetTrends();
     }
 
-    // selected month — default to the most recent with data
+    // selected month — default to the most recent COMPLETE month so a partial
+    // current month (e.g. a few days into a new statement) doesn't skew insights
     let mk = App.budgetMonth;
-    if (!mk || months.indexOf(mk) === -1) mk = months[0];
+    if (!mk || months.indexOf(mk) === -1) mk = latestCompleteMonth() || months[0];
     const exps = expensesForMonth(mk).slice().sort((a, b) => (a.date < b.date ? 1 : -1));
     const sc = budgetScore(mk);
     const g = scoreGrade(sc.score);
     const cats = categoryTotalsSorted(exps);
     const spend = sc.spend || 0;
-    const isCurrent = mk === toISO(todayMid()).slice(0, 7);
+    const inProgress = !sc.complete;
 
     const monthOpts = months.map(m =>
-      '<option value="' + m + '"' + (m === mk ? " selected" : "") + ">" + monthLabel(m) + "</option>").join("");
+      '<option value="' + m + '"' + (m === mk ? " selected" : "") + ">" + monthLabel(m) +
+        (m === currentMonthKey() ? " · in progress" : "") + "</option>").join("");
     const controls =
       '<div class="budget-controls section">' + viewToggle +
         '<select id="budget-month" class="budget-month">' + monthOpts + "</select>" +
         '<span class="budget-count">' + exps.length + " expense" + (exps.length === 1 ? "" : "s") +
-          (isCurrent ? " · month in progress" : "") + "</span>" +
+          (inProgress ? " · in progress, day " + sc.daysElapsed + " of " + sc.daysTotal : "") + "</span>" +
         tools +
       "</div>";
 
@@ -633,12 +635,14 @@ const Pages = {
       '<div class="score-hero section">' +
         this._scoreRing(sc.score, g.tone, g.grade) +
         '<div class="score-meat">' +
-          '<div class="micro-label">Spending health · ' + monthLabel(mk) + "</div>" +
+          '<div class="micro-label">Spending health · ' + monthLabel(mk) + (inProgress ? " · in progress" : "") + "</div>" +
           '<div class="score-label ' + g.tone + '">' + g.label + "</div>" +
           '<div class="score-sub">' +
-            (sc.savingsRate != null
-              ? "You saved <strong>" + pct(sc.savingsRate) + "</strong> of net income and spent <strong>" + fmtMoney(sc.monthlyExpenses, { compact: true }) + "</strong> of <strong>" + fmtMoney(sc.monthlyIncomeNet, { compact: true }) + "</strong>."
-              : "Spent <strong>" + fmtMoney(sc.monthlyExpenses, { compact: true }) + "</strong> this month. Add income streams in Earnings for a savings-rate score.") +
+            (inProgress
+              ? "<strong>" + fmtMoney(sc.monthlyExpenses, { compact: true }) + "</strong> spent in the first " + sc.daysElapsed + " day" + (sc.daysElapsed === 1 ? "" : "s") + " — the score is paced against the month so far. Pick a finished month above for a settled read."
+              : sc.savingsRate != null
+                ? "You saved <strong>" + pct(sc.savingsRate) + "</strong> of net income and spent <strong>" + fmtMoney(sc.monthlyExpenses, { compact: true }) + "</strong> of <strong>" + fmtMoney(sc.monthlyIncomeNet, { compact: true }) + "</strong>."
+                : "Spent <strong>" + fmtMoney(sc.monthlyExpenses, { compact: true }) + "</strong>. Add income streams in Income for a savings-rate score.") +
           "</div>" +
           '<div class="score-bars">' +
             this._scoreBar("Savings rate", sc.savingsRate == null ? null : sc.savingsRate, 0.2, sc.savingsRate == null ? null : pct(sc.savingsRate)) +
@@ -848,10 +852,11 @@ const Pages = {
       '<div class="trend-ref" style="bottom:' + (r.value / max * 100).toFixed(1) + '%;border-color:' + r.color + '"><span style="color:' + r.color + '">' + esc(r.label) + "</span></div>").join("");
     const cols = series.map(row => {
       const v = opts.value(row);
+      const partial = row.complete === false;
       if (v == null || !isFinite(v)) return '<div class="trend-col"><div class="trend-bar trend-empty" title="' + esc(row.label) + ': —"></div></div>';
       const h = Math.max(1.5, Math.min(100, v / max * 100));
       const c = opts.color ? opts.color(row, v) : "var(--mint)";
-      return '<div class="trend-col"><div class="trend-bar" style="height:' + h.toFixed(1) + "%;background:" + c + '" title="' + esc(row.label + ": " + (opts.fmt ? opts.fmt(v) : v)) + '"></div></div>';
+      return '<div class="trend-col"><div class="trend-bar' + (partial ? " trend-partial" : "") + '" style="height:' + h.toFixed(1) + "%;background:" + c + '" title="' + esc(row.label + ": " + (opts.fmt ? opts.fmt(v) : v) + (partial ? " (in progress)" : "")) + '"></div></div>';
     }).join("");
     const axis = series.map(r => "<span>" + esc(r.short) + "</span>").join("");
     return '<div class="trend"><div class="trend-plot">' + refLines + cols + '</div><div class="trend-axis">' + axis + "</div></div>";
@@ -998,6 +1003,7 @@ const Pages = {
         "<strong>Re-uploading is safe.</strong> FinanceOS fingerprints every row, so importing the same file twice — or overlapping months — never creates duplicates, while genuine same-day repeats are kept.",
         "You get a <strong>spending-health score</strong> from your savings rate, runway and needs-vs-wants split, plus insights, a 50/30/20 breakdown, and per-category budgets. Set monthly limits with <strong>Set budgets</strong>.",
         "Switch to <strong>Trends</strong> to compare months: this month vs your trailing average, spending &amp; score charts, the categories you're spending more/less on, and saving streaks.",
+        "Insights default to your most recent <strong>complete</strong> month — the current month is marked <em>“in progress”</em> and its score is paced against the days elapsed, so a few days into a new statement never looks like you suddenly saved a fortune.",
       ]) +
       card("◍", "Currencies", [
         "Every account, card, position and income stream has its <strong>own currency</strong> — mix MXN accounts with USD stocks freely.",
