@@ -218,11 +218,11 @@ const Statements = {
     [/uber\s*eats|rappi|didi\s*food|sin\s*delantal/, "Dining"],
     [/uber|didi|cabify|taxi|metro|metrobus|parking|estacionamiento|gas(olin)?a|pemex|shell|peaje|cap?ufe|televia|telepeaje|viapass|pase\b|fideicomiso funo estaci/, "Transport"],
     [/aeromexico|volaris|viva\s*aero|airbnb|booking|expedia|despegar|hotel|hilton|marriott|delta air|american air/, "Travel"],
-    [/costco|walmart|soriana|chedraui|heb|h-e-b|wm\s*express|wm\s*super|la\s*comer|superama|oxxo|7-?eleven|merc(ado)?\s*super/, "Groceries"],
-    [/amazon|mercado\s*libre|merc?pago|merpago|liverpool|palacio|coppel|aliexpress|shein|best\s*buy|sears|office\s*depot|apple\s*store|timberland|zara|nike|adidas|h&m/, "Shopping"],
+    [/costco|walmart|soriana|chedraui|heb|h-e-b|wm\s*express|wm\s*super|la\s*comer|superama|oxxo|7-?eleven|merc(ado)?\s*super|super\s*che|superche|smart\s*&\s*final|city\s*market/, "Groceries"],
+    [/amazon|mercado\s*libre|mercado\s*pago|mercadopago|merc?pago|merpago|liverpool|palacio|coppel|aliexpress|shein|best\s*buy|sears|office\s*depot|apple\s*store|timberland|zara|nike|adidas|h&m/, "Shopping"],
     [/apple\.com\/bill|spotify|netflix|hbo|disney|max\b|youtube|claro\s*video|paramount|prime\s*video|audible|icloud|google\s*one|chatgpt|openai|claude/, "Subscriptions"],
     [/total\s*play|totalplay|telmex|izzi|megacable|cfe|telcel|at&t|att\b|movistar|agua|sacmex|naturgy|gas\s*natural/, "Utilities"],
-    [/starbucks|carls?\s*jr|mcdonald|burger|kfc|dominos|pizza|vips|toks|sanborns|bostons|rest(aurant)?\b|cafe|caf[eé]|bar\b|cantina|sushi|tacos/, "Dining"],
+    [/starbucks|carls?\s*jr|mcdonald|burger|kfc|dominos|pizza|vips|toks|sanborns|bostons|rest(aurant)?\b|cafe|caf[eé]|bar\b|cantina|sushi|tacos|taque|estiatorio|panuco/, "Dining"],
     [/farmacia|pharmacy|hospital|doctor|dental|dentista|clinic|laboratorio|chedraui\s*salud|similares/, "Health"],
     [/uber\s*one|gym|smartfit|sportium|gimnasio|spa|barber|salon|peluqueria|estetica/, "Personal Care"],
     [/universidad|university|colegio|school|tuition|udemy|coursera|platzi|mba|stanford|gsb/, "Education"],
@@ -282,11 +282,13 @@ const Statements = {
     const startY = (startM && endM && startM > endM) ? endY - 1 : endY;
     const yearFor = (mo) => {
       if (!startM || !endM) return endY;
-      // pick the year that puts the month inside the billing window
-      if (mo === startM) return startY;
-      if (mo === endM) return endY;
-      if (startM <= endM) return (mo >= startM && mo <= endM) ? endY : endY;
-      return (mo >= startM) ? startY : endY;        // window spans year-end
+      if (startM <= endM) {
+        // normal window (e.g. Apr→May): months after the end month must be
+        // from the previous year (a late-posted Dec charge on an Apr statement).
+        return mo > endM ? endY - 1 : endY;
+      }
+      // window spans the year-end (e.g. Dec→Jan)
+      return mo >= startM ? startY : endY;
     };
     const re = /^(\d{1,2})\s+de\s+([A-Za-zÁÉÍÓÚáéíóú]+)\s+(.+?)\s+(-?[\d,]+\.\d{2})\s*(CR)?$/i;
     for (const ln of lines) {
@@ -438,7 +440,7 @@ const Statements = {
     // always try the generic pass too; merge anything new the bank parser missed
     if (bank === "generic" || !raw.length) raw = raw.concat(this.parseGeneric(text));
 
-    if (viaOCR) warnings.push("Read from a scan with on-device OCR — double-check the amounts before importing.");
+    if (viaOCR) warnings.push("Read from a scan with on-device OCR — double-check the amounts and dates before importing.");
 
     // de-dupe rows within the statement (same date+desc+amount)
     const seen = {};
