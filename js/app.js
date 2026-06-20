@@ -86,16 +86,16 @@ const App = {
     // privacy mode + lock button visibility
     document.body.classList.toggle("privacy", !!Store.state.settings.privacy);
     const eye = document.getElementById("privacy-btn");
-    if (eye) eye.classList.toggle("active", !!Store.state.settings.privacy);
+    if (eye) { eye.classList.toggle("active", !!Store.state.settings.privacy); eye.innerHTML = icon("eye"); }
     const lockBtn = document.getElementById("lock-btn");
-    if (lockBtn) lockBtn.style.display = Store.pinEnabled ? "" : "none";
+    if (lockBtn) { lockBtn.style.display = Store.pinEnabled ? "" : "none"; lockBtn.innerHTML = icon("lock"); }
 
     // theme
     const light = Store.state.settings.theme === "light";
     document.body.classList.toggle("light", light);
     const themeBtn = document.getElementById("theme-btn");
     if (themeBtn) {
-      themeBtn.textContent = light ? "☾" : "☀";
+      themeBtn.innerHTML = icon(light ? "moon" : "sun");
       themeBtn.title = light ? "Switch to dark mode" : "Switch to light mode";
     }
 
@@ -181,7 +181,7 @@ const App = {
             if (res.failed.length) msg += " · no quote for " + res.failed.join(", ");
             UI.toast(msg);
             if (res.keyBad) UI.toast("Finnhub rejected your key — data came from the Yahoo fallback; fix the key in Settings");
-            if (res.noDiv && res.noDiv.length) UI.toast("No dividend data found for " + res.noDiv.join(", ") + " — set div/share via ✎ if it pays one");
+            if (res.noDiv && res.noDiv.length) UI.toast("No dividend data found for " + res.noDiv.join(", ") + " — set div/share via the edit (pencil) button if it pays one");
           }
           App.render();
         });
@@ -370,6 +370,13 @@ const App = {
     if (Store.state) {
       document.getElementById("currency-select").value = Store.state.settings.currency;
     }
+
+    /* swap the nav glyphs for the consistent SVG icon set */
+    const navIcons = { overview: "home", accounts: "bank", cards: "card", portfolio: "growth", earnings: "wallet", budget: "pie", milestones: "award", learn: "cap", guide: "book" };
+    document.querySelectorAll(".nav-item").forEach(b => {
+      const g = b.querySelector(".nav-glyph");
+      if (g && navIcons[b.dataset.page]) g.innerHTML = icon(navIcons[b.dataset.page]);
+    });
 
     /* global click delegation */
     document.addEventListener("click", e => {

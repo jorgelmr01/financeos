@@ -5,24 +5,24 @@
 /* ---------- categories ----------
    bucket drives the 50/30/20 needs-vs-wants math and the score. */
 const EXPENSE_CATEGORIES = [
-  { name: "Housing",          icon: "🏠", bucket: "needs" },
-  { name: "Utilities",        icon: "💡", bucket: "needs" },
-  { name: "Groceries",        icon: "🛒", bucket: "needs" },
-  { name: "Transport",        icon: "🚗", bucket: "needs" },
-  { name: "Health",           icon: "🏥", bucket: "needs" },
-  { name: "Insurance",        icon: "🛡️", bucket: "needs" },
-  { name: "Debt",             icon: "💳", bucket: "needs" },
-  { name: "Education",        icon: "🎓", bucket: "needs" },
-  { name: "Kids",             icon: "🧸", bucket: "needs" },
-  { name: "Fees",             icon: "🏦", bucket: "needs" },
-  { name: "Dining",           icon: "🍽️", bucket: "wants" },
-  { name: "Shopping",         icon: "🛍️", bucket: "wants" },
-  { name: "Entertainment",    icon: "🎬", bucket: "wants" },
-  { name: "Travel",           icon: "✈️", bucket: "wants" },
-  { name: "Subscriptions",    icon: "🔁", bucket: "wants" },
-  { name: "Personal Care",    icon: "🧴", bucket: "wants" },
-  { name: "Gifts & Donations", icon: "🎁", bucket: "wants" },
-  { name: "Other",            icon: "•",  bucket: "wants" },
+  { name: "Housing",          icon: "home",    bucket: "needs" },
+  { name: "Utilities",        icon: "bolt",    bucket: "needs" },
+  { name: "Groceries",        icon: "cart",    bucket: "needs" },
+  { name: "Transport",        icon: "car",     bucket: "needs" },
+  { name: "Health",           icon: "heart",   bucket: "needs" },
+  { name: "Insurance",        icon: "shield",  bucket: "needs" },
+  { name: "Debt",             icon: "card",    bucket: "needs" },
+  { name: "Education",        icon: "book",    bucket: "needs" },
+  { name: "Kids",             icon: "blocks",  bucket: "needs" },
+  { name: "Fees",             icon: "bank",    bucket: "needs" },
+  { name: "Dining",           icon: "food",    bucket: "wants" },
+  { name: "Shopping",         icon: "bag",     bucket: "wants" },
+  { name: "Entertainment",    icon: "film",    bucket: "wants" },
+  { name: "Travel",           icon: "plane",   bucket: "wants" },
+  { name: "Subscriptions",    icon: "repeat",  bucket: "wants" },
+  { name: "Personal Care",    icon: "sparkle", bucket: "wants" },
+  { name: "Gifts & Donations", icon: "gift",   bucket: "wants" },
+  { name: "Other",            icon: "dots",    bucket: "wants" },
 ];
 
 /* common words people (and statements) use → canonical category */
@@ -53,7 +53,7 @@ const CATEGORY_BY_LOWER = (() => {
 
 function categoryMeta(name) {
   const c = CATEGORY_BY_LOWER[String(name || "").toLowerCase()];
-  return c || { name: name || "Other", icon: "•", bucket: "wants" };
+  return c || { name: name || "Other", icon: "dots", bucket: "wants" };
 }
 
 /* Map a free-text category to a known one where possible, else keep it. */
@@ -458,7 +458,7 @@ function budgetInsights(mk) {
     out.push({
       level: share > 0.4 ? "warn" : "info",
       title: "Biggest category: " + cats[0].name,
-      text: cats[0].meta.icon + " <strong>" + esc(cats[0].name) + "</strong> is " + pct(share) + " of spending (" + fmtMoney(cats[0].amount, { compact: true }) + ")" + (share > 0.4 ? " — a big concentration worth reviewing." : "."),
+      text: icon(cats[0].meta.icon) + " <strong>" + esc(cats[0].name) + "</strong> is " + pct(share) + " of spending (" + fmtMoney(cats[0].amount, { compact: true }) + ")" + (share > 0.4 ? " — a big concentration worth reviewing." : "."),
     });
   }
 

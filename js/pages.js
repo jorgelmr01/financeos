@@ -12,7 +12,7 @@ const Pages = {
 
     if (!hasAnything) {
       return '<div class="section"><div class="empty">' +
-        '<div class="empty-glyph">§</div>' +
+        '<div class="empty-glyph">' + icon("home") + '</div>' +
         "<h3>Welcome to your command center</h3>" +
         "<p>Add your first account, credit card, or position — or load sample data to explore what FinanceOS can do.</p>" +
         '<div class="empty-actions">' +
@@ -125,7 +125,7 @@ const Pages = {
             '<div class="b-item"><span class="micro-label">Unrealized P/L</span><span class="b-val ' + (t.pnl >= 0 ? "pos" : "neg") + '">' + fmtMoney(t.pnl, { sign: true }) + "</span></div>" +
           "</div>" +
           compBar +
-          '<button class="pct-chip" data-action="nav" data-page="milestones">✶ ' +
+          '<button class="pct-chip" data-action="nav" data-page="milestones">' + icon("star") + " " +
             topShareLabel(percentileFromTable(toUSD(t.netWorth), NETWORTH_PCT_TABLE)) + " worldwide — see milestones →</button>" +
         "</div>" +
       "</div>" +
@@ -206,7 +206,7 @@ const Pages = {
     const s = Store.state;
     const t = computeTotals();
     if (!s.accounts.length) {
-      return '<div class="section"><div class="empty"><div class="empty-glyph">▤</div>' +
+      return '<div class="section"><div class="empty"><div class="empty-glyph">' + icon("bank") + '</div>' +
         "<h3>No accounts yet</h3><p>Add your checking, savings, and investment accounts. FinanceOS will track interest automatically for any account with an APY.</p>" +
         '<button class="btn primary" data-action="add-account">+ Add your first account</button></div></div>';
     }
@@ -249,8 +249,8 @@ const Pages = {
         '<div class="acct-head"><div><div class="acct-name">' + esc(a.name) + '</div><div class="acct-inst">' + esc(a.institution || "—") + "</div></div>" +
         '<div style="display:flex;gap:2px;align-items:center">' +
           '<span class="tag ' + meta.tag + '">' + meta.label + " · " + a.currency + (hasApy ? " · " + a.apy + "%" : "") + "</span>" +
-          '<button class="icon-btn" data-action="edit-account" data-id="' + a.id + '" title="Edit">✎</button>' +
-          '<button class="icon-btn danger" data-action="del-account" data-id="' + a.id + '" title="Delete">✕</button>' +
+          '<button class="icon-btn" data-action="edit-account" data-id="' + a.id + '" title="Edit">' + icon("edit") + '</button>' +
+          '<button class="icon-btn danger" data-action="del-account" data-id="' + a.id + '" title="Delete">' + icon("x") + '</button>' +
         "</div></div>" +
         '<div class="acct-balance">' + fmtMoneyIn(a.balance, a.currency) +
           (foreign ? '<span class="fx-sub">≈ ' + fmtMoney(conv(a.balance, a.currency)) + "</span>" : "") + "</div>" +
@@ -265,7 +265,7 @@ const Pages = {
   cards() {
     const s = Store.state;
     if (!s.cards.length) {
-      return '<div class="section"><div class="empty"><div class="empty-glyph">▭</div>' +
+      return '<div class="section"><div class="empty"><div class="empty-glyph">' + icon("card") + '</div>' +
         "<h3>No credit cards yet</h3><p>Track limits, balances, statement cut dates and payment due dates — with alerts before anything is due.</p>" +
         '<button class="btn primary" data-action="add-card">+ Add your first card</button></div></div>';
     }
@@ -288,8 +288,8 @@ const Pages = {
       const pillClass = dd => dd <= 2 ? " due-now" : dd <= 7 ? " due-soon" : "";
       return '<div class="ccard ' + esc(c.color || "c-forest") + '">' +
         '<div class="ccard-actions">' +
-          '<button class="icon-btn" data-action="edit-card" data-id="' + c.id + '" title="Edit">✎</button>' +
-          '<button class="icon-btn danger" data-action="del-card" data-id="' + c.id + '" title="Delete">✕</button>' +
+          '<button class="icon-btn" data-action="edit-card" data-id="' + c.id + '" title="Edit">' + icon("edit") + '</button>' +
+          '<button class="icon-btn danger" data-action="del-card" data-id="' + c.id + '" title="Delete">' + icon("x") + '</button>' +
         "</div>" +
         '<div class="ccard-top"><div>' +
           '<div class="ccard-issuer">' + esc(c.issuer || "Credit Card") + "</div>" +
@@ -320,7 +320,7 @@ const Pages = {
   portfolio() {
     const s = Store.state;
     if (!s.holdings.length) {
-      return '<div class="section"><div class="empty"><div class="empty-glyph">◮</div>' +
+      return '<div class="section"><div class="empty"><div class="empty-glyph">' + icon("growth") + '</div>' +
         "<h3>No positions yet</h3><p>Add the stocks and ETFs you own with the price you paid. FinanceOS computes your returns as you update prices.</p>" +
         '<button class="btn primary" data-action="add-holding">+ Add your first position</button></div></div>';
     }
@@ -394,8 +394,8 @@ const Pages = {
         '<td class="num">' + fmtMoney(mv) + "</td>" +
         '<td class="num ' + (pnl >= 0 ? "pos" : "neg") + '">' + fmtMoney(pnl, { sign: true }) + '<div class="cell-sub ' + (pnl >= 0 ? "pos" : "neg") + '">' + fmtPct(pct) + "</div></td>" +
         '<td class="actions-cell">' +
-          '<button class="icon-btn" data-action="edit-holding" data-id="' + h.id + '" title="Edit">✎</button>' +
-          '<button class="icon-btn danger" data-action="del-holding" data-id="' + h.id + '" title="Delete">✕</button>' +
+          '<button class="icon-btn" data-action="edit-holding" data-id="' + h.id + '" title="Edit">' + icon("edit") + '</button>' +
+          '<button class="icon-btn danger" data-action="del-holding" data-id="' + h.id + '" title="Delete">' + icon("x") + '</button>' +
         "</td></tr>";
     }).join("");
 
@@ -468,8 +468,8 @@ const Pages = {
               (h.accountId ? " · " + esc(Store.accountName(h.accountId)) : "") +
               (h.purchaseDate ? " · since " + fmtDateShort(parseISO(h.purchaseDate)) : "") + "</div></div>" +
           '<div class="detail-actions">' +
-            '<button class="icon-btn" data-action="edit-holding" data-id="' + h.id + '" title="Edit">✎</button>' +
-            '<button class="icon-btn danger" data-action="del-holding" data-id="' + h.id + '" title="Delete">✕</button></div>' +
+            '<button class="icon-btn" data-action="edit-holding" data-id="' + h.id + '" title="Edit">' + icon("edit") + '</button>' +
+            '<button class="icon-btn danger" data-action="del-holding" data-id="' + h.id + '" title="Delete">' + icon("x") + '</button></div>' +
         "</div>" +
         '<div class="detail-price"><div class="detail-now">' + fmtMoneyIn(now, cur) + "</div>" +
           '<div class="detail-chg ' + (pnl >= 0 ? "pos" : "neg") + '">' + fmtMoney(pnl, { sign: true, compact: true }) + " (" + fmtPct(pct, 1) + ") all-time</div></div>" +
@@ -719,8 +719,8 @@ const Pages = {
         '<td class="num">' + fmtMoney(conv(monthlyEquivalentNet(inc), inc.currency)) + "</td>" +
         "<td>" + (next ? fmtDate(next) : "—") + "</td>" +
         '<td class="actions-cell">' +
-          '<button class="icon-btn" data-action="edit-income" data-id="' + inc.id + '" title="Edit">✎</button>' +
-          '<button class="icon-btn danger" data-action="del-income" data-id="' + inc.id + '" title="Delete">✕</button>' +
+          '<button class="icon-btn" data-action="edit-income" data-id="' + inc.id + '" title="Edit">' + icon("edit") + '</button>' +
+          '<button class="icon-btn danger" data-action="del-income" data-id="' + inc.id + '" title="Delete">' + icon("x") + '</button>' +
         "</td></tr>";
     }).join("") : '<tr><td colspan="6" style="color:var(--text-mute);text-align:center;padding:26px">No income streams yet — add your salary or other recurring income.</td></tr>';
 
@@ -834,7 +834,7 @@ const Pages = {
     const months = expenseMonths();
 
     if (!months.length) {
-      return '<div class="section"><div class="empty"><div class="empty-glyph">◓</div>' +
+      return '<div class="section"><div class="empty"><div class="empty-glyph">' + icon("pie") + '</div>' +
         "<h3>Track where your money goes</h3>" +
         "<p>Most people hate logging expenses by hand — so don't. Download the ready-made spreadsheet template, fill it in Excel or Google Sheets (or have your favourite AI fill it from your credit-card statements), and upload it. FinanceOS scores your spending, spots your biggest categories, and never double-counts a row.</p>" +
         '<div class="empty-actions">' +
@@ -921,7 +921,7 @@ const Pages = {
       '<div class="grid cols-4 section">' +
         '<div class="stat"><span class="micro-label">Spent · ' + monthLabel(mk) + '</span><div class="stat-value">' + fmtMoney(sc.monthlyExpenses) + '</div><div class="stat-note">' + exps.length + " expenses</div></div>" +
         '<div class="stat"><span class="micro-label">Savings rate</span><div class="stat-value ' + (sc.savingsRate == null ? "" : sc.savingsRate >= 0.2 ? "pos" : sc.savingsRate < 0 ? "neg" : "gold") + '">' + (sc.savingsRate == null ? "—" : pct(sc.savingsRate)) + '</div><div class="stat-note">' + (sc.savingsRate == null ? "add income to compute" : "of net income") + "</div></div>" +
-        '<div class="stat"><span class="micro-label">Biggest category</span><div class="stat-value">' + (topCat ? esc(topCat.meta.icon + " " + topCat.name) : "—") + '</div><div class="stat-note">' + (topCat ? fmtMoney(topCat.amount, { compact: true }) + (spend > 0 ? " · " + pct(topCat.amount / spend) : "") : "") + "</div></div>" +
+        '<div class="stat"><span class="micro-label">Biggest category</span><div class="stat-value" style="display:flex;align-items:center;gap:9px">' + (topCat ? icon(topCat.meta.icon, "ic-cat") + esc(topCat.name) : "—") + '</div><div class="stat-note">' + (topCat ? fmtMoney(topCat.amount, { compact: true }) + (spend > 0 ? " · " + pct(topCat.amount / spend) : "") : "") + "</div></div>" +
         '<div class="stat"><span class="micro-label">Runway</span><div class="stat-value ' + (sc.runwayMonths >= 6 ? "pos" : sc.runwayMonths < 3 ? "neg" : "gold") + '">' + (isFinite(sc.runwayMonths) ? sc.runwayMonths.toFixed(1) + " mo" : "∞") + '</div><div class="stat-note">liquid assets at this rate</div></div>' +
       "</div>";
 
@@ -949,7 +949,7 @@ const Pages = {
       const ratio = budget != null ? Math.min(1, c.amount / budget) : c.amount / maxCat;
       const barColor = budget != null ? (over ? "var(--rose)" : "var(--mint)") : "var(--sky)";
       return '<div class="bcat">' +
-        '<div class="bcat-head"><span class="bcat-name">' + esc(c.meta.icon) + " " + esc(c.name) + "</span>" +
+        '<div class="bcat-head"><span class="bcat-name">' + icon(c.meta.icon, "ic-cat") + esc(c.name) + "</span>" +
           '<span class="bcat-amt' + (over ? " neg" : "") + '">' + fmtMoney(c.amount, { compact: true }) +
             (budget != null ? ' <span class="bcat-budget">/ ' + fmtMoney(budget, { compact: true }) + "</span>" : "") + "</span></div>" +
         '<div class="bcat-track" data-tip="' + esc(c.name) + " · <strong>" + fmtMoney(c.amount, { compact: true }) + "</strong>" + (budget != null ? " of " + fmtMoney(budget, { compact: true }) + " budget" : "") + '"><span style="width:' + (ratio * 100) + '%;background:' + barColor + '"></span></div>' +
@@ -975,10 +975,10 @@ const Pages = {
       "<tr>" +
         '<td class="num" style="white-space:nowrap">' + fmtDateShort(e.date) + "</td>" +
         '<td><div class="cell-main">' + esc(e.description || "—") + "</div></td>" +
-        '<td><span class="bcat-tag">' + esc(categoryMeta(e.category).icon + " " + e.category) + "</span></td>" +
+        '<td><span class="bcat-tag">' + icon(categoryMeta(e.category).icon) + esc(e.category) + "</span></td>" +
         '<td class="num">' + fmtMoneyIn(e.amount, e.currency) + "</td>" +
-        '<td class="actions-cell"><button class="icon-btn" data-action="edit-expense" data-id="' + e.id + '" title="Edit">✎</button>' +
-          '<button class="icon-btn danger" data-action="del-expense" data-id="' + e.id + '" title="Remove">✕</button></td>' +
+        '<td class="actions-cell"><button class="icon-btn" data-action="edit-expense" data-id="' + e.id + '" title="Edit">' + icon("edit") + '</button>' +
+          '<button class="icon-btn danger" data-action="del-expense" data-id="' + e.id + '" title="Remove">' + icon("x") + '</button></td>' +
       "</tr>").join("");
     const listPanel =
       '<div class="panel section"><div class="panel-head"><div class="panel-title">' + monthLabel(mk) + ' expenses</div>' +
@@ -1078,7 +1078,7 @@ const Pages = {
     const up = movers.filter(m => m.delta > 0).slice(0, 5);
     const down = movers.filter(m => m.delta < 0).slice(0, 5);
     const moverRow = (m) =>
-      '<div class="mover"><span class="mover-name">' + esc(m.meta.icon + " " + m.name) + "</span>" +
+      '<div class="mover"><span class="mover-name">' + icon(m.meta.icon, "ic-cat") + esc(m.name) + "</span>" +
       '<span class="mover-delta ' + (m.delta > 0 ? "neg" : "pos") + '">' + (m.delta > 0 ? "+" : "−") + fmtMoney(Math.abs(m.delta), { compact: true }) + "</span></div>";
     const moversPanel = (up.length || down.length)
       ? '<div class="grid cols-2 stack-wide section" style="align-items:start">' +
@@ -1155,7 +1155,7 @@ const Pages = {
     const s = Store.state;
     const hasAnything = s.accounts.length || s.cards.length || s.holdings.length || s.incomes.length;
     if (!hasAnything) {
-      return '<div class="section"><div class="empty"><div class="empty-glyph">✶</div>' +
+      return '<div class="section"><div class="empty"><div class="empty-glyph">' + icon("award") + '</div>' +
         "<h3>Nothing to measure yet</h3><p>Add your accounts, portfolio and income streams first — then come back to see where you stand globally and which achievements you've unlocked.</p>" +
         '<button class="btn primary" data-action="nav" data-page="accounts">Start with an account</button></div></div>';
     }
@@ -1257,7 +1257,7 @@ const Pages = {
         "Add each stock or ETF with the <strong>shares and average price you paid</strong>, in the listing's own currency (US tickers are USD).",
         "Press <strong>↻ Update prices</strong> to pull live quotes and annual dividends — <strong>no API key needed</strong>. Stocks and ETFs both work: dividends come from the actual payments of the last 12 months (Yahoo data via a public proxy that sees only ticker symbols). An optional free <strong>finnhub.io</strong> key in Settings adds a direct quote source.",
         "Values and returns are converted to your display currency with daily ECB exchange rates.",
-        "Dividends feed the Earnings page and your annual-earnings milestone automatically. If a ticker still reports no dividend, set <strong>Dividend / share / year</strong> yourself in the position editor (✎) — manual values are never overwritten.",
+        "Dividends feed the Earnings page and your annual-earnings milestone automatically. If a ticker still reports no dividend, set <strong>Dividend / share / year</strong> yourself in the position editor (pencil button) — manual values are never overwritten.",
       ]) +
       card("✦", "Earnings & taxes", [
         "Income streams support <strong>monthly</strong> (any day), <strong>every 15 days</strong> (15th & month-end), <strong>every 14 days</strong> and <strong>weekly</strong> schedules.",

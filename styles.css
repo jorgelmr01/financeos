@@ -219,7 +219,10 @@ body {
   content: ""; position: absolute; left: 0; top: 22%; bottom: 22%;
   width: 2px; background: var(--mint); border-radius: 2px;
 }
-.nav-glyph { font-size: 13px; width: 18px; text-align: center; opacity: 0.85; }
+.nav-glyph { width: 19px; height: 19px; display: inline-flex; align-items: center; justify-content: center; opacity: 0.78; transition: opacity 0.18s, transform 0.18s; }
+.nav-glyph .ic { width: 19px; height: 19px; }
+.nav-item:hover .nav-glyph { opacity: 1; }
+.nav-item.active .nav-glyph { opacity: 1; transform: translateX(1px); }
 .nav-index {
   margin-left: auto; font-family: var(--font-mono);
   font-size: 10px; color: var(--text-mute); letter-spacing: 0.1em;
@@ -255,8 +258,11 @@ body {
   border: 1px solid var(--hairline); border-radius: var(--r-sm);
   font-size: 16px; line-height: 1;
   padding: 8px 12px; cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
 }
+.tool-btn .ic { width: 17px; height: 17px; }
+.pct-chip .ic { width: 13px; height: 13px; color: var(--gold); }
 .tool-btn:hover { color: var(--text); border-color: var(--hairline-strong); }
 .data-menu { position: relative; }
 .data-menu-pop {
@@ -337,13 +343,28 @@ body {
 .icon-btn.danger:hover { color: var(--rose); background: var(--rose-dim); }
 
 /* ---------- panels & grids ---------- */
+/* ---------- icon system (monoline SVG, currentColor) ---------- */
+.ic { width: 1.05em; height: 1.05em; flex: none; vertical-align: -0.18em; }
+.ic-cat { width: 1.15em; height: 1.15em; color: var(--mint); }
+.icon-btn .ic { width: 15px; height: 15px; }
+.bcat-name, .mover-name { display: inline-flex; align-items: center; gap: 9px; }
+.field-ic { display: inline-flex; vertical-align: -0.2em; margin-right: 7px; }
+.field-ic .ic { color: var(--mint); width: 14px; height: 14px; }
+
 .panel {
   background: linear-gradient(160deg, var(--surface) 0%, var(--bg-raise) 100%);
   border: 1px solid var(--hairline);
   border-radius: var(--r-lg);
   padding: 22px 24px;
   position: relative;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04), 0 18px 40px -30px rgba(0, 0, 0, 0.6);
 }
+/* hairline top highlight gives panels a crafted, layered edge */
+.panel::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  box-shadow: inset 0 1px 0 rgba(233, 239, 228, 0.04);
+}
+body.light .panel::before { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6); }
 .panel-head {
   display: flex; align-items: baseline; justify-content: space-between;
   margin-bottom: 18px; gap: 12px;
@@ -611,10 +632,11 @@ body {
 
 /* ---------- tags & badges ---------- */
 .tag {
-  display: inline-block; padding: 3px 9px; border-radius: 100px;
-  font-family: var(--font-mono); font-size: 10px;
-  letter-spacing: 0.12em; text-transform: uppercase;
+  display: inline-block; padding: 3.5px 10px; border-radius: 100px;
+  font-family: var(--font-mono); font-size: 9.5px; font-weight: 500;
+  letter-spacing: 0.13em; text-transform: uppercase;
   border: 1px solid var(--hairline-strong); color: var(--text-dim);
+  background: var(--surface-3);
 }
 .tag.mint { color: var(--mint); border-color: rgba(143, 227, 166, 0.35); background: var(--mint-dim); }
 .tag.gold { color: var(--gold); border-color: rgba(229, 201, 123, 0.35); background: var(--gold-dim); }
@@ -832,9 +854,12 @@ body {
   padding: 46px 30px; text-align: center;
 }
 .empty-glyph {
-  font-family: var(--font-display); font-style: italic;
-  font-size: 44px; color: var(--text-mute); line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 64px; height: 64px; margin: 0 auto; border-radius: 16px;
+  background: var(--surface-3); border: 1px solid var(--hairline);
+  color: var(--mint);
 }
+.empty-glyph .ic { width: 30px; height: 30px; stroke-width: 1.5; }
 .empty h3 { font-family: var(--font-display); font-weight: 480; font-size: 21px; margin: 14px 0 6px; }
 .empty p { color: var(--text-mute); font-size: 13.5px; max-width: 380px; margin: 0 auto 18px; }
 
@@ -947,14 +972,19 @@ body {
   .nav-toggle { display: inline-flex; align-items: center; justify-content: center; }
   .topbar {
     position: sticky; top: 0; z-index: 40;
-    align-items: center; gap: 12px;
-    margin: -22px -18px 18px; padding: 18px;
-    padding-top: max(18px, calc(env(safe-area-inset-top) + 12px));
+    align-items: center; gap: 12px; flex-wrap: wrap; row-gap: 12px;
+    margin: -22px -18px 18px; padding: 14px 18px;
+    padding-top: max(14px, calc(env(safe-area-inset-top) + 10px));
     background: var(--bg);
+    background: color-mix(in srgb, var(--bg) 86%, transparent);
+    -webkit-backdrop-filter: saturate(1.4) blur(12px); backdrop-filter: saturate(1.4) blur(12px);
     border-bottom: 1px solid var(--hairline);
   }
-  .topbar-head { flex: 1; min-width: 0; }
-  .page-title { font-size: 23px; }
+  .topbar-head { flex: 1 1 auto; min-width: 0; }
+  .topbar-head .page-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* actions drop to their own full-width row so they never collide with the title */
+  .topbar-right { flex-basis: 100%; order: 3; justify-content: flex-start; }
+  .page-title { font-size: 22px; }
   .page-date { display: none; }
   .main { padding: 22px 18px 50px; }
 }
@@ -1102,10 +1132,12 @@ button, a, .nav-item, .tool-btn, .icon-btn, .swatch { -webkit-tap-highlight-colo
 .bcat-track { height: 8px; border-radius: 100px; background: var(--surface-3); overflow: hidden; }
 .bcat-track span { display: block; height: 100%; min-width: 2px; border-radius: 100px; transition: width 0.5s ease; }
 .bcat-tag {
-  display: inline-block; font-family: var(--font-mono); font-size: 11px;
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-mono); font-size: 11px;
   color: var(--text-dim); background: var(--surface-3);
-  padding: 3px 9px; border-radius: 100px; white-space: nowrap;
+  padding: 4px 10px; border-radius: 100px; white-space: nowrap;
 }
+.bcat-tag .ic { width: 13px; height: 13px; color: var(--mint); }
 .budget-foot { margin-top: 14px; display: flex; justify-content: flex-end; }
 
 /* ---------- budget trends (segmented toggle, comparison cards, charts) ---------- */

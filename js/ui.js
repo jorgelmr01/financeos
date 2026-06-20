@@ -13,7 +13,7 @@ const UI = {
         '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">' +
           '<div class="modal-head">' +
             '<div class="modal-title" id="modal-title">' + title + "</div>" +
-            '<button class="icon-btn" data-action="close-modal" title="Close" aria-label="Close dialog">✕</button>' +
+            '<button class="icon-btn" data-action="close-modal" title="Close" aria-label="Close dialog">' + icon("x") + '</button>' +
           "</div>" +
           '<form id="modal-form"><div class="modal-body">' + bodyHtml + "</div>" +
           '<div class="modal-foot">' +
@@ -385,7 +385,7 @@ const UI = {
     e = e || {};
     const isEdit = !!e.id;
     const catOpts = EXPENSE_CATEGORIES.map(c =>
-      '<option value="' + esc(c.name) + '"' + (e.category === c.name ? " selected" : "") + ">" + c.icon + " " + esc(c.name) + "</option>").join("");
+      '<option value="' + esc(c.name) + '"' + (e.category === c.name ? " selected" : "") + ">" + esc(c.name) + "</option>").join("");
     const body = '<div class="f-grid">' +
       this.field("Date", '<input name="date" type="date" required value="' + esc(e.date || toISO(todayMid())) + '">') +
       this.field("Amount", '<input name="amount" type="number" inputmode="decimal" step="0.01" required value="' + (e.amount != null ? e.amount : "") + '" placeholder="0.00">', "Positive for spending · minus for a refund") +
@@ -418,7 +418,7 @@ const UI = {
     const firstCur = EXPENSE_CATEGORIES.map(c => b[c.name] && b[c.name].currency).find(Boolean) || displayCurrency();
     const rows = EXPENSE_CATEGORIES.map((c, i) => {
       const v = b[c.name] && b[c.name].amount != null ? b[c.name].amount : "";
-      return this.field(c.icon + " " + esc(c.name),
+      return this.field('<span class="field-ic">' + icon(c.icon) + "</span>" + esc(c.name),
         '<input name="b' + i + '" type="number" inputmode="decimal" step="0.01" min="0" value="' + v + '" placeholder="—">');
     }).join("");
     const body =
