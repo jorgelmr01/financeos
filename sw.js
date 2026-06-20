@@ -1,6 +1,9 @@
 /* FinanceOS service worker — offline app shell + runtime caching.
-   Bump CACHE when shipping new assets so clients pick them up. */
-const CACHE = 'financeos-v17';
+   Bump CACHE when shipping new assets so clients pick them up.
+   The Tesseract OCR assets under vendor/tesseract/ are deliberately NOT in the
+   precache shell (~9MB) — they're fetched lazily the first time someone imports
+   a scanned statement, then cached on use by the same-origin handler below. */
+const CACHE = 'financeos-v18';
 
 /* Local app shell — everything needed to boot fully offline. */
 const SHELL = [

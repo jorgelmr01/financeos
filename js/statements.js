@@ -28,8 +28,24 @@ const Statements = {
 
   available() { return typeof pdfjsLib !== "undefined"; },
 
-  /* Extract positioned text from a PDF, grouped into visual lines per page.
-     Returns { pages:[{lines:[string]}], text:string, charCount:number }. */
+  /* group positioned glyphs into visual lines (top→bottom, left→right) */
+  _linesFromItems(items) {
+    items.sort((a, b) => (b.y - a.y) || (a.x - b.x));
+    const lines = [];
+    let cur = null, cy = null;
+    items.forEach(it => {
+      if (cy === null || Math.abs(it.y - cy) > 3) { if (cur) lines.push(cur); cur = []; cy = it.y; }
+      cur.push(it);
+    });
+    if (cur) lines.push(cur);
+    return lines.map(l =>
+      l.sort((a, b) => a.x - b.x).map(i => i.s).join(" ").replace(/\s+/g, " ").trim()
+    ).filter(Boolean);
+  },
+
+  /* Open a PDF and pull its embedded text layer, grouped into lines per page.
+     Keeps the doc handle so scanned pages can be rendered + OCR'd afterward.
+     Returns { doc, pages:[{lines, chars}], text, charCount, numPages }. */
   async extract(file) {
     if (!this._ensureWorker()) throw new Error("PDF engine unavailable");
     const buf = await file.arrayBuffer();
@@ -46,31 +62,87 @@ const Statements = {
       const page = await doc.getPage(p);
       const tc = await page.getTextContent();
       const items = [];
+      let chars = 0;
       tc.items.forEach(it => {
         const s = (it.str || "");
         if (!s.trim()) return;
-        charCount += s.length;
+        chars += s.length;
         items.push({ x: it.transform[4], y: it.transform[5], s });
       });
-      // group into rows by y (top→bottom), order by x within a row
-      items.sort((a, b) => (b.y - a.y) || (a.x - b.x));
-      const lines = [];
-      let cur = null, cy = null;
-      items.forEach(it => {
-        if (cy === null || Math.abs(it.y - cy) > 3) { if (cur) lines.push(cur); cur = []; cy = it.y; }
-        cur.push(it);
-      });
-      if (cur) lines.push(cur);
-      pages.push({
-        lines: lines.map(l =>
-          l.sort((a, b) => a.x - b.x).map(i => i.s).join(" ").replace(/\s+/g, " ").trim()
-        ).filter(Boolean),
-      });
+      charCount += chars;
+      pages.push({ lines: this._linesFromItems(items), chars });
       page.cleanup && page.cleanup();
     }
-    try { doc.destroy(); } catch (e) { /* ignore */ }
     const text = pages.map(pg => pg.lines.join("\n")).join("\n");
-    return { pages, text, charCount, numPages };
+    return { doc, pages, text, charCount, numPages };
+  },
+
+  /* ---------- on-device OCR for scanned (image-only) statements ----------
+     Tesseract.js is vendored under /vendor and loaded lazily — only when a
+     statement has no text layer. Like everything here, it runs entirely in the
+     browser; the rendered pages and recognized text never leave the device. */
+  TESS_DIR: "vendor/tesseract/",
+  _tess: null,
+
+  ocrAvailable() {
+    // needs WebAssembly + an OffscreenCanvas/canvas to render pages into
+    return typeof WebAssembly !== "undefined" && typeof document !== "undefined";
+  },
+
+  _loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = src; s.async = true;
+      s.onload = resolve;
+      s.onerror = () => reject(new Error("Failed to load " + src));
+      document.head.appendChild(s);
+    });
+  },
+
+  async _ensureTesseract() {
+    if (this._tess) return this._tess;
+    if (typeof Tesseract === "undefined") await this._loadScript(this.TESS_DIR + "tesseract.min.js");
+    const worker = await Tesseract.createWorker("spa", 1, {
+      workerPath: this.TESS_DIR + "worker.min.js",
+      corePath: this.TESS_DIR + "tesseract-core-simd-lstm.wasm.js",
+      langPath: this.TESS_DIR,
+      gzip: true,
+    });
+    await worker.setParameters({ tessedit_pageseg_mode: "6" }); // assume a uniform block of text
+    this._tess = worker;
+    return worker;
+  },
+
+  /* render one PDF page to a canvas at a resolution good enough for OCR */
+  async _renderPage(page, scale) {
+    const viewport = page.getViewport({ scale: scale });
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.floor(viewport.width);
+    canvas.height = Math.floor(viewport.height);
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+    return canvas;
+  },
+
+  /* OCR the pages that lack a usable text layer. onProgress(done,total). */
+  async ocrPages(doc, pageNums, onProgress) {
+    const worker = await this._ensureTesseract();
+    const out = {};
+    for (let i = 0; i < pageNums.length; i++) {
+      const n = pageNums[i];
+      if (onProgress) onProgress(i, pageNums.length);
+      const page = await doc.getPage(n);
+      // scale for a ~2100px-wide image — the sweet spot for digit accuracy
+      const baseW = page.getViewport({ scale: 1 }).width || 612;
+      const scale = Math.max(2, Math.min(3.6, 2100 / baseW));
+      const canvas = await this._renderPage(page, scale);
+      const { data } = await worker.recognize(canvas);
+      out[n] = (data.text || "").split("\n").map(l => l.replace(/\s+/g, " ").trim()).filter(Boolean);
+      canvas.width = canvas.height = 0;       // free memory between pages
+      page.cleanup && page.cleanup();
+    }
+    if (onProgress) onProgress(pageNums.length, pageNums.length);
+    return out;
   },
 
   /* ---------- bank detection ---------- */
@@ -133,9 +205,10 @@ const Statements = {
   },
 
   /* ---------- transaction classification ---------- */
-  _PAYMENT_RE: /pago\b|gracias por su pago|thank you for your payment|abono(?!\s*a\s*meses)|domiciliaci/i,
+  // \bpago\b so "MercadoPago" (a merchant) is NOT mistaken for a card payment
+  _PAYMENT_RE: /\bpago\b|gracias por su pago|thank you for your payment|\babono\b(?!\s*a\s*meses)|domiciliaci/i,
   _REFUND_RE: /reembolso|devoluci|bonificaci|refund|cr[eé]dito\b|ajuste a favor/i,
-  _SKIP_RE: /saldo (al corte|anterior|del periodo)|balance forward|saldo total|monto a diferir|meses en autom[aá]tico|pago m[ií]nimo/i,
+  _SKIP_RE: /saldo (al corte|anterior|del periodo)|balance forward|saldo total|monto a diferir|meses en autom[aá]tico|pago m[ií]nimo|^(iva|intereses?|ordinarios?|moratorios?|comisiones?|capital)$/i,
   classify(desc, signedAmount, hasCR) {
     if (this._SKIP_RE.test(desc)) return "balance";
     if (hasCR || this._PAYMENT_RE.test(desc)) return "payment";
@@ -217,6 +290,36 @@ const Statements = {
     return rows;
   },
 
+  /* Santander statements are scanned images, so this runs on OCR output.
+     Rows look like: "14-Ene-2026 | 15-Ene-2026 | MERPAGO PERIFERICO MAG2105031V3 $ 135.00"
+     A trailing "[-]" or a "PAGO/TRANSFERENCIA" description marks an abono (credit). */
+  parseSantander(text) {
+    const rows = [];
+    const lines = text.split("\n");
+    // strict: require the $ + 2-decimal amount so OCR digit slips don't import as a wild number
+    const re = /(\d{1,2})-([A-Za-zÁÉÍÓÚáéíóú]{3,4})-(\d{4})(.*?)([-+]|\[\s*-\s*\])?\s*\$\s*([\d][\d,]*\.\d{2})\s*[\]|)]*$/;
+    for (const ln of lines) {
+      const m = ln.match(re);
+      if (!m) continue;
+      const mo = this._monthIdx(m[2]); if (!mo) continue;
+      let mid = m[4] || "";
+      // drop the "fecha de cargo" second date and table pipes
+      mid = mid.replace(/\d{1,2}\s*-\s*[A-Za-z?]{3,4}\s*-\s*\d{2,4}/g, " ").replace(/\|/g, " ");
+      // drop trailing merchant reference codes (e.g. "MAG 2105031VW3", "RAD161031RK1")
+      let desc = mid.replace(/\b[A-Z]{2,4}\s?\d[0-9A-Za-z]{5,}\b/gi, " ")
+        .replace(/\[\s*-?\s*\]/g, " ")
+        .replace(/^[\s?|.+-]+/, "")              // OCR noise bleeding in from the date column
+        .replace(/\s+/g, " ").trim();
+      if (desc.length < 2) continue;
+      const amt = this._amt(m[6]);
+      if (amt == null) continue;
+      const isAbono = /\[\s*-\s*\]/.test(m[0]) || (m[5] === "-");
+      const type = isAbono ? "payment" : this.classify(desc, amt, false);
+      rows.push({ date: this._iso(+m[3], mo, +m[1]), description: desc, amount: amt, type: type });
+    }
+    return rows;
+  },
+
   /* generic: any line with a recognizable date and a trailing amount */
   parseGeneric(text) {
     const rows = [];
@@ -244,27 +347,66 @@ const Statements = {
     return rows;
   },
 
-  /* ---------- top-level: parse a File into reviewable rows ---------- */
-  async parse(file) {
+  /* ---------- top-level: parse a File into reviewable rows ----------
+     onProgress({phase, page, pages}) is called during the (slow) OCR pass. */
+  async parse(file, onProgress) {
     const ex = await this.extract(file);
-    const bank = this.detectBank(ex.text);
     const warnings = [];
+    let text = ex.text;
+    let viaOCR = false;
 
-    // a scanned PDF has almost no extractable text
-    if (ex.charCount < 40 * Math.max(1, ex.numPages / 6)) {
-      return {
-        bank, bankLabel: this.BANK_LABEL[bank], currency: "MXN", rows: [], scanned: true,
-        warnings: ["This statement looks scanned (an image with no text layer), so it can't be read on-device. Use the spreadsheet template instead — or ask your bank for a digital/PDF-with-text statement."],
-      };
+    // A scanned statement has little/no text layer. If OCR is available, read
+    // the image pages on-device; otherwise tell the user to use the template.
+    const minChars = 40 * Math.max(1, ex.numPages / 6);
+    if (ex.charCount < minChars) {
+      if (!this.ocrAvailable()) {
+        try { ex.doc.destroy(); } catch (e) {}
+        const bank0 = this.detectBank(text);
+        return {
+          bank: bank0, bankLabel: this.BANK_LABEL[bank0], currency: "MXN", rows: [], scanned: true,
+          warnings: ["This statement is a scan (an image with no text layer) and this device can't run on-device OCR. Use the spreadsheet template instead, or open it on a newer browser."],
+        };
+      }
+      try {
+        // OCR the pages that have no usable text layer (cap to keep it bounded)
+        const need = [];
+        for (let p = 1; p <= ex.numPages && need.length < 20; p++) {
+          if (!ex.pages[p - 1] || ex.pages[p - 1].chars < 20) need.push(p);
+        }
+        const ocr = await this.ocrPages(ex.doc, need, (done, total) => {
+          if (onProgress) onProgress({ phase: "ocr", page: done, pages: total });
+        });
+        // rebuild text, preferring the text layer where it exists
+        const merged = [];
+        for (let p = 1; p <= ex.numPages; p++) {
+          const tl = ex.pages[p - 1];
+          merged.push(((tl && tl.chars >= 20 ? tl.lines : ocr[p]) || []).join("\n"));
+        }
+        text = merged.join("\n");
+        viaOCR = true;
+      } catch (err) {
+        try { ex.doc.destroy(); } catch (e) {}
+        const bank0 = this.detectBank(text);
+        return {
+          bank: bank0, bankLabel: this.BANK_LABEL[bank0], currency: "MXN", rows: [], scanned: true,
+          warnings: ["This statement is a scan and on-device OCR couldn't run here (" + (err && err.message ? err.message : "unknown error") + "). Try the spreadsheet template instead."],
+        };
+      }
     }
+    try { ex.doc.destroy(); } catch (e) {}
+
+    const bank = this.detectBank(text);
 
     let raw;
-    if (bank === "amex") raw = this.parseAmex(ex.text);
-    else if (bank === "klar") raw = this.parseKlar(ex.text);
-    else if (bank === "openbank") raw = this.parseOpenbank(ex.text);
+    if (bank === "amex") raw = this.parseAmex(text);
+    else if (bank === "klar") raw = this.parseKlar(text);
+    else if (bank === "openbank") raw = this.parseOpenbank(text);
+    else if (bank === "santander") raw = this.parseSantander(text);
     else raw = [];
     // always try the generic pass too; merge anything new the bank parser missed
-    if (bank === "generic" || !raw.length) raw = this.parseGeneric(ex.text);
+    if (bank === "generic" || !raw.length) raw = raw.concat(this.parseGeneric(text));
+
+    if (viaOCR) warnings.push("Read from a scan with on-device OCR — double-check the amounts before importing.");
 
     // de-dupe rows within the statement (same date+desc+amount)
     const seen = {};
@@ -294,8 +436,8 @@ const Statements = {
     });
 
     rows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-    if (!rows.length) warnings.push("No transactions could be read from this PDF. It may use an unusual layout — try the spreadsheet template instead.");
-    this.lastParse = { bank, bankLabel: this.BANK_LABEL[bank], currency, rows, warnings, scanned: false };
+    if (!rows.length) warnings.push((viaOCR ? "OCR ran but no transactions could be matched. " : "No transactions could be read from this PDF. ") + "It may use an unusual layout — try the spreadsheet template instead.");
+    this.lastParse = { bank, bankLabel: this.BANK_LABEL[bank], currency, rows, warnings, scanned: false, viaOCR: viaOCR };
     return this.lastParse;
   },
 

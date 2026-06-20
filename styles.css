@@ -1360,6 +1360,13 @@ button, a, .nav-item, .tool-btn, .icon-btn, .swatch { -webkit-tap-highlight-colo
 .stmt-amt.neg { color: var(--mint); }
 .stmt-foot-note { margin-top: 10px; color: var(--text-faint); font-size: 12px; text-align: right; }
 
+.spinner {
+  width: 34px; height: 34px; margin: 0 auto; border-radius: 50%;
+  border: 3px solid var(--hairline-strong); border-top-color: var(--mint);
+  animation: sp-rot 0.8s linear infinite;
+}
+@keyframes sp-rot { to { transform: rotate(360deg); } }
+
 .import-or {
   display: flex; align-items: center; gap: 12px;
   margin: 18px 0 12px; color: var(--text-faint); font-size: 11.5px;

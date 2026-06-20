@@ -460,7 +460,7 @@ const UI = {
       '<div class="import-or"><span>or skip the spreadsheet</span></div>' +
       '<button type="button" class="btn small full-w" data-action="statement-import">' + icon("card") +
         ' Import a statement PDF <span class="beta-pill">Beta</span></button>' +
-      '<p class="modal-note" style="margin-top:8px;font-size:12px;color:var(--text-faint)">Reads Amex, Klar &amp; Openbank statements on your device — nothing is uploaded.</p>';
+      '<p class="modal-note" style="margin-top:8px;font-size:12px;color:var(--text-faint)">Reads Amex, Klar, Openbank &amp; Santander statements on your device — nothing is uploaded.</p>';
     this.openModal("Upload expenses", body, {
       submitLabel: "Choose CSV file…",
       onSubmit() {
@@ -483,11 +483,11 @@ const UI = {
         "<div><strong>100% on your device.</strong> The PDF is parsed right here in your browser — it is never uploaded, " +
         "sent to a server, or stored anywhere but on this device.</div></div>" +
       '<ul class="import-steps">' +
-        "<li>Works best with <strong>Amex</strong>, <strong>Klar</strong> and <strong>Openbank</strong> statements — other banks use a generic reader.</li>" +
+        "<li>Tuned for <strong>Amex</strong>, <strong>Klar</strong>, <strong>Openbank</strong> and <strong>Santander</strong> — other banks use a generic reader.</li>" +
         "<li>Payments and card transfers are detected and left <strong>unchecked</strong> (they aren't expenses).</li>" +
         "<li>Re-uploading is safe — duplicate rows are never added twice.</li>" +
       "</ul>" +
-      '<p class="modal-note" style="margin-top:10px;color:var(--text-faint);font-size:12px">Scanned (image-only) statements can\'t be read — use the spreadsheet template for those.</p>';
+      '<p class="modal-note" style="margin-top:10px;color:var(--text-faint);font-size:12px">Scanned statements (like Santander) are read with on-device OCR — that takes a little longer and still never leaves your device. Double-check the amounts before importing.</p>';
     this.openModal('Import from statement <span class="beta-pill">Beta</span>', body, {
       submitLabel: "Choose PDF…",
       onSubmit() {
@@ -495,6 +495,24 @@ const UI = {
         document.getElementById("statement-file").click();
       },
     });
+  },
+
+  statementProgress(title, detail) {
+    const root = document.getElementById("modal-root");
+    const existing = document.getElementById("stmt-progress");
+    if (existing) {
+      const t = existing.querySelector(".sp-title"); if (t) t.textContent = title;
+      const d = existing.querySelector(".sp-detail"); if (d) d.textContent = detail || "";
+      return;
+    }
+    root.innerHTML =
+      '<div class="modal-overlay"><div class="modal" role="dialog" aria-modal="true" id="stmt-progress">' +
+        '<div class="modal-body" style="text-align:center;padding:30px 22px">' +
+          '<div class="spinner" aria-hidden="true"></div>' +
+          '<div class="sp-title" style="font-weight:600;color:var(--text);margin-top:16px">' + esc(title) + "</div>" +
+          '<div class="sp-detail" style="color:var(--text-faint);font-size:12.5px;margin-top:7px">' + esc(detail || "") + "</div>" +
+        "</div>" +
+      "</div></div>";
   },
 
   _catOptions(selected) {

@@ -492,11 +492,19 @@ const App = {
         UI.toast("Please choose a PDF statement");
         return;
       }
-      UI.toast("Reading statement on your device…");
+      UI.statementProgress("Reading statement on your device…");
       try {
-        const parse = await Statements.parse(f);
+        const parse = await Statements.parse(f, (p) => {
+          if (p && p.phase === "ocr") {
+            UI.statementProgress(
+              "This statement is a scan — reading it on your device with OCR.",
+              "Page " + Math.min(p.page + 1, p.pages) + " of " + p.pages + " · nothing is uploaded"
+            );
+          }
+        });
         UI.statementReview(parse);
       } catch (err) {
+        UI.closeModal();
         UI.toast("Couldn't read that PDF — it may be password-protected or corrupted");
       }
     });
