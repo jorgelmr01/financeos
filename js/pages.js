@@ -187,6 +187,11 @@ const Pages = {
             '<div class="ai-item"><span class="micro-label">Monthly' + (taxI > 0 ? " net" : "") + '</span><span class="ai-val">' + fmtMoneyIn(monthlyInterestEst(a) * netF, a.currency, { sign: true }) + "</span></div>" +
             '<div class="ai-item"><span class="micro-label">Yearly' + (taxI > 0 ? " net" : "") + '</span><span class="ai-val">' + fmtMoneyIn(yearlyInterestEst(a) * netF, a.currency, { sign: true }) + "</span></div>" +
           "</div>" +
+          '<div class="acct-sched">' +
+            '<span class="micro-label">Paid ' + esc(interestScheduleLabel(a)) + "</span>" +
+            '<span class="sched-next">next ' + fmtDateShort(nextInterestDate(a)) +
+              ' · <span class="pos">' + fmtMoneyIn(interestPerPeriod(a) * netF, a.currency, { sign: true }) + "</span></span>" +
+          "</div>" +
           '<div class="acct-foot">' +
             '<span class="accrued-note">accrued ' + fmtMoneyIn(accrued * netF, a.currency, { sign: true }) + (taxI > 0 ? " (after " + taxI + "% tax)" : "") + " since " + fmtDateShort(parseISO(a.balanceAsOf) || todayMid()) + "</span>" +
             (accrued * netF >= 0.01 ? '<button class="btn small ghost" data-action="capitalize" data-id="' + a.id + '" title="Add accrued net interest to the balance">Capitalize</button>' : "") +
@@ -433,14 +438,15 @@ const Pages = {
         '<td class="num pos">' + fmtMoney(conv(dailyInterest(a) * taxIF, a.currency), { sign: true }) + "</td>" +
         '<td class="num pos">' + fmtMoney(conv(monthlyInterestEst(a) * taxIF, a.currency), { sign: true }) + "</td>" +
         '<td class="num pos">' + fmtMoney(conv(yearlyInterestEst(a) * taxIF, a.currency), { sign: true }) + "</td>" +
+        '<td><div class="cell-main">' + esc(interestScheduleLabel(a)) + '</div><div class="cell-sub">next ' + fmtDateShort(nextInterestDate(a)) + "</div></td>" +
       "</tr>").join("") :
-      '<tr><td colspan="6" style="color:var(--text-mute);text-align:center;padding:26px">No interest-bearing accounts. Set an APY on a savings account to see projections here.</td></tr>';
+      '<tr><td colspan="7" style="color:var(--text-mute);text-align:center;padding:26px">No interest-bearing accounts. Set an APY on a savings account to see projections here.</td></tr>';
 
     const interestPanel =
       '<div class="panel section"><div class="panel-head"><div class="panel-title">Interest engine</div>' +
       '<span class="panel-sub">' + (tax.interest > 0 ? "net of " + tax.interest + "% tax · " : "") + "compounding estimates per account</span></div>" +
       '<div style="overflow-x:auto"><table class="tbl"><thead><tr>' +
-        "<th>Account</th><th class=\"num\">Balance</th><th class=\"num\">Rate</th><th class=\"num\">Daily</th><th class=\"num\">Monthly</th><th class=\"num\">Yearly</th>" +
+        "<th>Account</th><th class=\"num\">Balance</th><th class=\"num\">Rate</th><th class=\"num\">Daily</th><th class=\"num\">Monthly</th><th class=\"num\">Yearly</th><th>Paid</th>" +
       "</tr></thead><tbody>" + interestRows + "</tbody></table></div></div>";
 
     /* ---- dividends by holding ---- */
@@ -478,14 +484,26 @@ const Pages = {
         amount: conv(netPerDeposit(inc), inc.currency),
       }));
     });
-    // interest credited at month-end for each interest-bearing account
+    // interest credited on each account's own pay schedule
     intAccounts.forEach(a => {
-      for (let i = 0; i <= 1; i++) {
-        const eom = new Date(now.getFullYear(), now.getMonth() + i + 1, 0);
-        if (eom >= now && eom <= to) events.push({
-          d: eom, name: "Interest — " + a.name, sub: a.apy + "% APY" + (tax.interest > 0 ? " · net of " + tax.interest + "% tax" : "") + " → " + esc(a.name),
-          amount: conv(monthlyInterestEst(a) * taxIF, a.currency), interest: true,
+      if (interestFreqKey(a) === "daily") {
+        // continuous — show one summarized line for the whole window
+        const days = daysBetween(now, to);
+        events.push({
+          d: to, name: "Interest — " + a.name,
+          sub: "Daily · " + a.apy + "% APY" + (tax.interest > 0 ? " · net of " + tax.interest + "% tax" : "") + " → " + esc(a.name),
+          amount: conv(interestPerPeriod(a) * taxIF * days, a.currency), interest: true,
         });
+        return;
+      }
+      let d = nextInterestDate(a, now), guard = 0;
+      while (d <= to && guard++ < 12) {
+        events.push({
+          d, name: "Interest — " + a.name,
+          sub: interestScheduleLabel(a) + " · " + a.apy + "% APY" + (tax.interest > 0 ? " · net of " + tax.interest + "% tax" : "") + " → " + esc(a.name),
+          amount: conv(interestPerPeriod(a) * taxIF, a.currency), interest: true,
+        });
+        d = nextInterestDate(a, new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1));
       }
     });
     events.sort((a, b) => a.d - b.d);
@@ -598,6 +616,7 @@ const Pages = {
       '<div class="guide-grid section">' +
       card("▤", "Accounts & interest", [
         "Set the <strong>APY %</strong> on savings accounts and FinanceOS projects daily, monthly and yearly interest automatically.",
+        "Choose how often interest is paid — <strong>daily, monthly, quarterly or annually</strong> — and the exact day it lands. The card shows your next payment and the date it's due.",
         "The <em>accrued</em> line shows interest earned since you last updated the balance (daily compounding).",
         "Press <strong>Capitalize</strong> when your bank actually credits the interest — it folds the accrual into the balance.",
         "Updating a balance resets the accrual clock to today.",

@@ -528,7 +528,15 @@ body {
   font-family: var(--font-mono); font-size: 13px; font-weight: 500; color: var(--mint);
   font-variant-numeric: tabular-nums;
 }
-.acct-foot { display: flex; justify-content: space-between; align-items: center; }
+.acct-sched {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 10px; flex-wrap: wrap; margin-top: 12px;
+}
+.acct-sched .sched-next {
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.acct-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
 .accrued-note { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-mute); }
 
 /* ---------- credit card visuals ---------- */
@@ -736,6 +744,36 @@ body {
   .main { padding: 18px 14px 44px; }
   .panel { padding: 16px 16px; }
   .learn-play-head { row-gap: 8px; }
+}
+
+/* ---------- mobile touch & input ergonomics ---------- */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+button, a, .nav-item, .tool-btn, .icon-btn, .swatch { -webkit-tap-highlight-color: transparent; }
+
+@media (max-width: 760px) {
+  /* 16px form controls stop iOS Safari from auto-zooming the page on focus */
+  .field input, .field select, .currency-select,
+  input, select, textarea { font-size: 16px; }
+  .field input, .field select { padding: 12px 13px; }
+  /* roomier tap targets for thumbs */
+  .icon-btn { padding: 8px 10px; font-size: 16px; }
+  .tool-btn { padding: 10px 13px; }
+  .nav-item { padding: 10px 13px; }
+  .btn { padding: 11px 18px; }
+
+  /* modal hugs the screen with breathing room + safe areas */
+  .modal-overlay {
+    align-items: flex-start;
+    padding: 3vh 12px calc(24px + env(safe-area-inset-bottom));
+  }
+  .modal { max-width: 100%; }
+  .modal-head { padding: 18px 18px 0; }
+  .modal-body { padding: 16px 18px 20px; }
+  .modal-foot { padding: 0 18px 18px; }
+  /* one input per row reads far better on a narrow screen */
+  .f-grid { grid-template-columns: 1fr; gap: 12px; }
+  /* full-width actions are easier to hit one-handed */
+  .modal-foot .btn { flex: 1; justify-content: center; padding: 13px; }
 }
 
 /* ---------- iPhone / standalone safe areas ----------

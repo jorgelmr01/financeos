@@ -12,7 +12,7 @@ const Store = {
 
   defaults() {
     return {
-      accounts: [],   // {id, name, institution, type, balance, apy, balanceAsOf, currency}
+      accounts: [],   // {id, name, institution, type, balance, apy, balanceAsOf, currency, interestFreq, interestDay}
       cards: [],      // {id, name, issuer, limit, balance, cutDay, payDay, apr, color, currency}
       holdings: [],   // {id, symbol, name, kind, shares, costBasis, currentPrice, divPerShare, accountId, purchaseDate, currency}
       incomes: [],    // {id, name, category, amount, amountType, taxRate, accountId, frequency, payDay, startDate, currency}
@@ -40,6 +40,12 @@ const Store = {
     ["accounts", "cards", "holdings", "incomes"].forEach(coll =>
       this.state[coll].forEach(x => { if (!x.currency) x.currency = cur; }));
     this.state.incomes.forEach(x => { if (!x.amountType) x.amountType = "net"; if (x.taxRate == null) x.taxRate = 0; });
+    // interest pay schedule: default to monthly-on-the-last-day, matching the
+    // month-end crediting the app used before this setting existed
+    this.state.accounts.forEach(a => {
+      if (!a.interestFreq) a.interestFreq = "monthly";
+      if (a.interestDay == null) a.interestDay = 31;
+    });
   },
 
   /* returns { locked: boolean } — when locked, call unlock(pin) before using state */
@@ -314,8 +320,8 @@ const Store = {
       learn: this.state && this.state.learn ? this.state.learn : { scenarios: {}, sandbox: { best: 0, runs: 0 } },
       accounts: [
         { id: acc1, name: "Everyday Checking", institution: "BBVA", type: "checking", balance: 18450.22, apy: 0, balanceAsOf: iso, currency: "MXN" },
-        { id: acc2, name: "High-Yield Savings", institution: "Nu", type: "savings", balance: 92000, apy: 9.25, balanceAsOf: monthAgo, currency: "MXN" },
-        { id: acc3, name: "Emergency Fund", institution: "Openbank", type: "savings", balance: 45000, apy: 7.5, balanceAsOf: monthAgo, currency: "MXN" },
+        { id: acc2, name: "High-Yield Savings", institution: "Nu", type: "savings", balance: 92000, apy: 9.25, balanceAsOf: monthAgo, currency: "MXN", interestFreq: "daily", interestDay: 31 },
+        { id: acc3, name: "Emergency Fund", institution: "Openbank", type: "savings", balance: 45000, apy: 7.5, balanceAsOf: monthAgo, currency: "MXN", interestFreq: "monthly", interestDay: 1 },
         { id: acc4, name: "Brokerage Cash", institution: "GBM+", type: "investment", balance: 1200, apy: 0, balanceAsOf: iso, currency: "USD" },
       ],
       cards: [

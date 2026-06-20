@@ -45,8 +45,8 @@ const UI = {
     setTimeout(() => { el.classList.add("out"); setTimeout(() => el.remove(), 350); }, 2600);
   },
 
-  field(label, inputHtml, hint, full) {
-    return '<div class="field' + (full ? " full" : "") + '"><label>' + label + "</label>" +
+  field(label, inputHtml, hint, full, id) {
+    return '<div class="field' + (full ? " full" : "") + '"' + (id ? ' id="' + id + '"' : "") + '><label>' + label + "</label>" +
       inputHtml + (hint ? '<div class="hint">' + hint + "</div>" : "") + "</div>";
   },
 
@@ -61,6 +61,12 @@ const UI = {
   accountForm(acc) {
     acc = acc || {};
     const isEdit = !!acc.id;
+    const intDayOpts = sel => {
+      let h = "";
+      for (let i = 1; i <= 28; i++) h += '<option value="' + i + '"' + (Number(sel) === i ? " selected" : "") + ">" + ordinal(i) + "</option>";
+      h += '<option value="31"' + (Number(sel) >= 29 ? " selected" : "") + ">Last day</option>";
+      return h;
+    };
     const body = '<div class="f-grid">' +
       this.field("Account name", '<input name="name" required maxlength="60" value="' + esc(acc.name || "") + '" placeholder="High-Yield Savings">', null, true) +
       this.field("Institution", '<input name="institution" maxlength="40" value="' + esc(acc.institution || "") + '" placeholder="Bank / fintech">') +
@@ -70,9 +76,17 @@ const UI = {
             '<option value="' + t + '"' + (acc.type === t ? " selected" : "") + ">" + ACCOUNT_TYPE_META[t].label + "</option>"
           ).join("") +
         "</select>") +
-      this.field("Current balance", '<input name="balance" type="number" step="0.01" min="0" required value="' + (acc.balance != null ? acc.balance : "") + '" placeholder="0.00">') +
+      this.field("Current balance", '<input name="balance" type="number" inputmode="decimal" step="0.01" min="0" required value="' + (acc.balance != null ? acc.balance : "") + '" placeholder="0.00">') +
       this.field("Currency", this.currencySelect("currency", acc.currency), "Converted automatically in totals") +
-      this.field("Interest rate — APY %", '<input name="apy" type="number" step="0.01" min="0" max="100" value="' + (acc.apy != null && acc.apy !== 0 ? acc.apy : "") + '" placeholder="e.g. 7.50">', "Leave empty if the account pays no interest") +
+      this.field("Interest rate — APY %", '<input name="apy" type="number" inputmode="decimal" step="0.01" min="0" max="100" value="' + (acc.apy != null && acc.apy !== 0 ? acc.apy : "") + '" placeholder="e.g. 7.50">', "Leave empty if the account pays no interest") +
+      this.field("Interest paid",
+        '<select name="interestFreq">' +
+          [["daily", "Daily (compounds daily)"], ["monthly", "Monthly"], ["quarterly", "Quarterly"], ["annually", "Annually"]]
+            .map(o => '<option value="' + o[0] + '"' + (interestFreqKey(acc) === o[0] ? " selected" : "") + ">" + o[1] + "</option>").join("") +
+        "</select>", "How often this account credits interest") +
+      this.field("Paid on",
+        '<select name="interestDay">' + intDayOpts(interestPayDay(acc)) + "</select>",
+        "Day it lands · quarterly = Jan/Apr/Jul/Oct · annually = December", false, "interest-day-field") +
       "</div>";
     this.openModal(isEdit ? "Edit account" : "New account", body, {
       submitLabel: isEdit ? "Save changes" : "Add account",
@@ -85,6 +99,8 @@ const UI = {
           balance: balance,
           currency: fd.get("currency"),
           apy: parseFloat(fd.get("apy")) || 0,
+          interestFreq: fd.get("interestFreq") || "monthly",
+          interestDay: parseInt(fd.get("interestDay"), 10) || 31,
         };
         if (isEdit) {
           // reset the accrual clock only when the balance actually changes
@@ -100,6 +116,14 @@ const UI = {
         App.render();
       },
     });
+    // hide the "Paid on" day when interest compounds daily
+    const freqSel = document.querySelector("#modal-form [name=interestFreq]");
+    const dayField = document.getElementById("interest-day-field");
+    if (freqSel && dayField) {
+      const sync = () => { dayField.style.display = freqSel.value === "daily" ? "none" : ""; };
+      freqSel.addEventListener("change", sync);
+      sync();
+    }
   },
 
   cardForm(card) {
@@ -115,10 +139,10 @@ const UI = {
     const body = '<div class="f-grid">' +
       this.field("Card name", '<input name="name" required maxlength="60" value="' + esc(card.name || "") + '" placeholder="Platinum Rewards">', null, true) +
       this.field("Issuer", '<input name="issuer" maxlength="40" value="' + esc(card.issuer || "") + '" placeholder="Bank">') +
-      this.field("Credit limit", '<input name="limit" type="number" step="0.01" min="0" required value="' + (card.limit != null ? card.limit : "") + '">') +
-      this.field("Current balance", '<input name="balance" type="number" step="0.01" min="0" required value="' + (card.balance != null ? card.balance : "") + '">', "What you currently owe") +
+      this.field("Credit limit", '<input name="limit" type="number" inputmode="decimal" step="0.01" min="0" required value="' + (card.limit != null ? card.limit : "") + '">') +
+      this.field("Current balance", '<input name="balance" type="number" inputmode="decimal" step="0.01" min="0" required value="' + (card.balance != null ? card.balance : "") + '">', "What you currently owe") +
       this.field("Currency", this.currencySelect("currency", card.currency)) +
-      this.field("APR % (optional)", '<input name="apr" type="number" step="0.01" min="0" max="200" value="' + (card.apr != null && card.apr !== 0 ? card.apr : "") + '">') +
+      this.field("APR % (optional)", '<input name="apr" type="number" inputmode="decimal" step="0.01" min="0" max="200" value="' + (card.apr != null && card.apr !== 0 ? card.apr : "") + '">') +
       this.field("Statement cut day", '<select name="cutDay">' + dayOpts(card.cutDay || 1) + "</select>", "Day of month the statement closes") +
       this.field("Payment due day", '<select name="payDay">' + dayOpts(card.payDay || 20) + "</select>", "Day of month payment is due") +
       this.field("Card color",
@@ -162,11 +186,11 @@ const UI = {
           '<option value="etf"' + (h.kind === "etf" ? " selected" : "") + ">ETF</option>" +
         "</select>") +
       this.field("Name", '<input name="hname" maxlength="60" value="' + esc(h.name || "") + '" placeholder="Vanguard S&P 500 ETF">', null, true) +
-      this.field("Shares", '<input name="shares" type="number" step="any" min="0" required value="' + (h.shares != null ? h.shares : "") + '">', "Fractional shares allowed") +
+      this.field("Shares", '<input name="shares" type="number" inputmode="decimal" step="any" min="0" required value="' + (h.shares != null ? h.shares : "") + '">', "Fractional shares allowed") +
       this.field("Prices in", this.currencySelect("currency", h.currency || "USD"), "Currency of this listing (US tickers: USD)") +
-      this.field("Avg. price paid", '<input name="costBasis" type="number" step="any" min="0" required value="' + (h.costBasis != null ? h.costBasis : "") + '">', "Per share") +
-      this.field("Current price", '<input name="currentPrice" type="number" step="any" min="0" required value="' + (h.currentPrice != null ? h.currentPrice : "") + '">', "Auto-updates with a Finnhub key") +
-      this.field("Dividend / share / year", '<input name="divPerShare" type="number" step="any" min="0" value="' + (h.divPerShare != null && h.divPerShare !== 0 ? h.divPerShare : "") + '">', "Optional — auto-fills when refreshing prices") +
+      this.field("Avg. price paid", '<input name="costBasis" type="number" inputmode="decimal" step="any" min="0" required value="' + (h.costBasis != null ? h.costBasis : "") + '">', "Per share") +
+      this.field("Current price", '<input name="currentPrice" type="number" inputmode="decimal" step="any" min="0" required value="' + (h.currentPrice != null ? h.currentPrice : "") + '">', "Auto-updates with a Finnhub key") +
+      this.field("Dividend / share / year", '<input name="divPerShare" type="number" inputmode="decimal" step="any" min="0" value="' + (h.divPerShare != null && h.divPerShare !== 0 ? h.divPerShare : "") + '">', "Optional — auto-fills when refreshing prices") +
       this.field("Purchase date", '<input name="purchaseDate" type="date" value="' + esc(h.purchaseDate || toISO(todayMid())) + '">') +
       this.field("Held in account", '<select name="accountId">' + acctOpts + "</select>", invAccounts.length ? null : "Tip: add an Investment account to link", true) +
       "</div>";
@@ -211,7 +235,7 @@ const UI = {
           ["Salary", "Freelance", "Rent", "Dividends", "Business", "Other"].map(c =>
             '<option' + (inc.category === c ? " selected" : "") + ">" + c + "</option>").join("") +
         "</select>") +
-      this.field("Amount per deposit", '<input name="amount" type="number" step="0.01" min="0" required value="' + (inc.amount != null ? inc.amount : "") + '">') +
+      this.field("Amount per deposit", '<input name="amount" type="number" inputmode="decimal" step="0.01" min="0" required value="' + (inc.amount != null ? inc.amount : "") + '">') +
       this.field("Currency", this.currencySelect("currency", inc.currency)) +
       this.field("This amount is",
         '<select name="amountType" id="amount-type-select">' +
@@ -219,7 +243,7 @@ const UI = {
           '<option value="gross"' + (inc.amountType === "gross" ? " selected" : "") + ">Gross — before taxes</option>" +
         "</select>", null, true) +
       '<div id="taxrate-wrap" class="full"' + (inc.amountType === "gross" ? "" : ' style="display:none"') + ">" +
-        this.field("Effective tax rate %", '<input name="taxRate" type="number" step="0.1" min="0" max="99" value="' + (inc.taxRate != null && inc.taxRate !== 0 ? inc.taxRate : "") + '" placeholder="e.g. 21">', "Withholding applied to each deposit — projections use the net amount", true) +
+        this.field("Effective tax rate %", '<input name="taxRate" type="number" inputmode="decimal" step="0.1" min="0" max="99" value="' + (inc.taxRate != null && inc.taxRate !== 0 ? inc.taxRate : "") + '" placeholder="e.g. 21">', "Withholding applied to each deposit — projections use the net amount", true) +
       "</div>" +
       this.field("Deposits into", '<select name="accountId" required>' + (acctOpts || '<option value="">No accounts yet</option>') + "</select>", null, true) +
       this.field("Frequency",

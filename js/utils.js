@@ -228,6 +228,63 @@ function yearlyInterestEst(account) {
   return (Number(account.balance) || 0) * (apy / 100);
 }
 
+/* ---------- interest pay schedule ----------
+   Accounts choose how often interest is credited. APY is the true annual
+   yield, so each payout is derived from it — paying more often never changes
+   the yearly total, only when (and in what size chunks) it lands. */
+const INTEREST_FREQ = {
+  daily:     { label: "Daily",     perYear: 365 },
+  monthly:   { label: "Monthly",   perYear: 12 },
+  quarterly: { label: "Quarterly", perYear: 4 },
+  annually:  { label: "Annually",  perYear: 1 },
+};
+const INTEREST_FREQ_DEFAULT = "monthly";
+
+function interestFreqKey(account) {
+  return account && INTEREST_FREQ[account.interestFreq] ? account.interestFreq : INTEREST_FREQ_DEFAULT;
+}
+
+/* Day-of-month interest is credited (31 = last day of the month). */
+function interestPayDay(account) {
+  const d = account ? Number(account.interestDay) : NaN;
+  return d >= 1 && d <= 31 ? d : 31;
+}
+
+/* Interest credited per scheduled payment, derived from APY. */
+function interestPerPeriod(account) {
+  const apy = Number(account.apy) || 0;
+  if (apy <= 0) return 0;
+  const n = INTEREST_FREQ[interestFreqKey(account)].perYear;
+  return (Number(account.balance) || 0) * (Math.pow(1 + apy / 100, 1 / n) - 1);
+}
+
+/* Next date interest is scheduled to be credited, on or after `from`.
+   quarterly anchors to Jan/Apr/Jul/Oct, annually to December. */
+function nextInterestDate(account, from) {
+  from = from || todayMid();
+  const f = interestFreqKey(account);
+  if (f === "daily") { const d = new Date(from); d.setDate(d.getDate() + 1); return d; }
+  const day = interestPayDay(account);
+  if (f === "monthly") return nextMonthlyOccurrence(day, from);
+  const anchors = f === "quarterly" ? [0, 3, 6, 9] : [11];
+  for (let i = 0; i < 48; i++) {
+    const base = new Date(from.getFullYear(), from.getMonth() + i, 1);
+    if (anchors.indexOf(base.getMonth()) !== -1) {
+      const d = clampedDate(base.getFullYear(), base.getMonth(), day);
+      if (d >= from) return d;
+    }
+  }
+  return nextMonthlyOccurrence(day, from);
+}
+
+/* "Daily" / "Monthly · last day" / "Quarterly · 15th" */
+function interestScheduleLabel(account) {
+  const f = interestFreqKey(account);
+  if (f === "daily") return "Daily";
+  const day = interestPayDay(account);
+  return INTEREST_FREQ[f].label + " · " + (day >= 29 ? "last day" : ordinal(day));
+}
+
 /* ---------- credit cards ---------- */
 
 function nextCardDate(dayOfMonth, from) {
