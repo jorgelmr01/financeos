@@ -1,0 +1,18 @@
+{
+  "name": "FinanceOS — Financial Command Center",
+  "short_name": "FinanceOS",
+  "description": "Your complete financial command center: accounts, credit cards, portfolio, earnings and milestones — 100% private, in your browser.",
+  "id": "/",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0a0d0b",
+  "theme_color": "#0a0d0b",
+  "categories": ["finance", "productivity", "utilities"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

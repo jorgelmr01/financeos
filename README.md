@@ -14,6 +14,21 @@ npx serve .
 
 > PIN-lock encryption uses the Web Crypto API, which requires a secure context (`https://`, `localhost`, or a local file). Everything else works anywhere.
 
+## Install on your iPhone (or Android)
+
+FinanceOS is an installable **PWA** — add it to your home screen and it launches full-screen like a native app, with its own icon, offline support, and no browser chrome.
+
+It needs to be reachable over **HTTPS** for install + offline to work. Two easy ways:
+
+- **GitHub Pages (recommended):** in the repo, *Settings → Pages → Deploy from branch → `main` / root*. Open the published `https://…github.io/…` URL on your phone.
+- **Local network:** run `npx serve .` on your computer, then on your iPhone (same Wi‑Fi) open `http://<your-computer-ip>:3000`. *(Add-to-home-screen works, but full offline caching needs HTTPS.)*
+
+**On iPhone (Safari):** open the URL → tap the **Share** button → **Add to Home Screen** → **Add**. Launch it from the new “FinanceOS” icon — it opens edge-to-edge, status bar and all.
+
+**On Android (Chrome):** open the URL → menu **⋮** → **Install app** / **Add to Home screen**.
+
+Your data still lives only on the device, in that browser's storage — installing doesn't change the privacy model.
+
 ## Features
 
 | Page | What it does |
