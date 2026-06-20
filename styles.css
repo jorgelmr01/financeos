@@ -744,6 +744,32 @@ body {
 .cbar .bar-label { font-family: var(--font-mono); font-size: 9.5px; color: var(--text-mute); letter-spacing: 0.08em; }
 .cbar .bar-total { font-family: var(--font-mono); font-size: 9.5px; color: var(--text-dim); }
 
+/* ---------- floating chart value tooltip (tap to see values) ---------- */
+#chart-tip {
+  position: fixed; z-index: 200; left: 0; top: 0;
+  pointer-events: none; opacity: 0; transform: translateY(3px);
+  transition: opacity 0.14s, transform 0.14s;
+  background: var(--surface-2); color: var(--text);
+  border: 1px solid var(--hairline-strong); border-radius: 9px;
+  box-shadow: var(--shadow-pop);
+  font-family: var(--font-mono); font-size: 11.5px; line-height: 1.45;
+  padding: 7px 11px; max-width: 220px; white-space: nowrap;
+}
+#chart-tip.show { opacity: 1; transform: translateY(0); }
+#chart-tip strong { color: var(--mint-bright); font-weight: 600; }
+/* invisible full-height hit columns over SVG line charts */
+.chart-wrap { position: relative; }
+.chart-hit {
+  position: absolute; top: 0; bottom: 0; padding: 0; margin: 0;
+  background: none; border: none; cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.chart-hit::after {
+  content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px;
+  transform: translateX(-50%); background: var(--hairline); opacity: 0;
+  transition: opacity 0.12s;
+}
+.chart-hit:hover::after, .chart-hit:focus-visible::after { opacity: 0.6; }
+
 /* ---------- income projection (compounding, interactive) ---------- */
 .proj-plot { position: relative; height: 190px; padding-top: 8px; }
 .proj-grid { position: absolute; left: 0; right: 0; border-top: 1px dashed var(--hairline); }

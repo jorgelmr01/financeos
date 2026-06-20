@@ -32,6 +32,29 @@ const App = {
     window.scrollTo({ top: 0 });
   },
 
+  /* floating value tooltip for charts — works on tap (mobile) and click */
+  showTip(el, e) {
+    const tip = document.getElementById("chart-tip");
+    if (!tip) return;
+    tip.innerHTML = el.getAttribute("data-tip");
+    tip.classList.add("show");
+    const x = e.clientX || (e.touches && e.touches[0] && e.touches[0].clientX) || 0;
+    const y = e.clientY || (e.touches && e.touches[0] && e.touches[0].clientY) || 0;
+    const r = tip.getBoundingClientRect();
+    let left = x - r.width / 2;
+    left = Math.max(8, Math.min(left, window.innerWidth - r.width - 8));
+    let top = y - r.height - 14;
+    if (top < 8) top = y + 20;
+    tip.style.left = left + "px";
+    tip.style.top = top + "px";
+    clearTimeout(this._tipTimer);
+    this._tipTimer = setTimeout(() => this.hideTip(), 2800);
+  },
+  hideTip() {
+    const tip = document.getElementById("chart-tip");
+    if (tip) tip.classList.remove("show");
+  },
+
   /* show/hide the mobile navigation drawer */
   setNav(open) {
     document.body.classList.toggle("nav-open", open);
@@ -357,6 +380,10 @@ const App = {
         sw.parentElement.querySelector('input[name="color"]').value = sw.dataset.swatch;
         return;
       }
+      // chart value tooltips (tap a bar/point to see its value)
+      const tipEl = e.target.closest("[data-tip]");
+      if (tipEl) { this.showTip(tipEl, e); } else { this.hideTip(); }
+
       const t = e.target.closest("[data-action]");
       if (t) {
         if (t.dataset.action === "close-modal-overlay") {

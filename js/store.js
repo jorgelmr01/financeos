@@ -369,7 +369,7 @@ const Store = {
       accounts: [
         { id: acc1, name: "Everyday Checking", institution: "BBVA", type: "checking", balance: 18450.22, apy: 0, balanceAsOf: iso, currency: "MXN" },
         { id: acc2, name: "High-Yield Savings", institution: "Nu", type: "savings", balance: 92000, apy: 9.25, balanceAsOf: monthAgo, currency: "MXN", interestFreq: "daily", interestDay: 31 },
-        { id: acc3, name: "Emergency Fund", institution: "Openbank", type: "savings", balance: 45000, apy: 7.5, balanceAsOf: monthAgo, currency: "MXN", interestFreq: "monthly", interestDay: 1 },
+        { id: acc3, name: "Emergency Fund", institution: "Openbank", type: "savings", balance: 45000, apy: 7.5, balanceAsOf: monthAgo, currency: "MXN", interestFreq: "quarterly", interestDay: 15 },
         { id: acc4, name: "Brokerage Cash", institution: "GBM+", type: "investment", balance: 1200, apy: 0, balanceAsOf: iso, currency: "USD" },
       ],
       cards: [
@@ -399,25 +399,40 @@ const Store = {
         return out;
       })(),
       expenses: (() => {
-        // two months of demo spending so the Budget page has something to score
-        const day = (mOffset, dom) => toISO(new Date(t.getFullYear(), t.getMonth() - mOffset, dom));
-        const raw = [
-          [0, 2, "Apartment rent", "Housing", 11500], [0, 3, "CFE electricity", "Utilities", 720],
-          [0, 4, "Internet — Totalplay", "Utilities", 599], [0, 5, "Walmart", "Groceries", 2840],
-          [0, 6, "Soriana", "Groceries", 1630], [0, 8, "Uber", "Transport", 410],
-          [0, 9, "Gasolina", "Transport", 980], [0, 10, "Cinépolis", "Entertainment", 320],
-          [0, 11, "Restaurante", "Dining", 760], [0, 12, "Starbucks", "Dining", 185],
-          [0, 13, "Netflix", "Subscriptions", 219], [0, 13, "Spotify", "Subscriptions", 129],
-          [0, 14, "Amazon MX", "Shopping", 1340], [0, 15, "Farmacia", "Health", 430],
-          [0, 16, "Gym", "Health", 650], [0, 18, "Café & pan", "Dining", 240],
-          [1, 2, "Apartment rent", "Housing", 11500], [1, 3, "CFE electricity", "Utilities", 690],
-          [1, 4, "Internet — Totalplay", "Utilities", 599], [1, 6, "Walmart", "Groceries", 3120],
-          [1, 9, "Gasolina", "Transport", 1050], [1, 12, "Restaurantes", "Dining", 1480],
-          [1, 14, "Liverpool", "Shopping", 2600], [1, 16, "Vuelo — Volaris", "Travel", 3850],
-          [1, 18, "Netflix", "Subscriptions", 219], [1, 20, "Farmacia", "Health", 380],
-        ];
-        return raw.map(r => {
-          const e = { id: uid(), date: day(r[0], r[1]), description: r[2], category: r[3], amount: r[4], currency: "MXN", source: "sample" };
+        // 5 months of demo spending (current month is partial) so the Budget
+        // score, complete-month default, trends, movers and streaks all light up
+        const out = [];
+        const day = (mOff, dom) => toISO(new Date(t.getFullYear(), t.getMonth() - mOff, dom));
+        const add = (mOff, dom, desc, cat, amt) => out.push({ id: uid(), date: day(mOff, dom), description: desc, category: cat, amount: amt, currency: "MXN", source: "sample" });
+        // m=0 current (partial), 1=last, 2,3,4 = older complete months
+        for (let m = 0; m <= 4; m++) {
+          add(m, 2, "Apartment rent", "Housing", 11500);
+          add(m, 3, "CFE electricity", "Utilities", 640 + m * 20);
+          add(m, 4, "Internet — Totalplay", "Utilities", 599);
+          add(m, 13, "Netflix", "Subscriptions", 219);
+          add(m, 13, "Spotify", "Subscriptions", 129);
+          add(m, 16, "Gym", "Health", 650);
+        }
+        // variable categories with month-to-month movement (index = months ago)
+        const groceries = [2980, 3120, 3380, 3650, 3050];
+        const dining = [1190, 1480, 1400, 1240, 980];
+        const transport = [1190, 1050, 1320, 980, 1110];
+        const shopping = [0, 1800, 0, 1450, 3200];
+        const travel = [0, 3850, 0, 0, 5200];               // occasional spikes
+        const health = [430, 380, 1240, 290, 360];
+        const entertainment = [320, 540, 280, 760, 410];
+        for (let m = 0; m <= 4; m++) {
+          add(m, 6, "Walmart", "Groceries", Math.round(groceries[m] * 0.55));
+          add(m, 19, "Soriana", "Groceries", Math.round(groceries[m] * 0.45));
+          if (dining[m]) { add(m, 11, "Restaurante", "Dining", Math.round(dining[m] * 0.7)); add(m, 18, "Café & pan", "Dining", Math.round(dining[m] * 0.3)); }
+          if (transport[m]) { add(m, 9, "Gasolina", "Transport", Math.round(transport[m] * 0.7)); add(m, 8, "Uber", "Transport", Math.round(transport[m] * 0.3)); }
+          if (shopping[m]) add(m, 14, "Amazon MX / Liverpool", "Shopping", shopping[m]);
+          if (travel[m]) add(m, 16, "Vuelo — Volaris", "Travel", travel[m]);
+          if (health[m]) add(m, 20, "Farmacia", "Health", health[m]);
+          if (entertainment[m]) add(m, 10, "Cinépolis", "Entertainment", entertainment[m]);
+        }
+        // keep the partial current month light (only a few days elapsed feel)
+        return out.filter(e => !(monthKeyOf(e.date) === monthKeyOf(toISO(t)) && parseISO(e.date) > t)).map(e => {
           if (typeof expenseSig === "function") e.sig = expenseSig(e);
           return e;
         });

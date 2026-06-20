@@ -30,7 +30,7 @@ const Pages = {
     ].filter(x => x.val > 0);
     const segTotal = segs.reduce((a, x) => a + x.val, 0) || 1;
     const compBar = '<div class="comp-bar">' +
-      segs.map(x => '<span style="width:' + (x.val / segTotal * 100).toFixed(2) + '%;background:' + x.color + '" title="' + x.label + '"></span>').join("") +
+      segs.map(x => '<span style="width:' + (x.val / segTotal * 100).toFixed(2) + '%;background:' + x.color + '" data-tip="' + esc(x.label) + " · <strong>" + fmtMoney(x.val, { compact: true }) + "</strong> · " + (x.val / segTotal * 100).toFixed(1) + '%"></span>').join("") +
       "</div>" +
       '<div class="comp-legend">' +
       segs.map(x => '<span class="lg"><span class="dot" style="background:' + x.color + '"></span>' + x.label + " · " + fmtMoney(x.val, { compact: true }) + "</span>").join("") +
@@ -164,13 +164,15 @@ const Pages = {
     const changePct = first ? change / Math.abs(first) * 100 : 0;
     return '<div class="panel section"><div class="panel-head"><div class="panel-title">Net worth over time</div>' +
       '<span class="panel-sub ' + (change >= 0 ? "pos" : "neg") + '">' + fmtMoney(change, { sign: true, compact: true }) + " (" + fmtPct(changePct, 1) + ") · " + snaps.length + " days</span></div>" +
-      '<svg class="nw-chart" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none">' +
+      '<div class="chart-wrap"><svg class="nw-chart" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none">' +
         '<defs><linearGradient id="nwfill" x1="0" y1="0" x2="0" y2="1">' +
           '<stop offset="0%" stop-color="rgba(143,227,166,0.28)"/><stop offset="100%" stop-color="rgba(143,227,166,0)"/>' +
         "</linearGradient></defs>" +
         '<polygon points="' + area + '" fill="url(#nwfill)"/>' +
         '<polyline points="' + line + '" fill="none" stroke="#8fe3a6" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>' +
       "</svg>" +
+      this._chartHits(pts.map((v, i) => ({ tip: fmtDateShort(parseISO(snaps[i].d)) + " · <strong>" + fmtMoney(v, { compact: true }) + "</strong>" }))) +
+      "</div>" +
       '<div class="nw-chart-scale"><span>' + fmtDateShort(parseISO(snaps[0].d)) + " · " + fmtMoney(first, { compact: true }) + "</span>" +
       "<span>today · " + fmtMoney(lastV, { compact: true }) + "</span></div></div>";
   },
@@ -362,7 +364,7 @@ const Pages = {
       '<span class="panel-sub">' + s.holdings.length + " positions</span></div>" +
       '<div class="alloc-bar">' +
       sorted.map((h, i) =>
-        '<span style="width:' + weight(h).toFixed(2) + '%;background:' + CHART_COLORS[i % CHART_COLORS.length] + '" title="' + esc(h.symbol) + " " + weight(h).toFixed(1) + '%"></span>').join("") +
+        '<span style="width:' + weight(h).toFixed(2) + '%;background:' + CHART_COLORS[i % CHART_COLORS.length] + '" data-tip="' + esc(h.symbol) + " · <strong>" + fmtMoney(conv(h.shares * h.currentPrice, h.currency), { compact: true }) + "</strong> · " + weight(h).toFixed(1) + '%"></span>').join("") +
       "</div>" +
       '<div class="comp-legend" style="margin-top:14px">' +
       sorted.map((h, i) =>
@@ -498,15 +500,26 @@ const Pages = {
     const area = line + " " + X(n - 1).toFixed(1) + "," + (H - PAD) + " " + X(0).toFixed(1) + "," + (H - PAD);
     const up = cs[n - 1] >= cs[0];
     const col = up ? "#8fe3a6" : "#e8836f";
-    return '<svg class="price-chart" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none">' +
+    return '<div class="chart-wrap"><svg class="price-chart" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none">' +
       '<defs><linearGradient id="phfill" x1="0" y1="0" x2="0" y2="1">' +
         '<stop offset="0%" stop-color="' + col + '" stop-opacity="0.22"/><stop offset="100%" stop-color="' + col + '" stop-opacity="0"/></linearGradient></defs>' +
       '<polygon points="' + area + '" fill="url(#phfill)"/>' +
       '<polyline points="' + line + '" fill="none" stroke="' + col + '" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>' +
       "</svg>" +
+      this._chartHits(points.map(p => ({ tip: fmtDateShort(new Date(p.t)) + " · <strong>" + fmtMoneyIn(p.c, cur) + "</strong>" }))) +
+      "</div>" +
       '<div class="price-scale"><span>' + fmtDateShort(new Date(points[0].t)) + "</span>" +
         '<span>low ' + fmtMoneyIn(min, cur) + " · high " + fmtMoneyIn(max, cur) + "</span>" +
         "<span>" + fmtDateShort(new Date(points[n - 1].t)) + "</span></div>";
+  },
+
+  /* invisible full-height hit columns that reveal a value tooltip on tap */
+  _chartHits(items) {
+    const n = items.length;
+    if (!n) return "";
+    const w = 100 / n;
+    return items.map((it, i) =>
+      '<button type="button" class="chart-hit" data-tip="' + esc(it.tip) + '" style="left:' + (i * w).toFixed(3) + "%;width:" + w.toFixed(3) + '%" aria-label="' + esc(String(it.tip).replace(/<[^>]+>/g, "")) + '"></button>').join("");
   },
 
   /* called by App.render() after the page mounts — fetch live history async */
@@ -880,8 +893,8 @@ const Pages = {
       '<div class="panel section"><div class="panel-head"><div class="panel-title">Needs vs wants</div>' +
         '<span class="panel-sub">50/30/20 guide · wants near 30% of income</span></div>' +
         '<div class="comp-bar">' +
-          '<span style="width:' + (needsPct * 100) + '%;background:var(--sky)"></span>' +
-          '<span style="width:' + (wantsPct * 100) + '%;background:var(--gold)"></span>' +
+          '<span style="width:' + (needsPct * 100) + '%;background:var(--sky)" data-tip="Needs · <strong>' + fmtMoney(sc.needs, { compact: true }) + "</strong> · " + pct(needsPct) + '"></span>' +
+          '<span style="width:' + (wantsPct * 100) + '%;background:var(--gold)" data-tip="Wants · <strong>' + fmtMoney(sc.wants, { compact: true }) + "</strong> · " + pct(wantsPct) + '"></span>' +
         "</div>" +
         '<div class="comp-legend">' +
           '<span class="lg"><span class="dot" style="background:var(--sky)"></span>Needs ' + fmtMoney(sc.needs, { compact: true }) + " · " + pct(needsPct) + "</span>" +
@@ -900,7 +913,7 @@ const Pages = {
         '<div class="bcat-head"><span class="bcat-name">' + esc(c.meta.icon) + " " + esc(c.name) + "</span>" +
           '<span class="bcat-amt' + (over ? " neg" : "") + '">' + fmtMoney(c.amount, { compact: true }) +
             (budget != null ? ' <span class="bcat-budget">/ ' + fmtMoney(budget, { compact: true }) + "</span>" : "") + "</span></div>" +
-        '<div class="bcat-track"><span style="width:' + (ratio * 100) + '%;background:' + barColor + '"></span></div>' +
+        '<div class="bcat-track" data-tip="' + esc(c.name) + " · <strong>" + fmtMoney(c.amount, { compact: true }) + "</strong>" + (budget != null ? " of " + fmtMoney(budget, { compact: true }) + " budget" : "") + '"><span style="width:' + (ratio * 100) + '%;background:' + barColor + '"></span></div>' +
       "</div>";
     }).join("");
     const catPanel =
@@ -1064,10 +1077,11 @@ const Pages = {
     const cols = series.map(row => {
       const v = opts.value(row);
       const partial = row.complete === false;
-      if (v == null || !isFinite(v)) return '<div class="trend-col"><div class="trend-bar trend-empty" title="' + esc(row.label) + ': —"></div></div>';
+      if (v == null || !isFinite(v)) return '<div class="trend-col"><div class="trend-bar trend-empty" data-tip="' + esc(row.label) + ' · <strong>—</strong>"></div></div>';
       const h = Math.max(1.5, Math.min(100, v / max * 100));
       const c = opts.color ? opts.color(row, v) : "var(--mint)";
-      return '<div class="trend-col"><div class="trend-bar' + (partial ? " trend-partial" : "") + '" style="height:' + h.toFixed(1) + "%;background:" + c + '" title="' + esc(row.label + ": " + (opts.fmt ? opts.fmt(v) : v) + (partial ? " (in progress)" : "")) + '"></div></div>';
+      const tip = esc(row.label) + " · <strong>" + esc(opts.fmt ? opts.fmt(v) : String(v)) + "</strong>" + (partial ? " (in progress)" : "");
+      return '<div class="trend-col"><div class="trend-bar' + (partial ? " trend-partial" : "") + '" style="height:' + h.toFixed(1) + "%;background:" + c + '" data-tip="' + tip + '"></div></div>';
     }).join("");
     const axis = series.map(r => "<span>" + esc(r.short) + "</span>").join("");
     return '<div class="trend"><div class="trend-plot">' + refLines + cols + '</div><div class="trend-axis">' + axis + "</div></div>";
@@ -1086,10 +1100,13 @@ const Pages = {
     const line = data.map(d => X(d.i).toFixed(1) + "," + Y(d.v).toFixed(1)).join(" ");
     const zeroY = Y(0).toFixed(1);
     const lastV = data[data.length - 1].v;
-    return '<div class="trend"><svg class="trend-svg" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none">' +
+    const fmt = opts.fmt || ((v) => v);
+    return '<div class="trend"><div class="chart-wrap"><svg class="trend-svg" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none">' +
       '<line x1="' + PAD + '" y1="' + zeroY + '" x2="' + (W - PAD) + '" y2="' + zeroY + '" stroke="var(--hairline-strong)" stroke-width="1.5" stroke-dasharray="5 5"/>' +
       '<polyline points="' + line + '" fill="none" stroke="' + (lastV >= 0 ? "#8fe3a6" : "#e8836f") + '" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>' +
       "</svg>" +
+      this._chartHits(series.map(r => { const v = opts.value(r); return { tip: esc(r.label) + " · <strong>" + (v == null || !isFinite(v) ? "—" : fmt(v)) + "</strong>" }; })) +
+      "</div>" +
       '<div class="trend-axis">' + series.map(r => "<span>" + esc(r.short) + "</span>").join("") + "</div></div>";
   },
 
@@ -1116,10 +1133,10 @@ const Pages = {
         '<span class="micro-label">' + label + "</span>" +
         '<div class="pct-big">' + topShareLabel(pct) + "</div>" +
         '<div class="pct-sub">higher than <strong>' + Math.min(99.99, pct).toFixed(pct >= 99 ? 2 : 0) + "%</strong> of adults worldwide · " + valueDisplay + "</div>" +
-        '<div class="pct-track"><div class="pct-fill" style="width:' + Math.min(100, pct).toFixed(1) + '%"></div>' +
-          '<span class="pct-mark" style="left:50%" title="Global median"></span>' +
-          '<span class="pct-mark" style="left:90%" title="Top 10%"></span>' +
-          '<span class="pct-mark" style="left:99%" title="Top 1%"></span></div>' +
+        '<div class="pct-track" data-tip="You · <strong>' + topShareLabel(pct) + "</strong> · " + valueDisplay + '"><div class="pct-fill" style="width:' + Math.min(100, pct).toFixed(1) + '%"></div>' +
+          '<span class="pct-mark" style="left:50%" data-tip="Global median"></span>' +
+          '<span class="pct-mark" style="left:90%" data-tip="Top 10%"></span>' +
+          '<span class="pct-mark" style="left:99%" data-tip="Top 1%"></span></div>' +
         '<div class="pct-scale"><span>median</span><span>top 10%</span><span>top 1%</span></div>' +
         '<div class="pct-next">' + nextLine + "</div>" +
         (breakdownHtml || "") +
@@ -1215,6 +1232,10 @@ const Pages = {
         "You get a <strong>spending-health score</strong> from your savings rate, runway and needs-vs-wants split, plus insights, a 50/30/20 breakdown, and per-category budgets. Set monthly limits with <strong>Set budgets</strong>.",
         "Switch to <strong>Trends</strong> to compare months: this month vs your trailing average, spending &amp; score charts, the categories you're spending more/less on, and saving streaks.",
         "Insights default to your most recent <strong>complete</strong> month — the current month is marked <em>“in progress”</em> and its score is paced against the days elapsed, so a few days into a new statement never looks like you suddenly saved a fortune.",
+      ]) +
+      card("◔", "Charts are interactive", [
+        "<strong>Tap any chart</strong> — bars, the net-worth and price lines, allocation and composition bars — to see the exact value for that point or segment.",
+        "On the <strong>Portfolio</strong>, tap a position for a price chart and full detail; on <strong>Income</strong>, tap a projection bar for that period's breakdown; on <strong>Budget → Trends</strong>, compare months and categories over time.",
       ]) +
       card("◍", "Currencies", [
         "Every account, card, position and income stream has its <strong>own currency</strong> — mix MXN accounts with USD stocks freely.",
