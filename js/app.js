@@ -22,7 +22,15 @@ const App = {
     document.querySelectorAll(".nav-item").forEach(b =>
       b.classList.toggle("active", b.dataset.page === page));
     this.render();
+    this.setNav(false);            // close the mobile drawer after choosing a page
     window.scrollTo({ top: 0 });
+  },
+
+  /* show/hide the mobile navigation drawer */
+  setNav(open) {
+    document.body.classList.toggle("nav-open", open);
+    const t = document.querySelector(".nav-toggle");
+    if (t) t.setAttribute("aria-expanded", open ? "true" : "false");
   },
 
   render() {
@@ -104,6 +112,9 @@ const App = {
   handleAction(action, id, el) {
     switch (action) {
       case "nav": this.navigate(el.dataset.page); break;
+
+      case "toggle-nav": this.setNav(!document.body.classList.contains("nav-open")); break;
+      case "close-nav": this.setNav(false); break;
 
       case "add-account": UI.accountForm(); break;
       case "edit-account": UI.accountForm(Store.find("accounts", id)); break;
@@ -418,9 +429,9 @@ const App = {
       e.target.value = "";
     });
 
-    /* escape closes modal */
+    /* escape closes the modal, then the nav drawer */
     document.addEventListener("keydown", e => {
-      if (e.key === "Escape") UI.closeModal();
+      if (e.key === "Escape") { UI.closeModal(); App.setNav(false); }
     });
 
     if (res.locked) this.showLock();

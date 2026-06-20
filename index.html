@@ -20,7 +20,7 @@
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230B0E0C'/%3E%3Ctext x='16' y='22' font-family='Georgia,serif' font-size='17' fill='%238FE3A6' text-anchor='middle' font-style='italic'%3EF%3C/text%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%230a0d0b'/%3E%3Ctext%20y='23'%20font-family='Georgia%2Cserif'%20font-size='19'%20font-style='italic'%3E%3Ctspan%20x='8'%20fill='%238fe3a6'%3EF%3C/tspan%3E%3Ctspan%20fill='%23e5c97b'%3E/%3C/tspan%3E%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=Instrument+Sans:ital,wght@0,400..700;1,400..700&family=Spline+Sans+Mono:wght@300..700&display=swap" rel="stylesheet">
@@ -33,7 +33,7 @@
 
 <div class="app">
 
-  <aside class="sidebar">
+  <aside class="sidebar" id="sidebar">
     <div class="brand">
       <div class="brand-mark">F<span>/</span></div>
       <div class="brand-name">Finance<em>OS</em></div>
@@ -110,9 +110,12 @@
     </div>
   </aside>
 
+  <div id="nav-scrim" data-action="close-nav" aria-hidden="true"></div>
+
   <main class="main">
     <header class="topbar">
-      <div>
+      <button class="nav-toggle" data-action="toggle-nav" aria-label="Open menu" aria-controls="sidebar" aria-expanded="false">☰</button>
+      <div class="topbar-head">
         <h1 class="page-title" id="page-title">Overview</h1>
         <div class="page-date" id="page-date"></div>
       </div>

@@ -289,6 +289,16 @@ body {
 }
 .topbar-right { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
 
+/* mobile drawer chrome — hidden on desktop, activated in the ≤920px media query */
+.nav-toggle {
+  display: none; flex: none; cursor: pointer;
+  background: var(--surface-2); color: var(--text);
+  border: 1px solid var(--hairline-strong); border-radius: var(--r-sm);
+  font-size: 19px; line-height: 1; padding: 9px 12px;
+}
+.nav-toggle:hover { border-color: rgba(233, 239, 228, 0.3); }
+#nav-scrim { display: none; }
+
 /* ---------- buttons ---------- */
 .btn {
   display: inline-flex; align-items: center; gap: 8px;
@@ -735,21 +745,47 @@ body {
 /* ---------- responsive ---------- */
 @media (max-width: 920px) {
   .app { grid-template-columns: 1fr; }
+
+  /* sidebar becomes a hidden off-canvas drawer, opened with the ☰ button */
   .sidebar {
-    position: static; height: auto; flex-direction: column;
-    border-right: none; border-bottom: 1px solid var(--hairline);
-    padding: 18px;
+    position: fixed; top: 0; left: 0; bottom: 0; z-index: 60;
+    width: 274px; max-width: 84vw; height: 100vh; height: 100dvh;
+    flex-direction: column;
+    border-right: 1px solid var(--hairline); border-bottom: none;
+    background: var(--bg-raise);
+    overflow-y: auto;
+    padding: 22px 18px calc(18px + env(safe-area-inset-bottom));
+    transform: translateX(-100%);
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    will-change: transform;
   }
-  .nav { flex-direction: row; flex-wrap: wrap; }
-  .nav-item { width: auto; }
-  .nav-index { display: none; }
-  .sidebar-foot { flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
-  .networth-chip { padding: 8px 14px; }
-  .chip-value { font-size: 15px; }
-  /* sidebar sits at the top here, so the data menu must open downward */
-  .data-menu-pop { bottom: auto; top: calc(100% + 8px); }
+  body.nav-open .sidebar { transform: translateX(0); box-shadow: var(--shadow-pop); }
+  .nav { flex-direction: column; }
+  .nav-item { width: 100%; }
+  .sidebar-foot { flex-direction: column; align-items: stretch; gap: 12px; }
+
+  /* dim scrim behind the open drawer */
+  #nav-scrim {
+    display: block; position: fixed; inset: 0; z-index: 55;
+    background: rgba(5, 8, 6, 0.55); backdrop-filter: blur(2px);
+    opacity: 0; pointer-events: none; transition: opacity 0.28s;
+  }
+  body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
+
+  /* ☰ button + sticky app header that always reaches the menu */
+  .nav-toggle { display: inline-flex; align-items: center; justify-content: center; }
+  .topbar {
+    position: sticky; top: 0; z-index: 40;
+    align-items: center; gap: 12px;
+    margin: -22px -18px 18px; padding: 18px;
+    padding-top: max(18px, calc(env(safe-area-inset-top) + 12px));
+    background: var(--bg);
+    border-bottom: 1px solid var(--hairline);
+  }
+  .topbar-head { flex: 1; min-width: 0; }
+  .page-title { font-size: 23px; }
+  .page-date { display: none; }
   .main { padding: 22px 18px 50px; }
-  .page-title { font-size: 30px; }
 }
 
 @media (max-width: 700px) {
@@ -761,6 +797,8 @@ body {
   .pct-big { font-size: 30px; }
   .tl-row { grid-template-columns: 64px minmax(0, 1fr) auto; }
   .main { padding: 18px 14px 44px; }
+  /* keep the full-bleed sticky header aligned with the tighter padding here */
+  .topbar { margin: -18px -14px 16px; padding-left: 14px; padding-right: 14px; }
   .panel { padding: 16px 16px; }
   .learn-play-head { row-gap: 8px; }
 }
