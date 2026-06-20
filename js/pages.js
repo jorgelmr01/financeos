@@ -678,7 +678,10 @@ const Pages = {
     }).join("");
     const legend = sources.map((x, i) =>
       '<span class="lg"><span class="dot" style="background:' + CHART_COLORS[i % CHART_COLORS.length] + '"></span>' + esc(x.label) + " · " + fmtMoney(x.val, { compact: true }) + "/yr" + (x.passive ? " · passive" : "") + "</span>").join("");
-    return '<div class="panel section"><div class="panel-head"><div class="panel-title">Where your income comes from <span class="panel-sub">net, per year</span></div>' +
+    const investNote = sources.some(x => x.label === "Investment")
+      ? this._hint("Investment income = your holdings' market value × their long-run (≈10-year, or max available) average annual return, defaulting to 9% when there's no price history. Hit “Update prices” to refine it per holding.")
+      : "";
+    return '<div class="panel section"><div class="panel-head"><div class="panel-title">Where your income comes from <span class="panel-sub">net, per year</span>' + investNote + "</div>" +
       '<span class="chip-split">▲ Passive <strong class="pos">' + pShare + "%</strong> · Active " + (100 - pShare) + "%</span></div>" +
       '<div class="comp-bar" role="img" aria-label="Income by source: passive ' + pShare + ' percent, active ' + (100 - pShare) + ' percent">' + seg + "</div>" +
       '<div class="comp-legend" style="margin-top:14px">' + legend + "</div></div>";

@@ -226,15 +226,17 @@ const Store = {
     return false;
   },
 
-  /* Yahoo Finance chart endpoint (via CORS proxy): live price + the sum of
-     actual dividend payments over the trailing year. Covers ETFs, no key needed. */
+  /* Yahoo Finance chart endpoint (via CORS proxy): live price, trailing-12mo
+     dividends, and the long-run (≤10y) average annual return (CAGR). One call,
+     no key needed; covers ETFs. */
   async _yahooData(symbol) {
     const url = "https://query1.finance.yahoo.com/v8/finance/chart/" +
-      encodeURIComponent(symbol) + "?range=1y&interval=1mo&events=div";
+      encodeURIComponent(symbol) + "?range=10y&interval=1mo&events=div";
     const proxies = [
       u => "https://corsproxy.io/?url=" + encodeURIComponent(u),
       u => "https://api.allorigins.win/raw?url=" + encodeURIComponent(u),
     ];
+    const nowSec = Date.now() / 1000;
     for (const mk of proxies) {
       try {
         const r = await fetch(mk(url));
@@ -243,11 +245,24 @@ const Store = {
         const res = j && j.chart && j.chart.result && j.chart.result[0];
         if (!res) continue;
         const price = (res.meta && Number(res.meta.regularMarketPrice)) || 0;
+        // trailing-12-month dividends only
         const evs = res.events && res.events.dividends;
         const div = evs
-          ? Object.keys(evs).reduce((a, k) => a + (Number(evs[k].amount) || 0), 0)
+          ? Object.keys(evs).reduce((a, k) => a + (Number(evs[k].date) >= nowSec - 365 * 86400 ? (Number(evs[k].amount) || 0) : 0), 0)
           : 0;
-        return { price, div: Math.round(div * 10000) / 10000 };
+        // long-run average annual return from first→last close
+        let cagr = null;
+        const ts = res.timestamp;
+        const closes = res.indicators && res.indicators.quote && res.indicators.quote[0] && res.indicators.quote[0].close;
+        if (ts && closes && closes.length > 1) {
+          let fi = 0; while (fi < closes.length && !(closes[fi] > 0)) fi++;
+          let li = closes.length - 1; while (li > fi && !(closes[li] > 0)) li--;
+          if (li > fi) {
+            const years = (ts[li] - ts[fi]) / (365.25 * 86400);
+            if (years >= 1 && closes[fi] > 0) cagr = Math.pow(closes[li] / closes[fi], 1 / years) - 1;
+          }
+        }
+        return { price, div: Math.round(div * 10000) / 10000, cagr: cagr };
       } catch (e) { /* proxy down — try the next one */ }
     }
     return null;
@@ -321,11 +336,13 @@ const Store = {
           } catch (e) { /* fall through to Yahoo */ }
         }
       }
-      if (!gotPrice || !gotDiv) {
+      // also call Yahoo when we still need the long-run return for this holding
+      if (!gotPrice || !gotDiv || h.expReturn == null) {
         const y = await this._yahooData(h.symbol);
         if (y) {
           if (!gotPrice && y.price > 0) { h.currentPrice = y.price; gotPrice = true; }
           if (!gotDiv && y.div > 0) { h.divPerShare = y.div; gotDiv = true; }
+          if (y.cagr != null && isFinite(y.cagr)) h.expReturn = Math.round(y.cagr * 10000) / 10000;
         }
       }
       if (gotPrice) prices++; else failed.push(h.symbol);
@@ -596,13 +613,13 @@ function earningsBreakdown() {
   });
   const divNet = divGross * (1 - (Number(tax.dividends) || 0) / 100);
 
+  // Expected annual investment return = market value × the security's long-run
+  // (10y / max history) average annual return, defaulting to 9% when there's no
+  // data. Far steadier than annualizing a short holding period's unrealized P/L.
   let investGross = 0;
   s.holdings.forEach(h => {
-    const pnl = conv((Number(h.shares) || 0) * ((Number(h.currentPrice) || 0) - (Number(h.costBasis) || 0)), h.currency);
-    const bought = parseISO(h.purchaseDate);
-    // annualize each position's return over its holding period (≥30d to avoid spikes)
-    const days = bought ? Math.max(30, daysBetween(bought, todayMid())) : 365;
-    investGross += pnl * 365 / days;
+    const mv = conv((Number(h.shares) || 0) * (Number(h.currentPrice) || 0), h.currency);
+    investGross += mv * holdingReturnRate(h);
   });
   const investNet = investGross > 0 ? investGross * (1 - (Number(tax.capGains) || 0) / 100) : investGross;
 

@@ -275,6 +275,18 @@ function yearlyInterestEst(account) {
   return (Number(account.balance) || 0) * (apy / 100);
 }
 
+/* ---------- expected investment return ----------
+   A holding's expReturn is its long-run (10y / max history) average annual
+   return, populated from live data on "Update prices". Falls back to 9% — the
+   rough long-run equity average — when no history is available. Clamped to a
+   sane band so a data glitch can't blow up projections. */
+const DEFAULT_INVEST_RETURN = 0.09;
+function holdingReturnRate(h) {
+  const r = h ? Number(h.expReturn) : NaN;
+  if (isFinite(r) && r > -0.95 && r <= 1.0) return r;
+  return DEFAULT_INVEST_RETURN;
+}
+
 /* ---------- interest pay schedule ----------
    Accounts choose how often interest is credited. APY is the true annual
    yield, so each payout is derived from it — paying more often never changes
