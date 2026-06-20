@@ -860,6 +860,7 @@ button, a, .nav-item, .tool-btn, .icon-btn, .swatch { -webkit-tap-highlight-colo
 .score-label { font-family: var(--font-display); font-style: italic; font-size: 28px; font-weight: 480; margin: 4px 0 6px; }
 .score-sub { color: var(--text-dim); font-size: 14px; max-width: 540px; }
 .score-bars { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 20px; }
+@media (max-width: 560px) { .score-bars { grid-template-columns: 1fr; gap: 12px; } }
 .sbar-top { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 10.5px; color: var(--text-mute); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 6px; }
 .sbar-val { color: var(--text-dim); }
 .sbar-track { height: 7px; border-radius: 100px; background: var(--surface-3); overflow: hidden; }
