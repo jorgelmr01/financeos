@@ -113,18 +113,36 @@ const Statements = {
     return worker;
   },
 
-  /* render one PDF page to a canvas at a resolution good enough for OCR */
+  /* render one PDF page to a canvas at a resolution good enough for OCR.
+     The canvas is filled white first so scanned pages are always opaque. */
   async _renderPage(page, scale) {
     const viewport = page.getViewport({ scale: scale });
     const canvas = document.createElement("canvas");
     canvas.width = Math.floor(viewport.width);
     canvas.height = Math.floor(viewport.height);
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    await page.render({ canvasContext: ctx, viewport: viewport, background: "#ffffff" }).promise;
     return canvas;
   },
 
-  /* OCR the pages that lack a usable text layer. onProgress(done,total). */
+  /* recognize a page at a given scale → array of cleaned text lines */
+  async _ocrAt(worker, page, scale) {
+    const canvas = await this._renderPage(page, scale);
+    const { data } = await worker.recognize(canvas);
+    canvas.width = canvas.height = 0;          // free memory promptly
+    return (data.text || "").split("\n").map(l => l.replace(/\s+/g, " ").trim()).filter(Boolean);
+  },
+
+  // a line that carries both a date and a money amount = a real table row
+  _ROW_HINT: /\d{1,2}[-\/][A-Za-z0-9]{2,4}[-\/]\d{2,4}.*\d[.,]\d{2}/,
+  _MONEY_HINT: /\$\s*\d/,
+
+  /* OCR the pages that lack a usable text layer. onProgress(done,total).
+     If a page clearly has money rows but layout analysis fragmented them,
+     retry once at a different scale and keep whichever read more rows —
+     this self-heals the occasional bad page-segmentation pass. */
   async ocrPages(doc, pageNums, onProgress) {
     const worker = await this._ensureTesseract();
     const out = {};
@@ -132,13 +150,16 @@ const Statements = {
       const n = pageNums[i];
       if (onProgress) onProgress(i, pageNums.length);
       const page = await doc.getPage(n);
-      // scale for a ~2100px-wide image — the sweet spot for digit accuracy
       const baseW = page.getViewport({ scale: 1 }).width || 612;
-      const scale = Math.max(2, Math.min(3.6, 2100 / baseW));
-      const canvas = await this._renderPage(page, scale);
-      const { data } = await worker.recognize(canvas);
-      out[n] = (data.text || "").split("\n").map(l => l.replace(/\s+/g, " ").trim()).filter(Boolean);
-      canvas.width = canvas.height = 0;       // free memory between pages
+      const scale1 = Math.max(2.4, Math.min(3.2, 1850 / baseW));
+      let lines = await this._ocrAt(worker, page, scale1);
+      const rowCount = (ls) => ls.filter(l => this._ROW_HINT.test(l)).length;
+      const moneyCount = (ls) => ls.filter(l => this._MONEY_HINT.test(l)).length;
+      if (moneyCount(lines) >= 3 && rowCount(lines) === 0) {
+        const alt = await this._ocrAt(worker, page, Math.min(3.6, scale1 * 1.18));
+        if (rowCount(alt) > rowCount(lines)) lines = alt;
+      }
+      out[n] = lines;
       page.cleanup && page.cleanup();
     }
     if (onProgress) onProgress(pageNums.length, pageNums.length);
@@ -179,6 +200,17 @@ const Statements = {
     let n = parseFloat(cleaned);
     if (isNaN(n)) return null;
     return neg ? -n : n;
+  },
+
+  /* Clean up a merchant string: drop masked card numbers some banks append
+     (e.g. "Uber XXXXXXXXXXXX9906") and tidy trailing separators. */
+  _tidyDesc(s) {
+    return String(s || "")
+      .replace(/[X*]{3,}\s?\d{2,6}\b/gi, " ")    // masked card / account tails
+      .replace(/[\s,;:.\-|]+$/, "")              // trailing separators
+      .replace(/^[\s,;:.\-|]+/, "")
+      .replace(/\s+/g, " ")
+      .trim();
   },
 
   /* ---------- category guessing from merchant text ---------- */
@@ -417,6 +449,7 @@ const Statements = {
     const rows = [];
     raw.forEach(r => {
       if (r.type === "balance") return;                       // never a real expense
+      r.description = this._tidyDesc(r.description);
       const key = r.date + "|" + r.description.toLowerCase() + "|" + r.amount.toFixed(2);
       if (seen[key]) return; seen[key] = 1;
       const isCharge = r.type === "charge";
