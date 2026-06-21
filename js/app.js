@@ -102,6 +102,15 @@ const App = {
     Store.recordSnapshot();
   },
 
+  /* credit any interest the schedule says is due, then tell the user once */
+  settleInterest() {
+    const r = Store.settleInterest();
+    if (r && r.count) {
+      UI.toast("Credited " + fmtMoney(r.credited) + " interest to " + r.count + " account" + (r.count === 1 ? "" : "s") + " on schedule");
+    }
+    return r;
+  },
+
   showLock() {
     const root = document.getElementById("lock-root");
     root.innerHTML =
@@ -123,6 +132,7 @@ const App = {
       if (ok) {
         root.innerHTML = "";
         document.getElementById("currency-select").value = Store.state.settings.currency;
+        this.settleInterest();
         this.render();
         Store.refreshFx().then(changed => { if (changed) this.render(); });
       } else {
@@ -324,11 +334,13 @@ const App = {
         if (Store.state.accounts.length || Store.state.cards.length || Store.state.holdings.length) {
           UI.confirm("Load sample data?", "This replaces your current data with a demo dataset. Export first if you want a backup.", () => {
             Store.loadSample();
+            Store.settleInterest();
             UI.toast("Sample data loaded — explore away");
             App.render();
           });
         } else {
           Store.loadSample();
+          Store.settleInterest();
           UI.toast("Sample data loaded — explore away");
           this.render();
         }
@@ -515,7 +527,7 @@ const App = {
     });
 
     if (res.locked) this.showLock();
-    else this.render();
+    else { this.settleInterest(); this.render(); }
 
     // refresh ECB rates in the background (daily); re-render if they changed
     if (Store.state) {

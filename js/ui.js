@@ -392,6 +392,10 @@ const UI = {
       this.field("Tax on interest %", '<input name="taxInterest" type="number" step="0.1" min="0" max="99" value="' + (tax.interest || "") + '" placeholder="0">', "e.g. ISR retention in Mexico") +
       this.field("Tax on dividends %", '<input name="taxDividends" type="number" step="0.1" min="0" max="99" value="' + (tax.dividends || "") + '" placeholder="0">', "withholding rate") +
       this.field("Tax on capital gains %", '<input name="taxCapGains" type="number" step="0.1" min="0" max="99" value="' + (tax.capGains || "") + '" placeholder="0">', "applied to projected gains", true) +
+      this.field("Auto-credit interest",
+        '<label class="switch-row"><input type="checkbox" name="autoInterest"' + (st.autoInterest !== false ? " checked" : "") + '> ' +
+        "Add interest to balances on its schedule</label>",
+        "When on, FinanceOS credits each account the interest it has earned by today, following its pay schedule — so balances, net worth and projections stay current. Turn off to keep balances exactly as you enter them.", true) +
       '<div class="field full"><div class="hint">' + fxNote + "</div></div>" +
       "</div>";
     this.openModal("Settings — taxes & live data", body, {
@@ -403,7 +407,9 @@ const UI = {
           dividends: parseFloat(fd.get("taxDividends")) || 0,
           capGains: parseFloat(fd.get("taxCapGains")) || 0,
         };
+        Store.state.settings.autoInterest = fd.get("autoInterest") != null;
         Store.save();
+        Store.settleInterest();          // apply immediately if just turned on
         UI.toast("Settings saved");
         UI.closeModal();
         App.render();

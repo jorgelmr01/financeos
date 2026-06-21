@@ -16,24 +16,28 @@ const root = path.resolve(here, "..");
 const read = (p) => fs.readFileSync(path.join(root, p), "utf8");
 
 /* ---- sandbox: load the real source, sharing one lexical scope ---- */
-const expenses = [];
 const ctx = {
   console, Date, Math, Intl, JSON, RegExp,
   isFinite, isNaN, parseFloat, parseInt,
   String, Number, Object, Array, Boolean, Map, Set,
   WebAssembly: undefined, document: undefined,
-  Store: {
-    state: { settings: { currency: "MXN" }, expenses, fx: {} },
-    add(kind, e) { this.state[kind].push(e); },
-  },
 };
 vm.createContext(ctx);
-const bundle = [read("js/utils.js"), read("js/budget.js"), read("js/statements.js")].join("\n;\n") +
+const bundle = [read("js/utils.js"), read("js/budget.js"), read("js/statements.js"), read("js/store.js")].join("\n;\n") +
   "\n;globalThis.__api = { interestPerPeriod, nextInterestDate, interestScheduleLabel, interestPeriodDays," +
   " accruedInterest, holdingReturnRate, parseAmount, parseExpenseDate, expenseSig, canonicalCategory," +
-  " toISO, parseISO, daysBetween, Statements, INTEREST_FREQ };";
+  " toISO, parseISO, daysBetween, todayMid, Statements, INTEREST_FREQ, Store };";
 vm.runInContext(bundle, ctx, { filename: "bundle.js" });
 const A = ctx.__api;
+// fresh in-memory store, no persistence
+const resetStore = (over) => {
+  A.Store.state = Object.assign({
+    settings: { currency: "MXN", tax: { interest: 0 }, autoInterest: true, fx: null },
+    accounts: [], cards: [], holdings: [], incomes: [], expenses: [], budgets: {}, snapshots: [], learn: {},
+  }, over || {});
+  A.Store.save = () => {};
+};
+resetStore();
 
 /* ---- tiny assertion harness ---- */
 let pass = 0, fail = 0;
@@ -211,14 +215,44 @@ group("Statements._reconcile flags gross gaps, tolerates small ones", () => {
 
 group("Statements.commit is dedup-aware", () => {
   const S = A.Statements;
-  ctx.Store.state.expenses.length = 0;
+  resetStore();
   const row = { date: "2026-06-01", description: "Costco", category: "Groceries", amount: 1578.26, currency: "MXN" };
   const r1 = S.commit([Object.assign({}, row)]);
   eq(r1.added, 1, "first import adds the row");
   const r2 = S.commit([Object.assign({}, row)]);
   eq(r2.added, 0, "re-import adds nothing");
   eq(r2.skipped, 1, "re-import skips the duplicate");
-  eq(ctx.Store.state.expenses.length, 1, "store holds a single copy");
+  eq(A.Store.state.expenses.length, 1, "store holds a single copy");
+});
+
+/* ================= auto interest settlement ================= */
+group("Store.settleInterest credits scheduled interest, idempotently", () => {
+  const today = A.todayMid();
+  const back = (days) => { const d = new Date(today); d.setDate(d.getDate() - days); return A.toISO(d); };
+
+  // monthly, ~3 paydays elapsed: balance grows, balanceAsOf advances, re-run is a no-op
+  resetStore({ accounts: [{ id: "m", balance: 100000, apy: 10, currency: "MXN", interestFreq: "monthly", interestDay: 31, balanceAsOf: back(95) }] });
+  const r = A.Store.settleInterest();
+  eq(r.count, 1, "one account credited");
+  ok(A.Store.state.accounts[0].balance > 100000, "balance increased");
+  ok(A.Store.state.accounts[0].balanceAsOf > back(95), "balanceAsOf advanced");
+  const r2 = A.Store.settleInterest();
+  eq(r2.count, 0, "idempotent — second run credits nothing");
+
+  // daily over 30 days, 5% tax → net of tax, settled to today
+  resetStore({ settings: { currency: "MXN", tax: { interest: 5 }, autoInterest: true, fx: null }, accounts: [{ id: "d", balance: 50000, apy: 9, currency: "MXN", interestFreq: "daily", balanceAsOf: back(30) }] });
+  A.Store.settleInterest();
+  approx(A.Store.state.accounts[0].balance - 50000, 50000 * (Math.pow(1.09, 30 / 365) - 1) * 0.95, 0.5, "daily credit is net of 5% tax");
+  eq(A.Store.state.accounts[0].balanceAsOf, A.toISO(today), "daily settles to today");
+
+  // fixed term not yet matured → nothing credited
+  resetStore({ accounts: [{ id: "t", balance: 50000, apy: 10.2, currency: "MXN", interestFreq: "term", interestEveryDays: 91, interestStart: back(30), balanceAsOf: back(30) }] });
+  eq(A.Store.settleInterest().count, 0, "term before maturity → no credit");
+
+  // off switch leaves balances untouched
+  resetStore({ settings: { currency: "MXN", tax: { interest: 0 }, autoInterest: false, fx: null }, accounts: [{ id: "x", balance: 100000, apy: 10, currency: "MXN", interestFreq: "monthly", interestDay: 31, balanceAsOf: back(95) }] });
+  eq(A.Store.settleInterest().count, 0, "autoInterest off → no settlement");
+  eq(A.Store.state.accounts[0].balance, 100000, "balance untouched when off");
 });
 
 /* ---- report ---- */

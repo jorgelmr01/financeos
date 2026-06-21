@@ -24,6 +24,7 @@ const Store = {
         currency: "USD", privacy: false, pinEnabled: false, lastExport: null, theme: "dark",
         fx: null,                 // {base:'USD', rates:{...units per USD}, asOf}
         tax: { interest: 0, dividends: 0, capGains: 0 },
+        autoInterest: true,       // credit interest to balances on its schedule
         finnhubKey: "", lastQuoteSync: null,
       },
     };
@@ -52,6 +53,7 @@ const Store = {
       if (!a.interestFreq) a.interestFreq = "monthly";
       if (a.interestDay == null) a.interestDay = 31;
     });
+    if (this.state.settings.autoInterest == null) this.state.settings.autoInterest = true;
   },
 
   /* returns { locked: boolean } — when locked, call unlock(pin) before using state */
@@ -371,6 +373,47 @@ const Store = {
       if (snaps.length > 730) snaps.splice(0, snaps.length - 730);
       this.save();
     }
+  },
+
+  /* Bring balances up to date by crediting interest the schedule says has
+     already been paid. For each interest-bearing account it pays out every
+     scheduled date in (balanceAsOf, today], compounding, then advances
+     balanceAsOf — so it's idempotent (re-running credits nothing new) and the
+     net-worth history + earnings projection both reflect the higher balances.
+     Net of the interest tax, matching the manual "Capitalize". */
+  settleInterest() {
+    if (!this.state || this.state.settings.autoInterest === false) return { credited: 0, count: 0 };
+    const today = todayMid();
+    const taxF = 1 - ((this.state.settings.tax && Number(this.state.settings.tax.interest)) || 0) / 100;
+    const dayAfter = (d) => { const x = new Date(d); x.setDate(x.getDate() + 1); return x; };
+    let creditedDisp = 0, count = 0, changed = false;
+    this.state.accounts.forEach(a => {
+      const apy = Number(a.apy) || 0;
+      if (apy <= 0) return;
+      const start = parseISO(a.balanceAsOf);
+      if (!start || start >= today) return;
+      let bal = Number(a.balance) || 0, last = start, creditedNative = 0;
+      const creditTo = (to) => {
+        const days = daysBetween(last, to);
+        if (days <= 0) return;
+        const net = bal * (Math.pow(1 + apy / 100, days / 365) - 1) * taxF;
+        bal += net; creditedNative += net; last = to;
+      };
+      if (interestFreqKey(a) === "daily") {
+        creditTo(today);                                   // formula already compounds daily
+      } else {
+        let next = nextInterestDate(a, dayAfter(start)), guard = 0;
+        while (next && next <= today && guard < 4000) { creditTo(next); next = nextInterestDate(a, dayAfter(next)); guard++; }
+      }
+      if (creditedNative > 0.005) {
+        a.balance = Math.round(bal * 100) / 100;
+        a.balanceAsOf = toISO(last);
+        creditedDisp += (typeof conv === "function" ? conv(creditedNative, a.currency) : creditedNative);
+        count++; changed = true;
+      }
+    });
+    if (changed) this.save();
+    return { credited: creditedDisp, count: count };
   },
 
   loadSample() {
