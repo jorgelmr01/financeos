@@ -99,17 +99,26 @@ const UI = {
       this.field("Interest rate — APY %", '<input name="apy" type="number" inputmode="decimal" step="0.01" min="0" max="100" value="' + (acc.apy != null && acc.apy !== 0 ? acc.apy : "") + '" placeholder="e.g. 7.50">', "Leave empty if the account pays no interest") +
       this.field("Interest paid",
         '<select name="interestFreq">' +
-          [["daily", "Daily (compounds daily)"], ["monthly", "Monthly"], ["quarterly", "Quarterly"], ["annually", "Annually"]]
+          [["daily", "Daily (compounds daily)"], ["monthly", "Monthly"], ["quarterly", "Quarterly"],
+           ["annually", "Annually"], ["everyN", "Every N days (custom)"], ["term", "Fixed term (pays at maturity)"]]
             .map(o => '<option value="' + o[0] + '"' + (interestFreqKey(acc) === o[0] ? " selected" : "") + ">" + o[1] + "</option>").join("") +
-        "</select>", "How often this account credits interest") +
+        "</select>", "Daily compounds · quarterly lands Jan/Apr/Jul/Oct · annually in December") +
       this.field("Paid on",
         '<select name="interestDay">' + intDayOpts(interestPayDay(acc)) + "</select>",
-        "Day it lands · quarterly = Jan/Apr/Jul/Oct · annually = December", false, "interest-day-field") +
+        "Day of the month it's credited", false, "interest-day-field") +
+      this.field('<span id="days-label">Every N days</span>',
+        '<input name="interestEveryDays" type="number" inputmode="numeric" min="1" max="3650" step="1" value="' + (acc.interestEveryDays != null ? acc.interestEveryDays : "") + '" placeholder="e.g. 547">',
+        '<span id="days-hint">Interest is credited every N days from the start date.</span>', false, "interest-days-field") +
+      this.field("Starting",
+        '<input name="interestStart" type="date" value="' + esc(acc.interestStart || toISO(todayMid())) + '">',
+        "When the term begins / began", false, "interest-start-field") +
       "</div>";
     this.openModal(isEdit ? "Edit account" : "New account", body, {
       submitLabel: isEdit ? "Save changes" : "Add account",
       onSubmit(fd) {
         const balance = parseFloat(fd.get("balance")) || 0;
+        const freq = fd.get("interestFreq") || "monthly";
+        const dayCount = (freq === "everyN" || freq === "term");
         const patch = {
           name: fd.get("name").trim(),
           institution: fd.get("institution").trim(),
@@ -117,8 +126,10 @@ const UI = {
           balance: balance,
           currency: fd.get("currency"),
           apy: parseFloat(fd.get("apy")) || 0,
-          interestFreq: fd.get("interestFreq") || "monthly",
+          interestFreq: freq,
           interestDay: parseInt(fd.get("interestDay"), 10) || 31,
+          interestEveryDays: dayCount ? Math.max(1, parseInt(fd.get("interestEveryDays"), 10) || 365) : null,
+          interestStart: dayCount ? (fd.get("interestStart") || toISO(todayMid())) : null,
         };
         if (isEdit) {
           // reset the accrual clock only when the balance actually changes
@@ -134,11 +145,27 @@ const UI = {
         App.render();
       },
     });
-    // hide the "Paid on" day when interest compounds daily
+    // show only the schedule fields that apply to the chosen frequency:
+    //   monthly → Paid on · everyN/term → length + start date · others → none
     const freqSel = document.querySelector("#modal-form [name=interestFreq]");
-    const dayField = document.getElementById("interest-day-field");
-    if (freqSel && dayField) {
-      const sync = () => { dayField.style.display = freqSel.value === "daily" ? "none" : ""; };
+    if (freqSel) {
+      const dayField = document.getElementById("interest-day-field");
+      const daysField = document.getElementById("interest-days-field");
+      const startField = document.getElementById("interest-start-field");
+      const daysLabel = document.getElementById("days-label");
+      const daysHint = document.getElementById("days-hint");
+      const show = (el, on) => { if (el) el.style.display = on ? "" : "none"; };
+      const sync = () => {
+        const f = freqSel.value;
+        const dayCount = (f === "everyN" || f === "term");
+        show(dayField, f === "monthly");
+        show(daysField, dayCount);
+        show(startField, dayCount);
+        if (daysLabel) daysLabel.textContent = f === "term" ? "Term length (days)" : "Every N days";
+        if (daysHint) daysHint.textContent = f === "term"
+          ? "Length of the deposit — common: 28, 91, 182, 364 days (Cetes / CDs). Interest pays at maturity."
+          : "Interest is credited every N days from the start date.";
+      };
       freqSel.addEventListener("change", sync);
       sync();
     }
@@ -553,11 +580,25 @@ const UI = {
     const warn = (parse.warnings && parse.warnings.length)
       ? '<div class="privacy-card warn">' + icon("eye") + "<div>" + esc(parse.warnings[0]) + "</div></div>" : "";
 
+    // reconciliation badge — does our charge sum match the statement's printed total?
+    let recon = "";
+    const rc = parse.reconcile;
+    if (rc && rc.printed != null) {
+      if (rc.ok) {
+        recon = '<div class="recon ok">' + icon("award") + "<div>Adds up — your charges match the statement total of " +
+          esc(fmtMoneyIn(rc.printed, parse.currency)) + ".</div></div>";
+      } else {
+        recon = '<div class="recon bad">' + icon("eye") + "<div>Heads up: the charges read total " +
+          esc(fmtMoneyIn(rc.parsed, parse.currency)) + ", but the statement lists " + esc(fmtMoneyIn(rc.printed, parse.currency)) +
+          " (" + (rc.diff > 0 ? "+" : "") + esc(fmtMoneyIn(rc.diff, parse.currency)) + "). A row may be missing or misread — worth a quick look.</div></div>";
+      }
+    }
+
     const body =
       '<div class="stmt-summary"><span class="stmt-bank">' + icon("card") + " " + esc(parse.bankLabel) + "</span>" +
         '<span class="stmt-meta">' + parse.rows.length + " transactions found · " + parse.currency + "</span></div>" +
       '<div class="privacy-card slim">' + icon("lock") + "<div>Parsed on your device — nothing was uploaded. Review and edit, then import.</div></div>" +
-      warn +
+      warn + recon +
       '<div class="stmt-bulk"><button type="button" class="link-btn" data-stmt-bulk="all">Select all</button>' +
         '<button type="button" class="link-btn" data-stmt-bulk="charges">Only purchases</button>' +
         '<button type="button" class="link-btn" data-stmt-bulk="none">None</button></div>' +

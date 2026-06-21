@@ -292,15 +292,32 @@ function holdingReturnRate(h) {
    yield, so each payout is derived from it — paying more often never changes
    the yearly total, only when (and in what size chunks) it lands. */
 const INTEREST_FREQ = {
-  daily:     { label: "Daily",     perYear: 365 },
-  monthly:   { label: "Monthly",   perYear: 12 },
-  quarterly: { label: "Quarterly", perYear: 4 },
-  annually:  { label: "Annually",  perYear: 1 },
+  daily:     { label: "Daily",       perYear: 365 },
+  monthly:   { label: "Monthly",     perYear: 12 },
+  quarterly: { label: "Quarterly",   perYear: 4 },
+  annually:  { label: "Annually",    perYear: 1 },
+  everyN:    { label: "Every N days", perYear: null },  // cadence from interestEveryDays
+  term:      { label: "Fixed term",   perYear: null },  // pays at maturity (start + term)
 };
 const INTEREST_FREQ_DEFAULT = "monthly";
 
+// frequencies whose schedule is anchored to a start date and a day-count
+function isDayCountFreq(f) { return f === "everyN" || f === "term"; }
+
 function interestFreqKey(account) {
   return account && INTEREST_FREQ[account.interestFreq] ? account.interestFreq : INTEREST_FREQ_DEFAULT;
+}
+
+/* Length in days of one interest period for everyN / fixed-term accounts. */
+function interestPeriodDays(account) {
+  const n = Math.round(Number(account && account.interestEveryDays));
+  return n >= 1 ? n : 365;
+}
+
+/* Anchor date a custom / fixed-term schedule counts from. */
+function interestStartDate(account) {
+  return parseISO(account && account.interestStart) ||
+    parseISO(account && account.balanceAsOf) || todayMid();
 }
 
 /* Day-of-month interest is credited (31 = last day of the month). */
@@ -309,20 +326,33 @@ function interestPayDay(account) {
   return d >= 1 && d <= 31 ? d : 31;
 }
 
-/* Interest credited per scheduled payment, derived from APY. */
+/* Interest credited per scheduled payment, derived from APY.
+   Paying more often never changes the yearly total, only the chunk size. */
 function interestPerPeriod(account) {
   const apy = Number(account.apy) || 0;
   if (apy <= 0) return 0;
-  const n = INTEREST_FREQ[interestFreqKey(account)].perYear;
-  return (Number(account.balance) || 0) * (Math.pow(1 + apy / 100, 1 / n) - 1);
+  const f = interestFreqKey(account);
+  const exp = isDayCountFreq(f) ? interestPeriodDays(account) / 365 : 1 / INTEREST_FREQ[f].perYear;
+  return (Number(account.balance) || 0) * (Math.pow(1 + apy / 100, exp) - 1);
 }
 
 /* Next date interest is scheduled to be credited, on or after `from`.
-   quarterly anchors to Jan/Apr/Jul/Oct, annually to December. */
+   quarterly anchors to Jan/Apr/Jul/Oct, annually to December, everyN/term to
+   their start date stepped by the period length (fixed terms roll to the next
+   maturity once the prior one passes). */
 function nextInterestDate(account, from) {
   from = from || todayMid();
   const f = interestFreqKey(account);
   if (f === "daily") { const d = new Date(from); d.setDate(d.getDate() + 1); return d; }
+  if (isDayCountFreq(f)) {
+    const start = interestStartDate(account);
+    const N = interestPeriodDays(account);
+    const d = new Date(start);
+    if (start > from) { d.setDate(d.getDate() + N); return d; }   // first maturity ahead
+    const k = Math.floor(daysBetween(start, from) / N) + 1;
+    d.setDate(d.getDate() + k * N);
+    return d;
+  }
   const day = interestPayDay(account);
   if (f === "monthly") return nextMonthlyOccurrence(day, from);
   const anchors = f === "quarterly" ? [0, 3, 6, 9] : [11];
@@ -336,10 +366,12 @@ function nextInterestDate(account, from) {
   return nextMonthlyOccurrence(day, from);
 }
 
-/* "Daily" / "Monthly · last day" / "Quarterly · 15th" */
+/* "Daily" / "Monthly · last day" / "Every 547 days" / "Fixed term · 364 days" */
 function interestScheduleLabel(account) {
   const f = interestFreqKey(account);
   if (f === "daily") return "Daily";
+  if (f === "everyN") return "Every " + interestPeriodDays(account) + " days";
+  if (f === "term") return "Fixed term · " + interestPeriodDays(account) + " days";
   const day = interestPayDay(account);
   return INTEREST_FREQ[f].label + " · " + (day >= 29 ? "last day" : ordinal(day));
 }

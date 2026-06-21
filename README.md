@@ -34,7 +34,7 @@ Your data still lives only on the device, in that browser's storage — installi
 | Page | What it does |
 |---|---|
 | **Today** | A single **Financial Health score (0–100)** that rolls cash flow, debt, safety net and growth into one honest number, a "what needs attention now" feed, net-worth (with daily change) and history chart, asset composition, upcoming deposits and a one-tap **Log expense** |
-| **Accounts** | Checking / savings / investment accounts with APY — daily, monthly & yearly interest projections (net of tax), live accrual since the last balance update, one-click "Capitalize" |
+| **Accounts** | Checking / savings / investment accounts with APY and a flexible interest schedule — **daily, monthly (pick the day), quarterly, annually, every N days, or a fixed term** (CDs / Cetes / plazo fijo that pay at maturity). Interest projections net of tax, live accrual since the last balance update, one-click "Capitalize" |
 | **Credit Cards** | Limits, balances, utilization bars, statement-cut & payment-due countdowns with alerts (≤5 days for cut, ≤7 for payment, high-utilization warnings) |
 | **Portfolio** | Stocks & ETFs with shares + price paid in the listing's currency; **live quotes & dividends** (no key needed) or edit prices inline; allocation chart, **return-by-position chart**, after-tax returns, best/worst. **Tap any position** for a detail view with a **price-evolution chart** (1M/6M/1Y/5Y) and full per-stock stats |
 | **Earnings** | Salaries & recurring income (monthly, every 15 days / quincena, every 14 days, weekly) with **gross/net + tax-rate handling**, mapped to receiving accounts; interest & dividend engines, 30-day deposit timeline, 12-month net projection chart |
@@ -61,6 +61,8 @@ Most people quit budgeting apps because logging every expense is miserable. Fina
 ### Or just drop in your statement PDF *(Beta)*
 
 Skip the spreadsheet entirely: **Budget → Import PDF** reads a credit-card or bank statement and turns it into expenses for you. It's tuned for **American Express**, **Klar**, **Openbank** and **Santander** statements, with a generic reader for other banks. You get a **review screen** — every transaction with a guessed category, payments and transfers pre-unchecked, amounts you can verify — and nothing is saved until you press *Import* (with the same duplicate-proof fingerprinting).
+
+Statements print their own charge total, so the review screen **reconciles** what it read against that figure: a green "adds up" badge when they match, or a heads-up when they don't — a row may be missing or misread. It's the safety net that matters most for scanned imports.
 
 The whole thing runs **entirely on your device**: the PDF is parsed in your browser with a self-hosted copy of [PDF.js](https://mozilla.github.io/pdf.js/) (bundled under `/vendor`). The file is **never uploaded, never sent to a server, and never stored anywhere but on your device** — exactly what you'd want for a financial statement.
 
@@ -90,3 +92,4 @@ Two hand-tuned themes, toggled with the ☀/☾ button in the sidebar: **"ledger
 - The currency switch (USD/MXN/EUR/GBP) changes display formatting and the USD conversion used for percentiles; it does not convert your balances.
 - Global percentiles are rough, motivational estimates interpolated from public datasets (UBS/Credit Suisse Global Wealth Report, World Inequality Database, ~2024).
 - Built with vanilla HTML/CSS/JS — no dependencies, no build step.
+- The money-critical logic (interest schedules, amount/date parsing, dedup, statement parsing & reconciliation) has a headless test suite: run `node test/money.test.mjs`. In a finance app the one bug you can't ship is a wrong number.

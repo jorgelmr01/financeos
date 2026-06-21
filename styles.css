@@ -1300,6 +1300,25 @@ button, a, .nav-item, .tool-btn, .icon-btn, .swatch { -webkit-tap-highlight-colo
   color: var(--text-dim); font-size: 13px; line-height: 1.45;
 }
 .privacy-card.slim { padding: 9px 12px; font-size: 12.5px; margin-bottom: 12px; }
+
+.recon {
+  display: flex; gap: 10px; align-items: flex-start;
+  border-radius: 11px; padding: 10px 12px; margin-bottom: 12px;
+  font-size: 12.5px; line-height: 1.45;
+}
+.recon .ic { flex: 0 0 auto; margin-top: 1px; }
+.recon.ok {
+  background: color-mix(in srgb, var(--mint) 9%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--mint) 26%, transparent);
+  color: var(--text-dim);
+}
+.recon.ok .ic { color: var(--mint); }
+.recon.bad {
+  background: color-mix(in srgb, var(--gold) 10%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--gold) 32%, transparent);
+  color: var(--text-dim);
+}
+.recon.bad .ic { color: var(--gold); }
 .privacy-card.warn {
   background: color-mix(in srgb, var(--gold) 9%, var(--surface));
   border-color: color-mix(in srgb, var(--gold) 30%, transparent);

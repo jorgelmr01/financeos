@@ -12,7 +12,7 @@ const Store = {
 
   defaults() {
     return {
-      accounts: [],   // {id, name, institution, type, balance, apy, balanceAsOf, currency, interestFreq, interestDay}
+      accounts: [],   // {id, name, institution, type, balance, apy, balanceAsOf, currency, interestFreq, interestDay, interestEveryDays, interestStart}
       cards: [],      // {id, name, issuer, limit, balance, cutDay, payDay, apr, color, currency}
       holdings: [],   // {id, symbol, name, kind, shares, costBasis, currentPrice, divPerShare, accountId, purchaseDate, currency}
       incomes: [],    // {id, name, category, amount, amountType, taxRate, accountId, frequency, payDay, startDate, currency}
@@ -377,7 +377,8 @@ const Store = {
     const t = todayMid();
     const iso = toISO(t);
     const monthAgo = toISO(new Date(t.getFullYear(), t.getMonth() - 1, t.getDate()));
-    const acc1 = uid(), acc2 = uid(), acc3 = uid(), acc4 = uid();
+    const acc1 = uid(), acc2 = uid(), acc3 = uid(), acc4 = uid(), acc5 = uid();
+    const termStart = toISO(new Date(t.getFullYear(), t.getMonth(), t.getDate() - 30));
     const settings = Object.assign(this.defaults().settings, this.state ? this.state.settings : {});
     settings.tax = { interest: 5, dividends: 10, capGains: 10 };
     this.state = {
@@ -388,6 +389,7 @@ const Store = {
         { id: acc2, name: "High-Yield Savings", institution: "Nu", type: "savings", balance: 92000, apy: 9.25, balanceAsOf: monthAgo, currency: "MXN", interestFreq: "daily", interestDay: 31 },
         { id: acc3, name: "Emergency Fund", institution: "Openbank", type: "savings", balance: 45000, apy: 7.5, balanceAsOf: monthAgo, currency: "MXN", interestFreq: "quarterly", interestDay: 15 },
         { id: acc4, name: "Brokerage Cash", institution: "GBM+", type: "investment", balance: 1200, apy: 0, balanceAsOf: iso, currency: "USD" },
+        { id: acc5, name: "CETES 91 días", institution: "Cetesdirecto", type: "investment", balance: 50000, apy: 10.2, balanceAsOf: termStart, currency: "MXN", interestFreq: "term", interestEveryDays: 91, interestStart: termStart },
       ],
       cards: [
         { id: uid(), name: "Platinum Rewards", issuer: "American Express", limit: 85000, balance: 21340.5, cutDay: 14, payDay: 4, apr: 39.9, color: "c-forest", currency: "MXN" },

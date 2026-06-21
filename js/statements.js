@@ -472,8 +472,39 @@ const Statements = {
 
     rows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
     if (!rows.length) warnings.push((viaOCR ? "OCR ran but no transactions could be matched. " : "No transactions could be read from this PDF. ") + "It may use an unusual layout — try the spreadsheet template instead.");
-    this.lastParse = { bank, bankLabel: this.BANK_LABEL[bank], currency, rows, warnings, scanned: false, viaOCR: viaOCR };
+
+    // Reconcile: the statement prints its own charge total, so check our sum
+    // against it. Catches a missed or misread row — vital for OCR'd scans.
+    const reconcile = this._reconcile(text, bank, rows);
+
+    this.lastParse = { bank, bankLabel: this.BANK_LABEL[bank], currency, rows, warnings, scanned: false, viaOCR: viaOCR, reconcile: reconcile };
     return this.lastParse;
+  },
+
+  /* The printed "total charges" figure for a statement, mapped to the rows we
+     actually parse (regular purchases, excluding payments/refunds). */
+  _chargeTotal(text, bank) {
+    const pats = {
+      amex: /Nuevas transacciones:?\s*\$?\s*([\d,]+\.\d{2})/i,
+      klar: /Compras del periodo\s*\+?\s*\$?\s*([\d,]+\.\d{2})/i,
+      openbank: /Cargos regulares[^$\n]*\$\s*([\d,]+\.\d{2})/i,
+      santander: /Total\s+cargos[^\d$\n]*\$?\s*([\d,]+\.\d{2})/i,
+    };
+    const re = pats[bank];
+    if (!re) return null;
+    const m = text.match(re);
+    return m ? this._amt(m[1]) : null;
+  },
+
+  _reconcile(text, bank, rows) {
+    const printed = this._chargeTotal(text, bank);
+    if (printed == null) return { printed: null, parsed: null, ok: null, diff: 0 };
+    const parsed = Math.round(rows.filter(r => r.type === "charge")
+      .reduce((a, r) => a + Math.abs(r.amount), 0) * 100) / 100;
+    const diff = Math.round((parsed - printed) * 100) / 100;
+    // tolerate rounding + a stray prior-period adjustment; flag gross gaps
+    const ok = Math.abs(diff) <= Math.max(1, printed * 0.005);
+    return { printed: printed, parsed: parsed, ok: ok, diff: diff };
   },
 
   /* Add the reviewed rows as expenses, dedup-aware (same rules as CSV import). */
