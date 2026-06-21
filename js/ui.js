@@ -96,7 +96,7 @@ const UI = {
         "</select>") +
       this.field("Current balance", '<input name="balance" type="number" inputmode="decimal" step="0.01" min="0" required value="' + (acc.balance != null ? acc.balance : "") + '" placeholder="0.00">') +
       this.field("Currency", this.currencySelect("currency", acc.currency), "Converted automatically in totals") +
-      this.field("Interest rate — APY %", '<input name="apy" type="number" inputmode="decimal" step="0.01" min="0" max="100" value="' + (acc.apy != null && acc.apy !== 0 ? acc.apy : "") + '" placeholder="e.g. 7.50">', "Leave empty if the account pays no interest") +
+      this.field("Interest rate — annual % (APY)", '<input name="apy" type="number" inputmode="decimal" step="0.01" min="0" max="100" value="' + (acc.apy != null && acc.apy !== 0 ? acc.apy : "") + '" placeholder="e.g. 11.50">', "The yearly rate. For custom intervals & fixed terms it's pro-rated to the period — not paid in full each time.") +
       this.field("Interest paid",
         '<select name="interestFreq">' +
           [["daily", "Daily (compounds daily)"], ["monthly", "Monthly"], ["quarterly", "Quarterly"],
@@ -112,7 +112,8 @@ const UI = {
       this.field("Starting",
         '<input name="interestStart" type="date" value="' + esc(acc.interestStart || toISO(todayMid())) + '">',
         "When the term begins / began", false, "interest-start-field") +
-      "</div>";
+      "</div>" +
+      '<div class="interest-preview" id="interest-preview" hidden></div>';
     this.openModal(isEdit ? "Edit account" : "New account", body, {
       submitLabel: isEdit ? "Save changes" : "Add account",
       onSubmit(fd) {
@@ -147,26 +148,70 @@ const UI = {
     });
     // show only the schedule fields that apply to the chosen frequency:
     //   monthly → Paid on · everyN/term → length + start date · others → none
-    const freqSel = document.querySelector("#modal-form [name=interestFreq]");
+    const form = document.getElementById("modal-form");
+    const freqSel = form && form.querySelector("[name=interestFreq]");
     if (freqSel) {
+      const daysInput = form.querySelector("[name=interestEveryDays]");
       const dayField = document.getElementById("interest-day-field");
       const daysField = document.getElementById("interest-days-field");
       const startField = document.getElementById("interest-start-field");
       const daysLabel = document.getElementById("days-label");
       const daysHint = document.getElementById("days-hint");
+      const previewEl = document.getElementById("interest-preview");
       const show = (el, on) => { if (el) el.style.display = on ? "" : "none"; };
+
+      // live, plain-language preview of what each payout works out to — so the
+      // annual-vs-period distinction is obvious before saving.
+      const num = (name) => parseFloat(form.querySelector("[name=" + name + "]").value) || 0;
+      const preview = () => {
+        if (!previewEl) return;
+        const apy = num("apy"), bal = num("balance");
+        const f = freqSel.value;
+        if (apy <= 0 || bal <= 0) { previewEl.hidden = true; return; }
+        const a = {
+          balance: bal, apy: apy, currency: form.querySelector("[name=currency]").value,
+          interestFreq: f, interestDay: parseInt(form.querySelector("[name=interestDay]").value, 10) || 31,
+          interestEveryDays: parseInt(daysInput.value, 10) || null,
+          interestStart: form.querySelector("[name=interestStart]").value || toISO(todayMid()),
+          balanceAsOf: toISO(todayMid()),
+        };
+        if ((f === "everyN" || f === "term") && !(a.interestEveryDays >= 1)) { previewEl.hidden = true; return; }
+        const per = interestPerPeriod(a);
+        const amt = fmtMoneyIn(per, a.currency, { sign: true });
+        const next = fmtDateShort(nextInterestDate(a));
+        const pct = (per / bal * 100).toFixed(2);
+        let html;
+        if (f === "term") {
+          const d = interestPeriodDays(a);
+          html = "<strong>" + amt + "</strong> at maturity in <strong>" + d + " days</strong> (≈ " + next + ") — " +
+            apy + "% a year works out to " + pct + "% over this term.";
+        } else if (f === "everyN") {
+          const d = interestPeriodDays(a);
+          const yrs = d > 400 ? " (" + (d / 365).toFixed(1) + " years' worth)" : "";
+          html = "<strong>" + amt + "</strong> every " + d + " days" + yrs + " — next ≈ " + next + ".";
+        } else {
+          const word = { daily: "per day", monthly: "per month", quarterly: "per quarter", annually: "per year" }[f] || "each payout";
+          html = "<strong>" + amt + "</strong> " + word + " · next ≈ " + next + ".";
+        }
+        previewEl.innerHTML = html;
+        previewEl.hidden = false;
+      };
+
       const sync = () => {
         const f = freqSel.value;
         const dayCount = (f === "everyN" || f === "term");
         show(dayField, f === "monthly");
         show(daysField, dayCount);
         show(startField, dayCount);
+        if (daysInput) daysInput.required = dayCount;   // can't save a term without a length
         if (daysLabel) daysLabel.textContent = f === "term" ? "Term length (days)" : "Every N days";
         if (daysHint) daysHint.textContent = f === "term"
           ? "Length of the deposit — common: 28, 91, 182, 364 days (Cetes / CDs). Interest pays at maturity."
           : "Interest is credited every N days from the start date.";
+        preview();
       };
       freqSel.addEventListener("change", sync);
+      form.addEventListener("input", preview);
       sync();
     }
   },

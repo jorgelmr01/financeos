@@ -958,6 +958,15 @@ body.light .score-ring { box-shadow: 0 10px 26px -14px rgba(40, 52, 43, 0.22); }
 .field input::placeholder { color: var(--text-mute); }
 .field .hint { font-size: 11px; color: var(--text-mute); margin-top: 4px; }
 
+.interest-preview {
+  margin-top: 14px; padding: 11px 13px; border-radius: 10px;
+  background: color-mix(in srgb, var(--mint) 8%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--mint) 24%, transparent);
+  font-size: 12.5px; line-height: 1.5; color: var(--text-dim);
+}
+.interest-preview strong { color: var(--mint); font-variant-numeric: tabular-nums; }
+.interest-preview[hidden] { display: none; }
+
 .swatches { display: flex; gap: 8px; }
 .swatch {
   width: 34px; height: 24px; border-radius: 6px; cursor: pointer;

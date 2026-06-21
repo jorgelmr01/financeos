@@ -83,6 +83,10 @@ group("interest: fixed-term maturity + rollover", () => {
   eq(A.toISO(A.nextInterestDate(a, new Date("2026-02-01"))), "2026-04-02", "first maturity = +91d");
   eq(A.toISO(A.nextInterestDate(a, new Date("2026-05-01"))), "2026-07-02", "rolls to +182d after first matures");
   approx(A.interestPerPeriod(a), 100000 * (Math.pow(1.102, 91 / 365) - 1), 0.01, "maturity payout matches term");
+  // the annual rate must be PRO-RATED to the term, not paid in full
+  const t = acct({ apy: 11.5, interestFreq: "term", interestEveryDays: 91, interestStart: "2026-01-01" });
+  approx(A.interestPerPeriod(t), 2751.07, 1, "11.5%/yr over 91 days ≈ 2.75%, not the full 11.5%");
+  ok(A.interestPerPeriod(t) < 0.04 * 100000, "91-day payout is a small fraction of the balance");
 });
 
 group("interest: accrual since balance date", () => {
