@@ -399,8 +399,20 @@ const Store = {
         const net = bal * (Math.pow(1 + apy / 100, days / 365) - 1) * taxF;
         bal += net; creditedNative += net; last = to;
       };
-      if (interestFreqKey(a) === "daily") {
+      const f = interestFreqKey(a);
+      if (f === "daily") {
         creditTo(today);                                   // formula already compounds daily
+      } else if (f === "everyN" || f === "term") {
+        // the principal is committed for the whole period, so each matured
+        // period pays its full N-day interest (matching the form's preview),
+        // not just the slice since the balance was last entered.
+        const factor = Math.pow(1 + apy / 100, interestPeriodDays(a) / 365) - 1;
+        let next = nextInterestDate(a, dayAfter(start)), guard = 0;
+        while (next && next <= today && guard < 4000) {
+          const net = bal * factor * taxF;
+          bal += net; creditedNative += net; last = next;
+          next = nextInterestDate(a, dayAfter(next)); guard++;
+        }
       } else {
         let next = nextInterestDate(a, dayAfter(start)), guard = 0;
         while (next && next <= today && guard < 4000) { creditTo(next); next = nextInterestDate(a, dayAfter(next)); guard++; }

@@ -714,6 +714,7 @@ body.light .score-ring { box-shadow: 0 10px 26px -14px rgba(40, 52, 43, 0.22); }
   font-family: var(--font-mono); font-size: 13px; font-weight: 500; color: var(--mint);
   font-variant-numeric: tabular-nums;
 }
+.ai-note { margin-top: 8px; font-size: 11px; color: var(--text-mute); line-height: 1.4; }
 .acct-sched {
   display: flex; align-items: baseline; justify-content: space-between;
   gap: 10px; flex-wrap: wrap; margin-top: 12px;

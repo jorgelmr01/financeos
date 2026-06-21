@@ -249,6 +249,12 @@ group("Store.settleInterest credits scheduled interest, idempotently", () => {
   resetStore({ accounts: [{ id: "t", balance: 50000, apy: 10.2, currency: "MXN", interestFreq: "term", interestEveryDays: 91, interestStart: back(30), balanceAsOf: back(30) }] });
   eq(A.Store.settleInterest().count, 0, "term before maturity → no credit");
 
+  // a matured term pays its FULL period interest (locked principal), even when
+  // the balance was entered mid-term — matching the form's preview, not a slice
+  resetStore({ accounts: [{ id: "tf", balance: 50000, apy: 10, currency: "MXN", interestFreq: "term", interestEveryDays: 91, interestStart: back(200), balanceAsOf: back(100) }] });
+  A.Store.settleInterest();
+  approx(A.Store.state.accounts[0].balance - 50000, 50000 * (Math.pow(1.10, 91 / 365) - 1), 1, "matured term credits the full 91-day interest, not the partial since balanceAsOf");
+
   // off switch leaves balances untouched
   resetStore({ settings: { currency: "MXN", tax: { interest: 0 }, autoInterest: false, fx: null }, accounts: [{ id: "x", balance: 100000, apy: 10, currency: "MXN", interestFreq: "monthly", interestDay: 31, balanceAsOf: back(95) }] });
   eq(A.Store.settleInterest().count, 0, "autoInterest off → no settlement");

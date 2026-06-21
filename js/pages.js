@@ -229,21 +229,38 @@ const Pages = {
       const hasApy = Number(a.apy) > 0;
       const accrued = accruedInterest(a);
       const foreign = a.currency !== s.settings.currency;
+      const isTerm = interestFreqKey(a) === "term";
+
+      // fixed terms are locked: show progress toward the lump-sum payout, not a
+      // day-by-day "accrued since" (which reads $0 right after you enter it).
+      let footHtml;
+      if (isTerm) {
+        const N = interestPeriodDays(a);
+        const matur = nextInterestDate(a);
+        const periodStart = new Date(matur); periodStart.setDate(periodStart.getDate() - N);
+        const elapsed = Math.max(0, Math.min(N, daysBetween(periodStart, todayMid())));
+        const built = (Number(a.balance) || 0) * (Math.pow(1 + Number(a.apy) / 100, elapsed / 365) - 1);
+        footHtml = '<span class="accrued-note">≈ ' + fmtMoneyIn(built * netF, a.currency, { sign: true }) +
+          " earned so far" + (taxI > 0 ? " (net)" : "") + " · " + elapsed + " of " + N + " days · paid at maturity</span>";
+      } else {
+        footHtml = '<span class="accrued-note">accrued ' + fmtMoneyIn(accrued * netF, a.currency, { sign: true }) +
+          (taxI > 0 ? " (after " + taxI + "% tax)" : "") + " since " + fmtDateShort(parseISO(a.balanceAsOf) || todayMid()) + "</span>" +
+          (accrued * netF >= 0.01 ? '<button class="btn small ghost" data-action="capitalize" data-id="' + a.id + '" title="Add accrued net interest to the balance">Capitalize</button>' + this._hint("Capitalize means add the interest you've earned so far onto your balance, so it starts earning interest too — do this when your bank actually credits it.") : "");
+      }
+
       const interest = hasApy
         ? '<div class="acct-interest">' +
             '<div class="ai-item"><span class="micro-label">Daily' + (taxI > 0 ? " net" : "") + '</span><span class="ai-val">' + fmtMoneyIn(dailyInterest(a) * netF, a.currency, { sign: true }) + "</span></div>" +
             '<div class="ai-item"><span class="micro-label">Monthly' + (taxI > 0 ? " net" : "") + '</span><span class="ai-val">' + fmtMoneyIn(monthlyInterestEst(a) * netF, a.currency, { sign: true }) + "</span></div>" +
             '<div class="ai-item"><span class="micro-label">Yearly' + (taxI > 0 ? " net" : "") + '</span><span class="ai-val">' + fmtMoneyIn(yearlyInterestEst(a) * netF, a.currency, { sign: true }) + "</span></div>" +
           "</div>" +
+          (taxI > 0 ? '<div class="ai-note">Net of your ' + taxI + "% interest tax — gross is " + fmtMoneyIn(yearlyInterestEst(a), a.currency) + "/yr at " + a.apy + "%</div>" : "") +
           '<div class="acct-sched">' +
-            '<span class="micro-label">Paid ' + esc(interestScheduleLabel(a)) + "</span>" +
-            '<span class="sched-next">next ' + fmtDateShort(nextInterestDate(a)) +
+            '<span class="micro-label">' + (isTerm ? "Pays " : "Paid ") + esc(interestScheduleLabel(a)) + "</span>" +
+            '<span class="sched-next">' + (isTerm ? "matures " : "next ") + fmtDateShort(nextInterestDate(a)) +
               ' · <span class="pos">' + fmtMoneyIn(interestPerPeriod(a) * netF, a.currency, { sign: true }) + "</span></span>" +
           "</div>" +
-          '<div class="acct-foot">' +
-            '<span class="accrued-note">accrued ' + fmtMoneyIn(accrued * netF, a.currency, { sign: true }) + (taxI > 0 ? " (after " + taxI + "% tax)" : "") + " since " + fmtDateShort(parseISO(a.balanceAsOf) || todayMid()) + "</span>" +
-            (accrued * netF >= 0.01 ? '<button class="btn small ghost" data-action="capitalize" data-id="' + a.id + '" title="Add accrued net interest to the balance">Capitalize</button>' + this._hint("Capitalize means add the interest you've earned so far onto your balance, so it starts earning interest too — do this when your bank actually credits it.") : "") +
-          "</div>"
+          '<div class="acct-foot">' + footHtml + "</div>"
         : "";
       return '<div class="acct-card">' +
         '<div class="acct-head"><div><div class="acct-name">' + esc(a.name) + '</div><div class="acct-inst">' + esc(a.institution || "—") + "</div></div>" +
