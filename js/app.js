@@ -169,13 +169,16 @@ const App = {
       }
       case "capitalize": {
         const a = Store.find("accounts", id);
-        const taxI = (Store.state.settings.tax && Number(Store.state.settings.tax.interest)) || 0;
-        const accruedNet = accruedInterest(a) * (1 - taxI / 100);
+        // Credit the gross interest (it compounds in full) less only the bank's
+        // provisional ISR on capital; the income ISR is settled in April.
+        const provR = (Store.state.settings.tax && Number(Store.state.settings.tax.interestProvisional)) || 0;
+        const days = Math.max(0, daysBetween(parseISO(a.balanceAsOf) || todayMid(), todayMid()));
+        const credited = accruedInterest(a) - (Number(a.balance) || 0) * (provR / 100) * (days / 365);
         Store.update("accounts", id, {
-          balance: Math.round((Number(a.balance) + accruedNet) * 100) / 100,
+          balance: Math.round((Number(a.balance) + credited) * 100) / 100,
           balanceAsOf: toISO(todayMid()),
         });
-        UI.toast("Added " + fmtMoneyIn(accruedNet, a.currency) + " of net accrued interest to " + a.name);
+        UI.toast("Added " + fmtMoneyIn(credited, a.currency) + " of accrued interest to " + a.name);
         this.render();
         break;
       }

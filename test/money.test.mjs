@@ -26,7 +26,7 @@ vm.createContext(ctx);
 const bundle = [read("js/utils.js"), read("js/budget.js"), read("js/statements.js"), read("js/store.js")].join("\n;\n") +
   "\n;globalThis.__api = { interestPerPeriod, nextInterestDate, interestScheduleLabel, interestPeriodDays," +
   " accruedInterest, holdingReturnRate, parseAmount, parseExpenseDate, expenseSig, canonicalCategory," +
-  " toISO, parseISO, daysBetween, todayMid, Statements, INTEREST_FREQ, Store };";
+  " earningsBreakdown, toISO, parseISO, daysBetween, todayMid, Statements, INTEREST_FREQ, Store };";
 vm.runInContext(bundle, ctx, { filename: "bundle.js" });
 const A = ctx.__api;
 // fresh in-memory store, no persistence
@@ -239,11 +239,19 @@ group("Store.settleInterest credits scheduled interest, idempotently", () => {
   const r2 = A.Store.settleInterest();
   eq(r2.count, 0, "idempotent — second run credits nothing");
 
-  // daily over 30 days, 5% tax → net of tax, settled to today
+  // daily over 30 days: interest is credited GROSS — the income ISR is settled
+  // in the annual April return, NOT withheld at source — so the 5% rate must
+  // NOT reduce the credited interest (it only feeds the April liability).
   resetStore({ settings: { currency: "MXN", tax: { interest: 5 }, autoInterest: true, fx: null }, accounts: [{ id: "d", balance: 50000, apy: 9, currency: "MXN", interestFreq: "daily", balanceAsOf: back(30) }] });
   A.Store.settleInterest();
-  approx(A.Store.state.accounts[0].balance - 50000, 50000 * (Math.pow(1.09, 30 / 365) - 1) * 0.95, 0.5, "daily credit is net of 5% tax");
+  approx(A.Store.state.accounts[0].balance - 50000, 50000 * (Math.pow(1.09, 30 / 365) - 1), 0.5, "daily interest credits gross — income ISR is deferred to April, not withheld");
   eq(A.Store.state.accounts[0].balanceAsOf, A.toISO(today), "daily settles to today");
+
+  // the only at-source deduction is the provisional ISR on capital (Ley de
+  // Ingresos rate), which DOES reduce the credit: gross − balance·provRate·t
+  resetStore({ settings: { currency: "MXN", tax: { interest: 5, interestProvisional: 0.5 }, autoInterest: true, fx: null }, accounts: [{ id: "dp", balance: 50000, apy: 9, currency: "MXN", interestFreq: "daily", balanceAsOf: back(30) }] });
+  A.Store.settleInterest();
+  approx(A.Store.state.accounts[0].balance - 50000, 50000 * (Math.pow(1.09, 30 / 365) - 1) - 50000 * 0.005 * (30 / 365), 0.5, "provisional ISR on capital is withheld from the credit; income ISR is not");
 
   // fixed term not yet matured → nothing credited
   resetStore({ accounts: [{ id: "t", balance: 50000, apy: 10.2, currency: "MXN", interestFreq: "term", interestEveryDays: 91, interestStart: back(30), balanceAsOf: back(30) }] });
@@ -254,6 +262,16 @@ group("Store.settleInterest credits scheduled interest, idempotently", () => {
   resetStore({ accounts: [{ id: "tf", balance: 50000, apy: 10, currency: "MXN", interestFreq: "term", interestEveryDays: 91, interestStart: back(200), balanceAsOf: back(100) }] });
   A.Store.settleInterest();
   approx(A.Store.state.accounts[0].balance - 50000, 50000 * (Math.pow(1.10, 91 / 365) - 1), 1, "matured term credits the full 91-day interest, not the partial since balanceAsOf");
+
+  // earnings breakdown splits the interest ISR into the annual liability (paid
+  // in April) vs. the provisional ISR already withheld on capital
+  resetStore({ settings: { currency: "MXN", tax: { interest: 10, interestProvisional: 0.5, dividends: 0, capGains: 0 }, autoInterest: true, fx: null }, accounts: [{ id: "e", balance: 100000, apy: 10, currency: "MXN", balanceAsOf: A.toISO(today) }], incomes: [], holdings: [] });
+  const eb = A.earningsBreakdown();
+  approx(eb.intGross, 10000, 0.5, "gross interest = balance × APY");
+  approx(eb.intProvisional, 500, 0.5, "provisional ISR = balance × 0.5%");
+  approx(eb.intAnnualISR, 1000, 0.5, "annual ISR = gross × 10%");
+  approx(eb.intTaxDueApril, 500, 0.5, "April liability = annual ISR − provisional already withheld");
+  approx(eb.intNet, 9000, 0.5, "net kept = gross − full annual ISR");
 
   // off switch leaves balances untouched
   resetStore({ settings: { currency: "MXN", tax: { interest: 0 }, autoInterest: false, fx: null }, accounts: [{ id: "x", balance: 100000, apy: 10, currency: "MXN", interestFreq: "monthly", interestDay: 31, balanceAsOf: back(95) }] });

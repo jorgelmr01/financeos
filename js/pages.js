@@ -212,7 +212,7 @@ const Pages = {
     }
 
     const taxI = (s.settings.tax && Number(s.settings.tax.interest)) || 0;
-    const netF = 1 - taxI / 100;
+    const provI = (s.settings.tax && Number(s.settings.tax.interestProvisional)) || 0;
     const interestMo = s.accounts.reduce((a, x) => a + conv(monthlyInterestEst(x), x.currency), 0);
     const accruedTotal = s.accounts.reduce((a, x) => a + conv(accruedInterest(x), x.currency), 0);
 
@@ -220,7 +220,7 @@ const Pages = {
       '<div class="grid cols-4 section">' +
         '<div class="stat"><span class="micro-label">Total across accounts</span><div class="stat-value">' + fmtMoney(t.accountsTotal) + "</div></div>" +
         '<div class="stat"><span class="micro-label">Earning interest</span><div class="stat-value">' + fmtMoney(s.accounts.filter(a => a.apy > 0).reduce((a, x) => a + conv(Number(x.balance), x.currency), 0)) + '</div><div class="stat-note">' + s.accounts.filter(a => a.apy > 0).length + " interest-bearing</div></div>" +
-        '<div class="stat"><span class="micro-label">Est. interest / month</span><div class="stat-value pos">' + fmtMoney(interestMo * netF, { sign: true }) + '</div><div class="stat-note">' + (taxI > 0 ? "net of " + taxI + "% tax · gross " + fmtMoney(interestMo, { compact: true }) : "set a tax rate in Settings if withheld") + "</div></div>" +
+        '<div class="stat"><span class="micro-label">Est. interest / month</span><div class="stat-value pos">' + fmtMoney(interestMo, { sign: true }) + '</div><div class="stat-note">' + (taxI > 0 ? "paid gross · " + taxI + "% ISR settled in April" + (provI > 0 ? " · " + provI + "% withheld on capital" : "") : "set your ISR rate in Settings") + "</div></div>" +
         '<div class="stat"><span class="micro-label">Accrued since update</span><div class="stat-value gold">' + fmtMoney(accruedTotal, { sign: true }) + '</div><div class="stat-note">capitalize from each card below</div></div>' +
       "</div>";
 
@@ -240,25 +240,25 @@ const Pages = {
         const periodStart = new Date(matur); periodStart.setDate(periodStart.getDate() - N);
         const elapsed = Math.max(0, Math.min(N, daysBetween(periodStart, todayMid())));
         const built = (Number(a.balance) || 0) * (Math.pow(1 + Number(a.apy) / 100, elapsed / 365) - 1);
-        footHtml = '<span class="accrued-note">≈ ' + fmtMoneyIn(built * netF, a.currency, { sign: true }) +
-          " earned so far" + (taxI > 0 ? " (net)" : "") + " · " + elapsed + " of " + N + " days · paid at maturity</span>";
+        footHtml = '<span class="accrued-note">≈ ' + fmtMoneyIn(built, a.currency, { sign: true }) +
+          " earned so far" + (taxI > 0 ? " (gross)" : "") + " · " + elapsed + " of " + N + " days · paid at maturity</span>";
       } else {
-        footHtml = '<span class="accrued-note">accrued ' + fmtMoneyIn(accrued * netF, a.currency, { sign: true }) +
-          (taxI > 0 ? " (after " + taxI + "% tax)" : "") + " since " + fmtDateShort(parseISO(a.balanceAsOf) || todayMid()) + "</span>" +
-          (accrued * netF >= 0.01 ? '<button class="btn small ghost" data-action="capitalize" data-id="' + a.id + '" title="Add accrued net interest to the balance">Capitalize</button>' + this._hint("Capitalize means add the interest you've earned so far onto your balance, so it starts earning interest too — do this when your bank actually credits it.") : "");
+        footHtml = '<span class="accrued-note">accrued ' + fmtMoneyIn(accrued, a.currency, { sign: true }) +
+          (taxI > 0 ? " (gross — ISR settled in April)" : "") + " since " + fmtDateShort(parseISO(a.balanceAsOf) || todayMid()) + "</span>" +
+          (accrued >= 0.01 ? '<button class="btn small ghost" data-action="capitalize" data-id="' + a.id + '" title="Add accrued interest to the balance">Capitalize</button>' + this._hint("Capitalize means add the interest you've earned so far onto your balance, so it starts earning interest too — do this when your bank actually credits it. It's added gross; the income ISR is paid in your April return.") : "");
       }
 
       const interest = hasApy
         ? '<div class="acct-interest">' +
-            '<div class="ai-item"><span class="micro-label">Daily' + (taxI > 0 ? " net" : "") + '</span><span class="ai-val">' + fmtMoneyIn(dailyInterest(a) * netF, a.currency, { sign: true }) + "</span></div>" +
-            '<div class="ai-item"><span class="micro-label">Monthly' + (taxI > 0 ? " net" : "") + '</span><span class="ai-val">' + fmtMoneyIn(monthlyInterestEst(a) * netF, a.currency, { sign: true }) + "</span></div>" +
-            '<div class="ai-item"><span class="micro-label">Yearly' + (taxI > 0 ? " net" : "") + '</span><span class="ai-val">' + fmtMoneyIn(yearlyInterestEst(a) * netF, a.currency, { sign: true }) + "</span></div>" +
+            '<div class="ai-item"><span class="micro-label">Daily</span><span class="ai-val">' + fmtMoneyIn(dailyInterest(a), a.currency, { sign: true }) + "</span></div>" +
+            '<div class="ai-item"><span class="micro-label">Monthly</span><span class="ai-val">' + fmtMoneyIn(monthlyInterestEst(a), a.currency, { sign: true }) + "</span></div>" +
+            '<div class="ai-item"><span class="micro-label">Yearly</span><span class="ai-val">' + fmtMoneyIn(yearlyInterestEst(a), a.currency, { sign: true }) + "</span></div>" +
           "</div>" +
-          (taxI > 0 ? '<div class="ai-note">Net of your ' + taxI + "% interest tax — gross is " + fmtMoneyIn(yearlyInterestEst(a), a.currency) + "/yr at " + a.apy + "%</div>" : "") +
+          (taxI > 0 ? '<div class="ai-note">Paid gross — set aside ' + taxI + "% (≈" + fmtMoneyIn(yearlyInterestEst(a) * taxI / 100, a.currency) + "/yr) for the ISR due in April" + (provI > 0 ? "; " + provI + "% withheld on capital meanwhile" : "") + "</div>" : "") +
           '<div class="acct-sched">' +
             '<span class="micro-label">' + (isTerm ? "Pays " : "Paid ") + esc(interestScheduleLabel(a)) + "</span>" +
             '<span class="sched-next">' + (isTerm ? "matures " : "next ") + fmtDateShort(nextInterestDate(a)) +
-              ' · <span class="pos">' + fmtMoneyIn(interestPerPeriod(a) * netF, a.currency, { sign: true }) + "</span></span>" +
+              ' · <span class="pos">' + fmtMoneyIn(interestPerPeriod(a), a.currency, { sign: true }) + "</span></span>" +
           "</div>" +
           '<div class="acct-foot">' + footHtml + "</div>"
         : "";
@@ -577,6 +577,7 @@ const Pages = {
     const horizonMonths = years * 12;
     const bucketSize = years <= 1 ? 1 : years <= 3 ? 3 : 6;   // monthly / quarterly / semiannual
     const taxI = Number(tax.interest) || 0;
+    const provI = Number(tax.interestProvisional) || 0;
     const divMoNet = eb.divNet / 12;                          // flat monthly dividends (net)
 
     // interest-bearing balances (native ccy), compounded monthly so interest grows
@@ -594,9 +595,9 @@ const Pages = {
       let interest = 0;
       accs.forEach(a => {
         const mInt = a.bal * (Math.pow(1 + a.apy / 100, 1 / 12) - 1);
-        const net = mInt * (1 - taxI / 100);
-        interest += conv(net, a.cur);
-        a.bal += net;   // compound the retained interest
+        const credited = mInt - a.bal * (provI / 100) / 12;   // gross, less the provisional ISR on capital
+        interest += conv(credited, a.cur);
+        a.bal += credited;   // interest compounds in full; income ISR is settled yearly
       });
       monthly.push({ sched: sched, interest: interest, div: divMoNet, start: mStart, end: mEnd });
     }
@@ -647,7 +648,7 @@ const Pages = {
         '<div class="micro-label" style="text-align:right">selected ' + (bucketSize === 1 ? "month" : bucketSize === 3 ? "quarter" : "half-year") + "</div></div>" +
       '<div class="proj-detail-rows">' +
         row("Scheduled income", b.sched, "var(--mint)") +
-        row("Interest" + (taxI > 0 ? " (net)" : ""), b.interest, "var(--gold)") +
+        row("Interest" + (taxI > 0 ? " (gross)" : ""), b.interest, "var(--gold)") +
         row("Dividends" + ((Number(tax.dividends) || 0) > 0 ? " (net)" : ""), b.div, "#e5c97b") +
       "</div></div>";
 
@@ -655,7 +656,7 @@ const Pages = {
       '<button class="range-btn' + (years === o[0] ? " on" : "") + '" data-action="earn-horizon" data-years="' + o[0] + '">' + o[1] + "</button>").join("");
 
     return '<div class="panel section">' +
-      '<div class="panel-head"><div class="panel-title">Income projection <span class="panel-sub">net of taxes · interest compounds monthly</span></div>' +
+      '<div class="panel-head"><div class="panel-title">Income projection <span class="panel-sub">interest paid gross · dividends net · compounds monthly</span></div>' +
         '<div class="price-range-bar">' + horizonBtns + "</div></div>" +
       '<div class="comp-legend" style="margin:2px 0 14px">' +
         '<span class="lg"><span class="dot" style="background:var(--mint)"></span>Scheduled</span>' +
@@ -665,6 +666,7 @@ const Pages = {
       '<div class="proj-axis">' + axis + "</div>" +
       detail +
       (endBal > 0 ? '<div class="proj-note">Tap a bar for its breakdown. Projected savings balance after ' + years + "y, interest reinvested: <strong>" + fmtMoney(endBal, { compact: true }) + "</strong> (no new contributions assumed).</div>" : '<div class="proj-note">Tap a bar for its breakdown.</div>') +
+      (eb.intTaxDueApril > 0 ? '<div class="proj-note">Interest is paid gross — set aside ≈<strong>' + fmtMoney(eb.intTaxDueApril, { compact: true }) + "</strong>/yr for the ISR due in your April return" + (eb.intProvisional > 0 ? " (on top of the " + fmtMoney(eb.intProvisional, { compact: true }) + " already withheld on capital)" : "") + ".</div>" : "") +
     "</div>";
   },
 
@@ -752,26 +754,26 @@ const Pages = {
       "</tr></thead><tbody>" + streamsRows + "</tbody></table></div></div>";
 
     /* ---- interest by account ---- */
-    const taxIF = 1 - (Number(tax.interest) || 0) / 100;
     const intAccounts = s.accounts.filter(a => Number(a.apy) > 0);
     const interestRows = intAccounts.length ? intAccounts.map(a =>
       "<tr>" +
         '<td><div class="cell-main">' + esc(a.name) + '</div><div class="cell-sub">' + esc(a.institution || "") + " · " + esc(a.currency) + "</div></td>" +
         '<td class="num">' + fmtMoney(conv(a.balance, a.currency)) + "</td>" +
         '<td class="num"><span class="tag mint">' + a.apy + "% APY</span></td>" +
-        '<td class="num pos">' + fmtMoney(conv(dailyInterest(a) * taxIF, a.currency), { sign: true }) + "</td>" +
-        '<td class="num pos">' + fmtMoney(conv(monthlyInterestEst(a) * taxIF, a.currency), { sign: true }) + "</td>" +
-        '<td class="num pos">' + fmtMoney(conv(yearlyInterestEst(a) * taxIF, a.currency), { sign: true }) + "</td>" +
+        '<td class="num pos">' + fmtMoney(conv(dailyInterest(a), a.currency), { sign: true }) + "</td>" +
+        '<td class="num pos">' + fmtMoney(conv(monthlyInterestEst(a), a.currency), { sign: true }) + "</td>" +
+        '<td class="num pos">' + fmtMoney(conv(yearlyInterestEst(a), a.currency), { sign: true }) + "</td>" +
         '<td><div class="cell-main">' + esc(interestScheduleLabel(a)) + '</div><div class="cell-sub">next ' + fmtDateShort(nextInterestDate(a)) + "</div></td>" +
       "</tr>").join("") :
       '<tr><td colspan="7" style="color:var(--text-mute);text-align:center;padding:26px">No interest-bearing accounts. Set an APY on a savings account to see projections here.</td></tr>';
 
     const interestPanel =
       '<div class="panel section"><div class="panel-head"><div class="panel-title">Interest engine</div>' +
-      '<span class="panel-sub">' + (tax.interest > 0 ? "net of " + tax.interest + "% tax · " : "") + "compounding estimates per account</span></div>" +
+      '<span class="panel-sub">paid gross · ' + (tax.interest > 0 ? tax.interest + "% ISR settled in April · " : "") + "compounding estimates per account</span></div>" +
       '<div style="overflow-x:auto"><table class="tbl"><thead><tr>' +
         "<th>Account</th><th class=\"num\">Balance</th><th class=\"num\">Rate</th><th class=\"num\">Daily</th><th class=\"num\">Monthly</th><th class=\"num\">Yearly</th><th>Paid</th>" +
-      "</tr></thead><tbody>" + interestRows + "</tbody></table></div></div>";
+      "</tr></thead><tbody>" + interestRows + "</tbody></table></div>" +
+      (eb.intTaxDueApril > 0 ? '<div class="proj-note" style="margin-top:10px">Interest lands in full and compounds gross. Set aside ≈<strong>' + fmtMoney(eb.intTaxDueApril) + "</strong> for the ISR due in your April return" + (eb.intProvisional > 0 ? ", after the " + fmtMoney(eb.intProvisional) + " provisional ISR the bank withholds on your capital" : "") + ".</div>" : "") + "</div>";
 
     /* ---- dividends by holding ---- */
     const taxDF = 1 - (Number(tax.dividends) || 0) / 100;
@@ -815,8 +817,8 @@ const Pages = {
         const days = daysBetween(now, to);
         events.push({
           d: to, name: "Interest — " + a.name,
-          sub: "Daily · " + a.apy + "% APY" + (tax.interest > 0 ? " · net of " + tax.interest + "% tax" : "") + " → " + esc(a.name),
-          amount: conv(interestPerPeriod(a) * taxIF * days, a.currency), interest: true,
+          sub: "Daily · " + a.apy + "% APY" + (tax.interest > 0 ? " · gross (ISR in April)" : "") + " → " + esc(a.name),
+          amount: conv(interestPerPeriod(a) * days, a.currency), interest: true,
         });
         return;
       }
@@ -824,8 +826,8 @@ const Pages = {
       while (d <= to && guard++ < 12) {
         events.push({
           d, name: "Interest — " + a.name,
-          sub: interestScheduleLabel(a) + " · " + a.apy + "% APY" + (tax.interest > 0 ? " · net of " + tax.interest + "% tax" : "") + " → " + esc(a.name),
-          amount: conv(interestPerPeriod(a) * taxIF, a.currency), interest: true,
+          sub: interestScheduleLabel(a) + " · " + a.apy + "% APY" + (tax.interest > 0 ? " · gross (ISR in April)" : "") + " → " + esc(a.name),
+          amount: conv(interestPerPeriod(a), a.currency), interest: true,
         });
         d = nextInterestDate(a, new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1));
       }

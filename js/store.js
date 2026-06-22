@@ -23,7 +23,7 @@ const Store = {
       settings: {
         currency: "USD", privacy: false, pinEnabled: false, lastExport: null, theme: "dark",
         fx: null,                 // {base:'USD', rates:{...units per USD}, asOf}
-        tax: { interest: 0, dividends: 0, capGains: 0 },
+        tax: { interest: 0, dividends: 0, capGains: 0, interestProvisional: 0 },
         autoInterest: true,       // credit interest to balances on its schedule
         finnhubKey: "", lastQuoteSync: null,
       },
@@ -34,7 +34,7 @@ const Store = {
     const d = this.defaults();
     this.state = Object.assign(d, parsed);
     this.state.settings = Object.assign(d.settings, parsed.settings || {});
-    this.state.settings.tax = Object.assign({ interest: 0, dividends: 0, capGains: 0 }, (parsed.settings || {}).tax || {});
+    this.state.settings.tax = Object.assign({ interest: 0, dividends: 0, capGains: 0, interestProvisional: 0 }, (parsed.settings || {}).tax || {});
     if (!Array.isArray(this.state.snapshots)) this.state.snapshots = [];
     if (!Array.isArray(this.state.expenses)) this.state.expenses = [];
     if (!this.state.budgets || typeof this.state.budgets !== "object") this.state.budgets = {};
@@ -380,11 +380,15 @@ const Store = {
      scheduled date in (balanceAsOf, today], compounding, then advances
      balanceAsOf — so it's idempotent (re-running credits nothing new) and the
      net-worth history + earnings projection both reflect the higher balances.
-     Net of the interest tax, matching the manual "Capitalize". */
+     Interest is credited GROSS (it compounds in full); the only at-source
+     deduction is the small provisional ISR the bank withholds on *capital*
+     (Ley de Ingresos rate). The income ISR on the interest itself is deferred
+     to the annual April return, not withheld here — matching how MX banks,
+     brokerages and CETES actually pay. Mirrors the manual "Capitalize". */
   settleInterest() {
     if (!this.state || this.state.settings.autoInterest === false) return { credited: 0, count: 0 };
     const today = todayMid();
-    const taxF = 1 - ((this.state.settings.tax && Number(this.state.settings.tax.interest)) || 0) / 100;
+    const provRate = ((this.state.settings.tax && Number(this.state.settings.tax.interestProvisional)) || 0) / 100;
     const dayAfter = (d) => { const x = new Date(d); x.setDate(x.getDate() + 1); return x; };
     let creditedDisp = 0, count = 0, changed = false;
     this.state.accounts.forEach(a => {
@@ -396,7 +400,8 @@ const Store = {
       const creditTo = (to) => {
         const days = daysBetween(last, to);
         if (days <= 0) return;
-        const net = bal * (Math.pow(1 + apy / 100, days / 365) - 1) * taxF;
+        // full interest compounds; the bank only withholds provisional ISR on capital
+        const net = bal * (Math.pow(1 + apy / 100, days / 365) - 1) - bal * provRate * (days / 365);
         bal += net; creditedNative += net; last = to;
       };
       const f = interestFreqKey(a);
@@ -406,10 +411,11 @@ const Store = {
         // the principal is committed for the whole period, so each matured
         // period pays its full N-day interest (matching the form's preview),
         // not just the slice since the balance was last entered.
-        const factor = Math.pow(1 + apy / 100, interestPeriodDays(a) / 365) - 1;
+        const periodDays = interestPeriodDays(a);
+        const factor = Math.pow(1 + apy / 100, periodDays / 365) - 1;
         let next = nextInterestDate(a, dayAfter(start)), guard = 0;
         while (next && next <= today && guard < 4000) {
-          const net = bal * factor * taxF;
+          const net = bal * factor - bal * provRate * (periodDays / 365);
           bal += net; creditedNative += net; last = next;
           next = nextInterestDate(a, dayAfter(next)); guard++;
         }
@@ -435,7 +441,7 @@ const Store = {
     const acc1 = uid(), acc2 = uid(), acc3 = uid(), acc4 = uid(), acc5 = uid();
     const termStart = toISO(new Date(t.getFullYear(), t.getMonth(), t.getDate() - 30));
     const settings = Object.assign(this.defaults().settings, this.state ? this.state.settings : {});
-    settings.tax = { interest: 5, dividends: 10, capGains: 10 };
+    settings.tax = { interest: 5, dividends: 10, capGains: 10, interestProvisional: 0.5 };
     this.state = {
       settings: settings,
       learn: this.state && this.state.learn ? this.state.learn : { scenarios: {}, sandbox: { best: 0, runs: 0 } },
@@ -660,9 +666,19 @@ function earningsBreakdown() {
     schedNet += conv(monthlyEquivalentNet(i) * 12, i.currency);
   });
 
-  let intGross = 0;
-  s.accounts.forEach(a => { intGross += conv(yearlyInterestEst(a), a.currency); });
-  const intNet = intGross * (1 - (Number(tax.interest) || 0) / 100);
+  // Interest is paid GROSS; the income ISR is settled in the April return, not
+  // withheld at source (unlike dividends). During the year the bank only
+  // withholds a small provisional ISR on capital, which is a credit toward that
+  // annual bill. intNet = what you ultimately keep after the full annual ISR.
+  let intGross = 0, intProvisional = 0;
+  const provR = Math.max(0, Number(tax.interestProvisional) || 0) / 100;
+  s.accounts.forEach(a => {
+    intGross += conv(yearlyInterestEst(a), a.currency);
+    intProvisional += conv((Number(a.balance) || 0) * provR, a.currency);
+  });
+  const intAnnualISR = intGross * Math.max(0, Number(tax.interest) || 0) / 100;
+  const intTaxDueApril = Math.max(0, intAnnualISR - intProvisional);
+  const intNet = intGross - intAnnualISR;
 
   let divGross = 0;
   s.holdings.forEach(h => {
@@ -682,6 +698,7 @@ function earningsBreakdown() {
 
   return {
     schedGross, schedNet, intGross, intNet, divGross, divNet, investGross, investNet,
+    intProvisional, intAnnualISR, intTaxDueApril,
     totalGross: schedGross + intGross + divGross + investGross,
     totalNet: schedNet + intNet + divNet + investNet,
     /* steady monthly cash-flow estimate (excludes market swings) */
