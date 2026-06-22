@@ -448,6 +448,12 @@ group("advanced retirement — bucket strategy", () => {
   // spending it down to nothing → not sustainable
   const broke = A.retirementBuckets(Object.assign({}, base, { annualSpend: 3000000 }));
   ok(!broke.sustainable && broke.depletedYear > 0, "an unaffordable spend depletes the pot");
+
+  // a less equity-heavy accumulation (more bonds while saving) grows a smaller
+  // nest when bonds return less than equities
+  const allEq = A.retirementBuckets(Object.assign({}, base, { accEquity: 100 }));
+  const halfEq = A.retirementBuckets(Object.assign({}, base, { accEquity: 50 }));
+  ok(halfEq.nest < allEq.nest, "a lower equity tilt while saving grows a smaller nest");
 });
 
 group("market regime model — bounded crashes (locks)", () => {

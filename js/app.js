@@ -36,7 +36,7 @@ const App = {
       mode: "basic",
       start: Math.max(0, Math.round(t.netWorth)), contrib: 0, ret: 8, years: 20, withdraw: 4, inflation: infl, annualSpend: spend,
       // advanced (bucket-strategy) inputs
-      eqRet: 10, bondRet: 7, cashRet: 4.5, cashYears: 1, bondYears: 2,
+      eqRet: 10, bondRet: 7, cashRet: 4.5, cashYears: 1, bondYears: 2, accEquity: 100,
     };
   },
 

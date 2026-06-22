@@ -1596,8 +1596,9 @@ const Pages = {
       "<li><strong>Annual return</strong> — the average yearly growth you expect before and during retirement.</li>" +
       "<li><strong>Withdrawal rate</strong> — the share of the pot you draw in year one (the 4% rule); it rises with inflation after.</li>";
     const adv =
-      "<li><strong>Equities / Bonds / Cash return</strong> — the yearly growth you expect from each sleeve. You accumulate in equities for growth.</li>" +
-      "<li><strong>Cash &amp; Bond buffer (years of spending)</strong> — at retirement you keep this many years of spending safe in cash and bonds; the rest stays in equities. You spend the buffers first and refill them from stocks after good years — the bucket strategy.</li>";
+      "<li><strong>Two phases, two risk profiles.</strong> <em>While saving</em> a paycheck covers your bills, so a crash doesn’t force you to sell — you lean into equities for growth (the “Equities while saving” slider). <em>In retirement</em> the paycheck stops, so a crash <em>while you withdraw</em> is real risk — you hold cash &amp; bond buffers and spend those first.</li>" +
+      "<li><strong>Equities = whatever isn’t buffered.</strong> The cash and bond buffers are set in <em>years of spending</em>; everything beyond them stays in equities — your growth engine.</li>" +
+      "<li><strong>Returns by sleeve</strong> — set the yearly growth you expect from equities, bonds and cash.</li>";
     return '<details class="retire-explain"><summary>What is this? Read before you start →</summary>' +
       '<p class="method-note" style="margin-top:10px"><strong>This plans your retirement fund</strong> — the pot you’ll live off after you stop working. It is <strong>not</strong> your total savings or net worth. The shaded band and the success rate come from 300 random-market simulations, so treat them as odds, not promises.</p>' +
       '<ul class="retire-help">' + common + (mode === "advanced" ? adv : basic) + "</ul></details>";
@@ -1631,7 +1632,7 @@ const Pages = {
     const presets = [["Aggressive", 0, 0], ["Balanced", 1, 2], ["Buffered 1+3", 1, 3], ["Conservative", 2, 6]]
       .map(p => '<button class="sb-opt' + (p[1] === r.cashYears && p[2] === r.bondYears ? " sel" : "") + '" data-action="retire-bucket" data-method="' + p[1] + ":" + p[2] + '">' + p[0] + "</button>").join("");
     return '<div class="panel section retire-controls"><div class="panel-head">' +
-      '<div class="panel-title">Strategy</div><span class="panel-sub">asset-class returns + a bucket strategy</span></div>' +
+      '<div class="panel-title">Strategy</div><span class="panel-sub">two phases: grow while you earn, then draw down</span></div>' +
       '<div class="grid cols-3">' +
         '<div class="field"><label>Starting amount (' + cur + ')</label>' +
           '<input class="r-input fmt-num" data-rk="start" type="text" inputmode="decimal" value="' + fmtNumInput(r.start) + '"></div>' +
@@ -1640,16 +1641,26 @@ const Pages = {
         '<div class="field"><label>Annual spending in retirement (' + cur + ')</label>' +
           '<input class="r-input fmt-num" data-rk="annualSpend" type="text" inputmode="decimal" value="' + fmtNumInput(r.annualSpend) + '"></div>' +
       "</div>" +
-      '<div class="sb-alloc-head"><span class="micro-label">Risk profile (cash / bond buffer)</span></div>' +
-      '<div class="sb-opts sb-quick">' + presets + "</div>" +
+      '<div class="sb-alloc-head"><span class="micro-label">Expected return by asset class &amp; horizon</span></div>' +
       '<div class="r-grid">' +
         this._rslider("eqRet", "Equities return", r.eqRet, 0, 18, 0.5, "%") +
         this._rslider("bondRet", "Bonds return", r.bondRet, 0, 14, 0.5, "%") +
         this._rslider("cashRet", "Cash return", r.cashRet, 0, 10, 0.5, "%") +
         this._rslider("inflation", "Inflation", r.inflation, 0, 12, 0.1, "%") +
         this._rslider("years", "Years to grow", r.years, 0, 50, 1, " yr") +
-        this._rslider("cashYears", "Cash buffer", r.cashYears, 0, 5, 0.5, " yr") +
-        this._rslider("bondYears", "Bond buffer", r.bondYears, 0, 15, 0.5, " yr") +
+      "</div>" +
+      '<div class="retire-phase"><div class="sb-alloc-head"><span class="micro-label">① While saving — you have income</span></div>' +
+        '<p class="retire-phase-note">A paycheck covers your bills, so a market dip never forces you to sell. Lean into growth — the rest of your contributions go to bonds.</p>' +
+        '<div class="r-grid"><div class="r-row r-row-wide"><label>Equities while saving<output class="r-val" data-rv="accEquity">' + r.accEquity + '%</output></label>' +
+          '<input class="r-input" data-rk="accEquity" data-suffix="%" type="range" min="0" max="100" step="5" value="' + r.accEquity + '"></div></div></div>' +
+      '<div class="retire-phase"><div class="sb-alloc-head"><span class="micro-label">② In retirement — no paycheck</span></div>' +
+        '<p class="retire-phase-note">Now a crash hits <em>while you withdraw</em> — real risk. Keep a few years of spending safe in cash &amp; bonds, spend those first, and let stocks recover. Pick a risk profile or set the buffers:</p>' +
+        '<div class="sb-opts sb-quick">' + presets + "</div>" +
+        '<div class="r-grid">' +
+          this._rslider("cashYears", "Cash buffer", r.cashYears, 0, 5, 0.5, " yr") +
+          this._rslider("bondYears", "Bond buffer", r.bondYears, 0, 15, 0.5, " yr") +
+        "</div>" +
+        '<div class="retire-eq-note"><span class="dot" style="background:var(--mint)"></span><strong>Equities = everything else.</strong> Whatever isn’t in the cash and bond buffers stays invested in stocks — your growth engine. The buffers just shield it from being sold in a crash.</div>' +
       "</div></div>";
   },
 
@@ -1715,7 +1726,7 @@ const Pages = {
       stat("Success rate" + succHint, succ + "%", "of " + mc.runs + " bucket simulations", succTone) +
       "</div>";
     const chart = this._retireChart(sim, r, mc, {
-      sub: "grow " + r.years + "y in equities, then a " + r.cashYears + "y cash + " + r.bondYears + "y bond buffer · shaded = likely range",
+      sub: "grow " + r.years + "y (" + r.accEquity + "% equities), then a " + r.cashYears + "y cash + " + r.bondYears + "y bond buffer · shaded = likely range",
       hint: "Solid line = steady base case. Shaded = 10th–90th percentile of 300 runs with realistic markets — equity crashes capped at a 55% drop, ≤3 down years in a row, recovery within ~6 years. The cash/bond buffers let you spend safe assets in a crash and refill from stocks only after they rebound — that shelter is the snowball.",
     });
     return stats + chart + this._bucketPanel(r, sim) + this._strategyCompare(P, r) + this._firePanel(r) + this._bucketNote(sim, r);
@@ -1731,7 +1742,7 @@ const Pages = {
     const pct = v => nest > 0 ? v / nest * 100 : 0;
     const seg = (v, bg, label) => '<span style="width:' + pct(v).toFixed(2) + "%;background:" + bg + '" data-tip="' + esc(label + " · " + fmtMoney(v, { compact: true }) + " · " + Math.round(pct(v)) + "%") + '"></span>';
     return '<div class="panel section"><div class="panel-head"><div class="panel-title">Your buckets at retirement</div>' +
-      '<span class="panel-sub">' + r.cashYears + "y cash + " + r.bondYears + "y bonds, rest in equities</span></div>" +
+      '<span class="panel-sub">' + r.cashYears + "y cash + " + r.bondYears + "y bonds · everything else = equities</span></div>" +
       '<div class="comp-bar">' + seg(cash, "var(--text-mute)", "Cash") + seg(bond, "var(--sky)", "Bonds") + seg(eq, "var(--mint)", "Equities") + "</div>" +
       '<div class="comp-legend" style="margin-top:12px">' +
         '<span class="lg"><span class="dot" style="background:var(--text-mute)"></span>Cash ' + Math.round(pct(cash)) + "% · " + r.cashYears + "y</span>" +

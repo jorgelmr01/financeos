@@ -949,12 +949,15 @@ function _simBuckets(p, market) {
   const bondYears = Math.max(0, Number(p.bondYears) || 0);
   const maxDraw = Math.max(1, Math.round(Number(p.maxDraw) || 50));
 
-  // Accumulation is deterministic (grow at the equities return): the random
-  // markets are applied in retirement, so the simulation isolates how the
-  // drawdown strategy itself holds up to the sequence of returns.
+  // Accumulation is deterministic: while you're still earning, a market dip
+  // doesn't force you to sell, so volatility barely matters — what matters is
+  // your growth tilt. accEquity is the % held in equities while saving (the
+  // rest in bonds); it just sets the blended accumulation return.
+  const accEq = Math.max(0, Math.min(100, p.accEquity != null ? Number(p.accEquity) : 100)) / 100;
+  const accReturn = accEq * eqR + (1 - accEq) * bdR;
   const pts = [{ year: 0, bal: start, phase: "save" }];
   let bal = start;
-  for (let y = 1; y <= years; y++) { bal = bal * (1 + eqR) + contribA; pts.push({ year: y, bal: bal, phase: "save" }); }
+  for (let y = 1; y <= years; y++) { bal = bal * (1 + accReturn) + contribA; pts.push({ year: y, bal: bal, phase: "save" }); }
   const nest = bal;
   const spendRet1 = spend0 * Math.pow(1 + infl, years);
   let cash = Math.min(nest, cashYears * spendRet1);
