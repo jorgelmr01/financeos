@@ -1570,31 +1570,86 @@ const Pages = {
   retirement() {
     if (!App.retire) App.retire = App.retireDefaults();
     const r = App.retire;
-    const cur = displayCurrency();
-    const controls =
-      '<div class="panel section retire-controls"><div class="panel-head">' +
-        '<div class="panel-title">Assumptions</div>' +
-        '<span class="panel-sub">drag to explore — everything updates live</span></div>' +
-        '<div class="grid cols-3">' +
-          '<div class="field"><label>Starting amount (' + cur + ')</label>' +
-            '<input class="r-input fmt-num" data-rk="start" type="text" inputmode="decimal" value="' + fmtNumInput(r.start) + '">' +
-            '<div class="hint">Seeded from your current net worth — edit freely, or hit “Use my net worth”.</div></div>' +
-          '<div class="field"><label>Monthly contribution (' + cur + ')</label>' +
-            '<input class="r-input fmt-num" data-rk="contrib" type="text" inputmode="decimal" value="' + fmtNumInput(r.contrib) + '">' +
-            '<div class="hint">Extra you add every month while still saving.</div></div>' +
-          '<div class="field"><label>Annual spending in retirement (' + cur + ')</label>' +
-            '<input class="r-input fmt-num" data-rk="annualSpend" type="text" inputmode="decimal" value="' + fmtNumInput(r.annualSpend) + '">' +
-            '<div class="hint">Drives the FIRE number. Pre-filled from your budget — override to model spending more or less.</div></div>' +
-        "</div>" +
-        '<div class="r-grid">' +
-          this._rslider("ret", "Annual return", r.ret, 0, 15, 0.5, "%") +
-          this._rslider("years", "Years to grow", r.years, 0, 50, 1, " yr") +
-          this._rslider("withdraw", "Withdrawal rate", r.withdraw, 1, 10, 0.1, "%") +
-          this._rslider("inflation", "Inflation", r.inflation, 0, 12, 0.1, "%") +
-          this._rslider("vol", "Market volatility", r.vol, 0, 30, 1, "%") +
-        "</div>" +
+    const mode = r.mode === "advanced" ? "advanced" : "basic";
+    const top =
+      '<div class="panel section retire-top">' +
+        '<div class="retire-modes"><span class="micro-label">Retirement simulator</span>' +
+          '<div class="price-range-bar">' +
+            '<button class="range-btn' + (mode === "basic" ? " on" : "") + '" data-action="retire-mode" data-method="basic">Basic</button>' +
+            '<button class="range-btn' + (mode === "advanced" ? " on" : "") + '" data-action="retire-mode" data-method="advanced">Advanced</button>' +
+          "</div></div>" +
+        this._retireExplainer(mode) +
       "</div>";
-    return controls + '<div id="retire-out">' + this.retirementOutput() + "</div>";
+    const controls = mode === "advanced" ? this._retireControlsAdvanced(r) : this._retireControlsBasic(r);
+    return top + controls + '<div id="retire-out">' + this.retirementOutput() + "</div>";
+  },
+
+  _retireExplainer(mode) {
+    const common =
+      "<li><strong>Starting amount</strong> — what you’ve already set aside <em>for retirement</em> (we seed it from your net worth for convenience; trim it down to just your retirement pot).</li>" +
+      "<li><strong>Monthly contribution</strong> — what you add to that pot each month until you retire.</li>" +
+      "<li><strong>Annual spending in retirement</strong> — what you’ll spend per year once retired; it drives the withdrawals and your FIRE number.</li>" +
+      "<li><strong>Years to grow</strong> — years until you retire.</li>" +
+      "<li><strong>Inflation</strong> — how fast prices rise; your spending grows with it so it keeps its buying power.</li>";
+    const basic =
+      "<li><strong>Annual return</strong> — the average yearly growth you expect before and during retirement.</li>" +
+      "<li><strong>Withdrawal rate</strong> — the share of the pot you draw in year one (the 4% rule); it rises with inflation after.</li>";
+    const adv =
+      "<li><strong>Equities / Bonds / Cash return</strong> — the yearly growth you expect from each sleeve. You accumulate in equities for growth.</li>" +
+      "<li><strong>Cash &amp; Bond buffer (years of spending)</strong> — at retirement you keep this many years of spending safe in cash and bonds; the rest stays in equities. You spend the buffers first and refill them from stocks after good years — the bucket strategy.</li>";
+    return '<details class="retire-explain"><summary>What is this? Read before you start →</summary>' +
+      '<p class="method-note" style="margin-top:10px"><strong>This plans your retirement fund</strong> — the pot you’ll live off after you stop working. It is <strong>not</strong> your total savings or net worth. The shaded band and the success rate come from 300 random-market simulations, so treat them as odds, not promises.</p>' +
+      '<ul class="retire-help">' + common + (mode === "advanced" ? adv : basic) + "</ul></details>";
+  },
+
+  _retireControlsBasic(r) {
+    const cur = displayCurrency();
+    return '<div class="panel section retire-controls"><div class="panel-head">' +
+      '<div class="panel-title">Assumptions</div><span class="panel-sub">drag to explore — everything updates live</span></div>' +
+      '<div class="grid cols-3">' +
+        '<div class="field"><label>Starting amount (' + cur + ')</label>' +
+          '<input class="r-input fmt-num" data-rk="start" type="text" inputmode="decimal" value="' + fmtNumInput(r.start) + '">' +
+          '<div class="hint">Your retirement pot today — seeded from net worth; edit down to just retirement savings.</div></div>' +
+        '<div class="field"><label>Monthly contribution (' + cur + ')</label>' +
+          '<input class="r-input fmt-num" data-rk="contrib" type="text" inputmode="decimal" value="' + fmtNumInput(r.contrib) + '">' +
+          '<div class="hint">Extra you add every month while still saving.</div></div>' +
+        '<div class="field"><label>Annual spending in retirement (' + cur + ')</label>' +
+          '<input class="r-input fmt-num" data-rk="annualSpend" type="text" inputmode="decimal" value="' + fmtNumInput(r.annualSpend) + '">' +
+          '<div class="hint">Drives the FIRE number. Pre-filled from your budget — override to model spending more or less.</div></div>' +
+      "</div>" +
+      '<div class="r-grid">' +
+        this._rslider("ret", "Annual return", r.ret, 0, 15, 0.5, "%") +
+        this._rslider("years", "Years to grow", r.years, 0, 50, 1, " yr") +
+        this._rslider("withdraw", "Withdrawal rate", r.withdraw, 1, 10, 0.1, "%") +
+        this._rslider("inflation", "Inflation", r.inflation, 0, 12, 0.1, "%") +
+      "</div></div>";
+  },
+
+  _retireControlsAdvanced(r) {
+    const cur = displayCurrency();
+    const presets = [["Aggressive", 0, 0], ["Balanced", 1, 2], ["Buffered 1+3", 1, 3], ["Conservative", 2, 6]]
+      .map(p => '<button class="sb-opt' + (p[1] === r.cashYears && p[2] === r.bondYears ? " sel" : "") + '" data-action="retire-bucket" data-method="' + p[1] + ":" + p[2] + '">' + p[0] + "</button>").join("");
+    return '<div class="panel section retire-controls"><div class="panel-head">' +
+      '<div class="panel-title">Strategy</div><span class="panel-sub">asset-class returns + a bucket strategy</span></div>' +
+      '<div class="grid cols-3">' +
+        '<div class="field"><label>Starting amount (' + cur + ')</label>' +
+          '<input class="r-input fmt-num" data-rk="start" type="text" inputmode="decimal" value="' + fmtNumInput(r.start) + '"></div>' +
+        '<div class="field"><label>Monthly contribution (' + cur + ')</label>' +
+          '<input class="r-input fmt-num" data-rk="contrib" type="text" inputmode="decimal" value="' + fmtNumInput(r.contrib) + '"></div>' +
+        '<div class="field"><label>Annual spending in retirement (' + cur + ')</label>' +
+          '<input class="r-input fmt-num" data-rk="annualSpend" type="text" inputmode="decimal" value="' + fmtNumInput(r.annualSpend) + '"></div>' +
+      "</div>" +
+      '<div class="sb-alloc-head"><span class="micro-label">Risk profile (cash / bond buffer)</span></div>' +
+      '<div class="sb-opts sb-quick">' + presets + "</div>" +
+      '<div class="r-grid">' +
+        this._rslider("eqRet", "Equities return", r.eqRet, 0, 18, 0.5, "%") +
+        this._rslider("bondRet", "Bonds return", r.bondRet, 0, 14, 0.5, "%") +
+        this._rslider("cashRet", "Cash return", r.cashRet, 0, 10, 0.5, "%") +
+        this._rslider("inflation", "Inflation", r.inflation, 0, 12, 0.1, "%") +
+        this._rslider("years", "Years to grow", r.years, 0, 50, 1, " yr") +
+        this._rslider("cashYears", "Cash buffer", r.cashYears, 0, 5, 0.5, " yr") +
+        this._rslider("bondYears", "Bond buffer", r.bondYears, 0, 15, 0.5, " yr") +
+      "</div></div>";
   },
 
   _rslider(key, label, val, min, max, step, suffix) {
@@ -1606,22 +1661,26 @@ const Pages = {
 
   retirementOutput() {
     const r = App.retire;
+    return (r.mode === "advanced") ? this._retireOutputAdvanced(r) : this._retireOutputBasic(r);
+  },
+
+  _retireOutputBasic(r) {
+    const VOL = 13;   // fixed, sensible diversified-portfolio volatility (no longer a slider)
     const sim = retirementProjection({
       start: r.start, ret: r.ret, years: r.years, contrib: r.contrib,
       withdraw: r.withdraw, inflation: r.inflation, maxDraw: 50,
     });
     const mc = retirementMonteCarlo({
       start: r.start, ret: r.ret, years: r.years, contrib: r.contrib,
-      withdraw: r.withdraw, inflation: r.inflation, vol: r.vol, maxDraw: 50, runs: 300,
+      withdraw: r.withdraw, inflation: r.inflation, vol: VOL, maxDraw: 50, runs: 300,
     });
     const succ = Math.round(mc.successRate * 100);
     const succTone = succ >= 85 ? "pos" : succ >= 60 ? "gold" : "neg";
-    const succHint = this._hint("Across " + mc.runs + " simulated lifetimes, each year's return is drawn at random from a bell curve centred on your " + r.ret + "% return with a ±" + Math.round(mc.vol) + "% yearly swing (the Market-volatility slider). Withdrawals still rise every year with " + r.inflation + "% inflation. The success rate is the share of those runs where the money isn't exhausted after " + sim.maxDraw + " years. Lower volatility, a smaller withdrawal rate, or more years all raise it.");
+    const succHint = this._hint("Across " + mc.runs + " simulated lifetimes, each year's return is drawn at random from a bell curve centred on your " + r.ret + "% return with a ±" + Math.round(mc.vol) + "% yearly swing (a typical diversified-portfolio volatility). Withdrawals still rise every year with " + r.inflation + "% inflation. The success rate is the share of those runs where the money isn't exhausted after " + sim.maxDraw + " years. A smaller withdrawal rate or more years raise it.");
     const stat = (label, val, note, cls) =>
       '<div class="stat"><span class="micro-label">' + label + '</span><div class="stat-value ' + (cls || "") +
       '">' + val + '</div><div class="stat-note">' + note + "</div></div>";
     const lasts = sim.sustainable ? sim.maxDraw + "+ yrs" : sim.depletedYear + " yr" + (sim.depletedYear === 1 ? "" : "s");
-
     const stats = '<div class="grid cols-4 section">' +
       stat("Nest egg at retirement", fmtMoney(sim.nest, { compact: true }),
         "in " + r.years + " yr · " + fmtMoney(sim.nestReal, { compact: true }) + " in today’s pesos", "gold") +
@@ -1632,8 +1691,79 @@ const Pages = {
       stat("Success rate" + succHint, succ + "%",
         "of " + mc.runs + " random-market runs the money outlives " + sim.maxDraw + " yr", succTone) +
       "</div>";
-
     return stats + this._retireChart(sim, r, mc) + this._firePanel(r) + this._retireNote(sim, r, mc);
+  },
+
+  _retireOutputAdvanced(r) {
+    if (!(Number(r.annualSpend) > 0)) {
+      return '<div class="panel section"><div class="panel-head"><div class="panel-title">Set your annual spending</div></div>' +
+        '<p class="method-note">The bucket strategy is built around <em>years of spending</em>, so enter your <strong>Annual spending in retirement</strong> above to run it.</p></div>';
+    }
+    const P = { start: r.start, contrib: r.contrib, years: r.years, annualSpend: r.annualSpend, inflation: r.inflation, eqRet: r.eqRet, bondRet: r.bondRet, cashRet: r.cashRet, cashYears: r.cashYears, bondYears: r.bondYears, maxDraw: 30 };
+    const sim = retirementBuckets(P);
+    const mc = retirementBucketsMC(Object.assign({}, P, { runs: 300 }));
+    const succ = Math.round(mc.successRate * 100);
+    const succTone = succ >= 85 ? "pos" : succ >= 60 ? "gold" : "neg";
+    const lasts = sim.sustainable ? sim.maxDraw + "+ yrs" : sim.depletedYear + " yr" + (sim.depletedYear === 1 ? "" : "s");
+    const stat = (l, v, note, cls) => '<div class="stat"><span class="micro-label">' + l + '</span><div class="stat-value ' + (cls || "") + '">' + v + '</div><div class="stat-note">' + note + "</div></div>";
+    const succHint = this._hint("You grow steadily to retirement, then over a " + sim.maxDraw + "-year retirement we run 300 random markets (equities swing ±16%, bonds ±6%, cash ±1%). Spending rises with inflation; you draw cash → bonds → equities and refill the buffers from stocks only after up years — so you never sell stocks low. Success = the share of runs the money lasts the full " + sim.maxDraw + " years.");
+    const stats = '<div class="grid cols-4 section">' +
+      stat("Nest egg at retirement", fmtMoney(sim.nest, { compact: true }), "in " + r.years + " yr · " + fmtMoney(sim.nestReal, { compact: true }) + " today’s pesos", "gold") +
+      stat("Annual income", fmtMoney(sim.monthlyIncome * 12, { compact: true }), fmtMoney(r.annualSpend, { compact: true }) + " in today’s pesos", "pos") +
+      stat("Money lasts (base case)", lasts, sim.sustainable ? "buffers hold up" : "until the pot runs dry", sim.sustainable ? "pos" : "neg") +
+      stat("Success rate" + succHint, succ + "%", "of " + mc.runs + " bucket simulations", succTone) +
+      "</div>";
+    const chart = this._retireChart(sim, r, mc, {
+      sub: "grow " + r.years + "y in equities, then a " + r.cashYears + "y cash + " + r.bondYears + "y bond buffer · shaded = likely range",
+      hint: "Solid line = base case with steady returns. Shaded = 10th–90th percentile of 300 runs (equities ±16%, bonds ±6%, cash ±1%). The cash/bond buffers let you avoid selling stocks in down years and refill them after good ones — that compounding shelter is the snowball.",
+    });
+    return stats + chart + this._bucketPanel(r, sim) + this._strategyCompare(P, r) + this._firePanel(r) + this._bucketNote(sim, r);
+  },
+
+  _bucketPanel(r, sim) {
+    const infl = (Number(r.inflation) || 0) / 100, years = Math.max(0, Math.round(Number(r.years) || 0));
+    const spendRet1 = (Number(r.annualSpend) || 0) * Math.pow(1 + infl, years);
+    const nest = sim.nest;
+    const cash = Math.min(nest, r.cashYears * spendRet1);
+    const bond = Math.min(Math.max(0, nest - cash), r.bondYears * spendRet1);
+    const eq = Math.max(0, nest - cash - bond);
+    const pct = v => nest > 0 ? v / nest * 100 : 0;
+    const seg = (v, bg, label) => '<span style="width:' + pct(v).toFixed(2) + "%;background:" + bg + '" data-tip="' + esc(label + " · " + fmtMoney(v, { compact: true }) + " · " + Math.round(pct(v)) + "%") + '"></span>';
+    return '<div class="panel section"><div class="panel-head"><div class="panel-title">Your buckets at retirement</div>' +
+      '<span class="panel-sub">' + r.cashYears + "y cash + " + r.bondYears + "y bonds, rest in equities</span></div>" +
+      '<div class="comp-bar">' + seg(cash, "var(--text-mute)", "Cash") + seg(bond, "var(--sky)", "Bonds") + seg(eq, "var(--mint)", "Equities") + "</div>" +
+      '<div class="comp-legend" style="margin-top:12px">' +
+        '<span class="lg"><span class="dot" style="background:var(--text-mute)"></span>Cash ' + Math.round(pct(cash)) + "% · " + r.cashYears + "y</span>" +
+        '<span class="lg"><span class="dot" style="background:var(--sky)"></span>Bonds ' + Math.round(pct(bond)) + "% · " + r.bondYears + "y</span>" +
+        '<span class="lg"><span class="dot" style="background:var(--mint)"></span>Equities ' + Math.round(pct(eq)) + "%</span></div></div>";
+  },
+
+  _strategyCompare(P, r) {
+    const profiles = [["Aggressive", 0, 0], ["Balanced", 1, 2], ["Buffered 1+3", 1, 3], ["Conservative", 2, 6]];
+    const rows = profiles.map(p => {
+      const mc = retirementBucketsMC(Object.assign({}, P, { cashYears: p[1], bondYears: p[2], runs: 200 }));
+      const succ = Math.round(mc.successRate * 100);
+      const cur = p[1] === r.cashYears && p[2] === r.bondYears;
+      const last = mc.band[mc.band.length - 1];
+      return "<tr" + (cur ? ' class="cur"' : "") + "><td>" + p[0] + (cur ? ' <span class="tag mint">current</span>' : "") + "</td>" +
+        '<td class="num">' + p[1] + "y / " + p[2] + "y</td>" +
+        '<td class="num ' + (succ >= 85 ? "pos" : succ >= 60 ? "gold" : "neg") + '">' + succ + "%</td>" +
+        '<td class="num">' + fmtMoney(last.p10, { compact: true }) + "</td>" +
+        '<td class="num">' + fmtMoney(last.p50, { compact: true }) + "</td>" +
+        '<td class="num">' + (cur ? "" : '<button class="btn small ghost" data-action="retire-bucket" data-method="' + p[1] + ":" + p[2] + '">Use</button>') + "</td></tr>";
+    }).join("");
+    return '<div class="panel section"><div class="panel-head"><div class="panel-title">Compare risk profiles</div>' +
+      '<span class="panel-sub">same returns &amp; spending · different buffers · 30-yr retirement</span></div>' +
+      '<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Profile</th><th class="num">Cash / Bonds</th><th class="num">Success</th><th class="num">Worst case</th><th class="num">Median left</th><th></th></tr></thead><tbody>' + rows + "</tbody></table></div>" +
+      '<p class="method-note" style="margin-top:10px"><strong>Worst case</strong> is the 10th-percentile ending balance — bigger buffers lift this floor (you avoid selling stocks in a crash) and raise the success rate, at the cost of a lower <strong>median</strong>. But push spending high enough and growth wins, so aggressive pulls ahead. There’s no single right answer — that’s the point.</p></div>';
+  },
+
+  _bucketNote(sim, r) {
+    const body = sim.sustainable
+      ? "With a " + r.cashYears + "-year cash and " + r.bondYears + "-year bond buffer, the base case lasts the full " + sim.maxDraw + "+ years with " + fmtMoney(sim.endBalance, { compact: true }) + " left. The buffers mean you spend safe assets in downturns and let equities recover instead of selling them low."
+      : "Even with the buffers, the base case runs dry in about <strong>" + sim.depletedYear + " years</strong> — spending outpaces the blend. Raise returns, spend less, grow longer, or carry a bigger equity share for more growth.";
+    return '<div class="panel section"><div class="panel-head"><div class="panel-title">What this means</div></div>' +
+      '<p class="method-note">' + body + " Of the " + fmtMoney(sim.nest, { compact: true }) + " nest egg, " + fmtMoney(sim.contributed, { compact: true }) + " is money you put in and " + fmtMoney(sim.growth, { compact: true }) + " is growth. Figures are nominal unless marked “today’s pesos”.</p></div>";
   },
 
   /* FIRE number + Coast FIRE — nest egg that funds your spending forever */
@@ -1676,7 +1806,8 @@ const Pages = {
         : " Set Annual spending in the Assumptions to refine this.") + "</p></div>";
   },
 
-  _retireChart(sim, r, mc) {
+  _retireChart(sim, r, mc, opts) {
+    opts = opts || {};
     const pts = sim.pts;
     if (pts.length < 2) return "";
     const n = pts.length;
@@ -1702,10 +1833,12 @@ const Pages = {
       tip: (p.phase === "save" ? "Saving" : "Retired") + " · yr " + p.year + " · base <strong>" + fmtMoney(p.bal, { compact: true }) + "</strong>" +
         (band[i] ? " · range " + fmtMoney(band[i].p10, { compact: true }) + "–" + fmtMoney(band[i].p90, { compact: true }) : ""),
     })));
-    const chartHint = this._hint("The solid line is the base case (a steady " + r.ret + "% return every year). The shaded band is the 10th–90th percentile of " + ((mc && mc.runs) || 300) + " Monte-Carlo runs where each year's return is random (mean " + r.ret + "%, ±" + Math.round((mc && mc.vol) || 12) + "% volatility) — so in roughly 80% of simulated markets you end each year inside the band. Tap a point for its range.");
+    const chartHint = this._hint(opts.hint ||
+      ("The solid line is the base case (a steady " + r.ret + "% return every year). The shaded band is the 10th–90th percentile of " + ((mc && mc.runs) || 300) + " Monte-Carlo runs where each year's return is random (mean " + r.ret + "%, ±" + Math.round((mc && mc.vol) || 13) + "% volatility) — so in roughly 80% of simulated markets you end each year inside the band. Tap a point for its range."));
+    const sub = opts.sub || ("grow " + r.years + "y at " + r.ret + "%, then draw " + r.withdraw + "%/yr · shaded = likely range");
     return '<div class="panel section"><div class="panel-head">' +
       '<div class="panel-title">Your money over a lifetime' + chartHint + "</div>" +
-      '<span class="panel-sub">grow ' + r.years + "y at " + r.ret + "%, then draw " + r.withdraw + "%/yr · shaded = likely range</span></div>" +
+      '<span class="panel-sub">' + sub + "</span></div>" +
       '<div class="chart-wrap"><div class="retire-plot">' + grid +
         '<svg class="retire-chart" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none">' +
           '<defs><linearGradient id="retfill" x1="0" y1="0" x2="0" y2="1">' +

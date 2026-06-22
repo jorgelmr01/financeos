@@ -858,6 +858,102 @@ function retirementMonteCarlo(p) {
   };
 }
 
+/* ---------- advanced retirement: the bucket strategy ----------
+   One run: accumulate at the equities return, then at retirement keep cashYears
+   + bondYears of annual spending in cash & bonds and the rest in equities. Each
+   retirement year spend from cash → bonds → equities; grow each sleeve at its
+   own return; and after an UP equity year, refill the cash/bond buffers from
+   equities (the classic "bucket"/snowball that shields stocks from forced
+   selling in downturns). noise(cls) adds a random yearly delta per sleeve (0 for
+   the deterministic base case). */
+function _simBuckets(p, noise) {
+  noise = noise || function () { return 0; };
+  const start = Math.max(0, Number(p.start) || 0);
+  const contribA = Math.max(0, Number(p.contrib) || 0) * 12;
+  const years = Math.max(0, Math.round(Number(p.years) || 0));
+  const infl = (Number(p.inflation) || 0) / 100;
+  const spend0 = Math.max(0, Number(p.annualSpend) || 0);
+  const eqR = (Number(p.eqRet) || 0) / 100, bdR = (Number(p.bondRet) || 0) / 100, csR = (Number(p.cashRet) || 0) / 100;
+  const cashYears = Math.max(0, Number(p.cashYears) || 0);
+  const bondYears = Math.max(0, Number(p.bondYears) || 0);
+  const maxDraw = Math.max(1, Math.round(Number(p.maxDraw) || 50));
+
+  // Accumulation is deterministic (grow at the equities return): the random
+  // markets are applied in retirement, so the simulation isolates how the
+  // drawdown strategy itself holds up to the sequence of returns.
+  const pts = [{ year: 0, bal: start, phase: "save" }];
+  let bal = start;
+  for (let y = 1; y <= years; y++) { bal = bal * (1 + eqR) + contribA; pts.push({ year: y, bal: bal, phase: "save" }); }
+  const nest = bal;
+  const spendRet1 = spend0 * Math.pow(1 + infl, years);
+  let cash = Math.min(nest, cashYears * spendRet1);
+  let bond = Math.min(Math.max(0, nest - cash), bondYears * spendRet1);
+  let eq = Math.max(0, nest - cash - bond);
+  let depleted = null;
+  for (let y = 1; y <= maxDraw; y++) {
+    let need = spend0 * Math.pow(1 + infl, years + y - 1);
+    let t = Math.min(cash, need); cash -= t; need -= t;
+    if (need > 0) { t = Math.min(bond, need); bond -= t; need -= t; }
+    if (need > 0) { t = Math.min(eq, need); eq -= t; need -= t; }
+    const shortfall = need > 0.005;
+    const eqG = eqR + noise("eq");
+    cash = Math.max(0, cash * (1 + csR + noise("cash")));
+    bond = Math.max(0, bond * (1 + bdR + noise("bond")));
+    eq = Math.max(0, eq * (1 + eqG));
+    // refill: top cash from bonds first (safe→safe); only tap equities after an
+    // up year, so stocks are never sold low — the buffer's whole point.
+    const spendNext = spend0 * Math.pow(1 + infl, years + y);
+    let nc = Math.max(0, cashYears * spendNext - cash);
+    if (nc > 0 && bond > 0) { const mv = Math.min(nc, bond); cash += mv; bond -= mv; }
+    if (eqG >= 0 && eq > 0) {
+      let nb = Math.max(0, bondYears * spendNext - bond);
+      if (nb > 0) { const mv = Math.min(nb, eq); bond += mv; eq -= mv; }
+      let nc2 = Math.max(0, cashYears * spendNext - cash);
+      if (nc2 > 0 && eq > 0) { const mv = Math.min(nc2, eq); cash += mv; eq -= mv; }
+    }
+    const total = cash + bond + eq;
+    pts.push({ year: years + y, bal: Math.max(0, total), phase: "draw" });
+    if (shortfall || total <= 0.005) { depleted = y; break; }
+  }
+  return { pts: pts, nest: nest, depleted: depleted, end: pts[pts.length - 1].bal };
+}
+
+function retirementBuckets(p) {
+  const det = _simBuckets(p, null);
+  const years = Math.max(0, Math.round(Number(p.years) || 0));
+  const infl = (Number(p.inflation) || 0) / 100;
+  const spend0 = Math.max(0, Number(p.annualSpend) || 0);
+  const contributed = Math.max(0, Number(p.start) || 0) + Math.max(0, Number(p.contrib) || 0) * 12 * years;
+  const realFactor = Math.pow(1 + infl, years);
+  return {
+    pts: det.pts, nest: det.nest, contributed: contributed, growth: det.nest - contributed,
+    nestReal: det.nest / realFactor,
+    monthlyIncome: spend0 * realFactor / 12, monthlyIncomeReal: spend0 / 12,
+    depletedYear: det.depleted, sustainable: det.depleted == null,
+    maxDraw: Math.max(1, Math.round(Number(p.maxDraw) || 50)),
+    endBalance: det.end, realReturn: (Number(p.eqRet) || 0) - (Number(p.inflation) || 0),
+  };
+}
+
+function retirementBucketsMC(p) {
+  const runs = Math.max(50, Math.round(Number(p.runs) || 300));
+  const years = Math.max(0, Math.round(Number(p.years) || 0));
+  const maxDraw = Math.max(1, Math.round(Number(p.maxDraw) || 50));
+  const vol = { eq: (p.eqVol != null ? p.eqVol : 16) / 100, bond: (p.bondVol != null ? p.bondVol : 6) / 100, cash: (p.cashVol != null ? p.cashVol : 1) / 100 };
+  const rng = mulberry32(0x5bd1e995);
+  const noise = cls => vol[cls] * randNormal(rng);
+  const totalYears = years + maxDraw;
+  const cols = []; for (let y = 0; y <= totalYears; y++) cols.push([]);
+  let survived = 0;
+  for (let run = 0; run < runs; run++) {
+    const r = _simBuckets(p, noise);
+    for (let y = 0; y <= totalYears; y++) { const pt = r.pts[y]; cols[y].push(pt ? pt.bal : 0); }
+    if (r.depleted == null) survived++;
+  }
+  const quant = (arr, q) => { if (!arr.length) return 0; const s = arr.slice().sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.max(0, Math.round(q * (s.length - 1))))]; };
+  return { band: cols.map((arr, y) => ({ year: y, p10: quant(arr, 0.1), p50: quant(arr, 0.5), p90: quant(arr, 0.9) })), successRate: runs ? survived / runs : 0, runs: runs };
+}
+
 /* Debt payoff simulator (the classic spreadsheet/undebt.it model). Each month:
    accrue interest, pay each card its minimum, then roll every spare peso of the
    monthly budget onto ONE target card — the smallest balance (snowball) or the

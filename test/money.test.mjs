@@ -26,7 +26,7 @@ vm.createContext(ctx);
 const bundle = [read("js/utils.js"), read("js/budget.js"), read("js/statements.js"), read("js/store.js")].join("\n;\n") +
   "\n;globalThis.__api = { interestPerPeriod, nextInterestDate, interestScheduleLabel, interestPeriodDays," +
   " accruedInterest, holdingReturnRate, parseAmount, parseExpenseDate, expenseSig, canonicalCategory," +
-  " earningsBreakdown, retirementProjection, retirementMonteCarlo, realInterestEst, monthlyInterestEst," +
+  " earningsBreakdown, retirementProjection, retirementMonteCarlo, retirementBuckets, retirementBucketsMC, realInterestEst, monthlyInterestEst," +
   " convBetween, sparkline, categorySeries, debtPayoff, fmtNumInput, parseNum, budgetSpendEstimate," +
   " toISO, parseISO, daysBetween, todayMid, Statements, INTEREST_FREQ, Store };";
 vm.runInContext(bundle, ctx, { filename: "bundle.js" });
@@ -421,6 +421,33 @@ group("smart annual-spend estimate for FIRE", () => {
   ok(est.annual > 0 && est.cov < 0.1, "stable spend → low coefficient of variation");
   ok(Math.abs(est.annual / 12 - est.annual / 12) < 1e-9, "annual is monthly × 12");
   eq(A.budgetSpendEstimate.length, 0, "takes no args");
+});
+
+group("advanced retirement — bucket strategy", () => {
+  const base = { start: 2000000, contrib: 5000, years: 20, annualSpend: 240000, inflation: 4.5, eqRet: 10, bondRet: 7, cashRet: 4.5, maxDraw: 30 };
+  // deterministic accumulation: nest = start grown at eqRet plus annual contributions
+  const det = A.retirementBuckets(base);
+  approx(det.nest, 2000000 * Math.pow(1.10, 20) + 5000 * 12 * (Math.pow(1.10, 20) - 1) / 0.10, 50, "nest grows steadily at the equities return");
+  ok(det.pts[0].phase === "save" && det.pts[det.pts.length - 1].phase === "draw", "timeline runs save → draw");
+
+  // seeded → identical, and a probability
+  const a = A.retirementBucketsMC(Object.assign({}, base, { cashYears: 1, bondYears: 3, runs: 200 }));
+  const b = A.retirementBucketsMC(Object.assign({}, base, { cashYears: 1, bondYears: 3, runs: 200 }));
+  eq(a.successRate, b.successRate, "seeded RNG → identical success rate");
+  ok(a.successRate >= 0 && a.successRate <= 1, "success is a probability");
+  a.band.forEach(pt => ok(pt.p10 <= pt.p50 + 1e-6 && pt.p50 <= pt.p90 + 1e-6, "p10 ≤ p50 ≤ p90"));
+
+  // the buffer's whole point: bigger cash/bond buffers lift the worst-case (10th
+  // pct) ending balance vs going all-equities, at a moderate withdrawal
+  const aggro = A.retirementBucketsMC(Object.assign({}, base, { cashYears: 0, bondYears: 0, runs: 300 }));
+  const cons = A.retirementBucketsMC(Object.assign({}, base, { cashYears: 2, bondYears: 6, runs: 300 }));
+  const p10 = mc => mc.band[mc.band.length - 1].p10;
+  ok(p10(cons) >= p10(aggro), "a bigger buffer lifts the worst-case ending balance");
+  ok(cons.successRate >= aggro.successRate - 1e-9, "and does not lower success at a moderate withdrawal");
+
+  // spending it down to nothing → not sustainable
+  const broke = A.retirementBuckets(Object.assign({}, base, { annualSpend: 3000000 }));
+  ok(!broke.sustainable && broke.depletedYear > 0, "an unaffordable spend depletes the pot");
 });
 
 /* ---- report ---- */

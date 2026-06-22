@@ -32,7 +32,12 @@ const App = {
     const t = computeTotals();
     const infl = (Store.state.settings.tax && Number(Store.state.settings.tax.inflation)) || 4.5;
     const spend = (typeof budgetSpendEstimate === "function") ? Math.round(budgetSpendEstimate().annual) : 0;
-    return { start: Math.max(0, Math.round(t.netWorth)), contrib: 0, ret: 8, years: 20, withdraw: 4, inflation: infl, vol: 12, annualSpend: spend };
+    return {
+      mode: "basic",
+      start: Math.max(0, Math.round(t.netWorth)), contrib: 0, ret: 8, years: 20, withdraw: 4, inflation: infl, annualSpend: spend,
+      // advanced (bucket-strategy) inputs
+      eqRet: 10, bondRet: 7, cashRet: 4.5, cashYears: 1, bondYears: 2,
+    };
   },
 
   navigate(page) {
@@ -175,6 +180,22 @@ const App = {
         this.retire = this.retireDefaults();
         this.render();
         UI.toast("Reset to your current net worth");
+        break;
+      }
+
+      case "retire-mode": {
+        if (!this.retire) this.retire = this.retireDefaults();
+        this.retire.mode = el.dataset.method === "advanced" ? "advanced" : "basic";
+        this.render();
+        break;
+      }
+
+      case "retire-bucket": {
+        if (!this.retire) this.retire = this.retireDefaults();
+        const parts = String(el.dataset.method || "").split(":");
+        this.retire.cashYears = parseFloat(parts[0]) || 0;
+        this.retire.bondYears = parseFloat(parts[1]) || 0;
+        this.render();
         break;
       }
 
