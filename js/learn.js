@@ -580,6 +580,14 @@ const SB_EVENTS = {
   },
 };
 
+/* allocation presets for the sandbox — savings/index/hot %, the rest is cash */
+const SB_PRESETS = {
+  safe:     { label: "🛡 Safe",        alloc: { savings: 40, index: 0, hot: 0 } },   // 60% cash
+  balanced: { label: "⚖ Balanced",    alloc: { savings: 20, index: 60, hot: 0 } },  // 20% cash
+  index:    { label: "📈 All-in index", alloc: { savings: 0, index: 100, hot: 0 } }, // 0% cash
+  wild:     { label: "🎰 Go wild",      alloc: { savings: 0, index: 40, hot: 60 } }, // 0% cash
+};
+
 function buildDeck() {
   const deck = ["crash", "bull", "bull", "emergency", "emergency", "emergency", "tip", "job",
     "windfall", "windfall", "recession", "vacation", "vacation", "scam",
@@ -606,7 +614,15 @@ const Learn = {
       case "learn-exit": this.session = null; break;
       case "sb-start": this.startSandbox(); break;
       case "sb-rate": this.session.rate = parseInt(id, 10); break;
-      case "sb-strategy": this.session.strategy = id; break;
+      case "sb-alloc": {
+        const parts = String(id).split(":"), k = parts[0], delta = parseInt(parts[1], 10) || 0;
+        const a = this.session.alloc;
+        if (a[k] == null) break;
+        const others = (a.savings + a.index + a.hot) - a[k];
+        a[k] = Math.max(0, Math.min(100 - others, a[k] + delta));
+        break;
+      }
+      case "sb-preset": { const p = SB_PRESETS[id]; if (p) this.session.alloc = Object.assign({}, p.alloc); break; }
       case "sb-advance": this.sandboxYear(); break;
       case "sb-event-choice": this.resolveEvent(id); break;
       case "sb-finish": this.session = null; break;
@@ -663,7 +679,7 @@ const Learn = {
     this.session = {
       type: "sandbox", year: 0, age: 25, salary: 30000,
       cash: 5000, savings: 0, index: 0, hot: 0, debt: 0,
-      rate: 20, strategy: "index", happy: 70,
+      rate: 20, alloc: { savings: 20, index: 60, hot: 10 }, happy: 70,
       deck: buildDeck(), pendingEvent: null,
       history: [5000], baseline: [5000], baseCash: 5000,
       log: [{ y: 0, cls: "info", text: "Age 25. $5,000 saved, $30,000/yr salary, 20 years ahead. Events WILL interrupt you — your reactions matter as much as your allocations." }],
@@ -714,15 +730,21 @@ const Learn = {
     s.hot *= 1 + hotRet;
     if (s.debt > 0) { const dInt = s.debt * 0.40; s.debt += dInt; logs.push({ cls: "danger", text: "Debt grew " + this._f(dInt) + " at 40% APR — it compounds against you." }); }
 
-    // allocate new savings
+    // allocate new savings by the chosen split — whatever isn't invested stays cash
     if (contrib > 0) {
-      const where = { mattress: "cash", hysa: "high-yield savings", index: "the index fund", hot: "the hot stock", split: "savings + index (50/50)" }[s.strategy];
-      if (s.strategy === "mattress") s.cash += contrib;
-      else if (s.strategy === "hysa") s.savings += contrib;
-      else if (s.strategy === "index") s.index += contrib;
-      else if (s.strategy === "hot") s.hot += contrib;
-      else { s.savings += contrib / 2; s.index += contrib / 2; }
-      logs.push({ cls: "info", text: "Saved " + this._f(contrib) + " into " + where + "." });
+      const a = s.alloc;
+      const sv = contrib * (Number(a.savings) || 0) / 100;
+      const ix = contrib * (Number(a.index) || 0) / 100;
+      const ht = contrib * (Number(a.hot) || 0) / 100;
+      const csh = Math.max(0, contrib - sv - ix - ht);
+      s.savings += sv; s.index += ix; s.hot += ht; s.cash += csh;
+      const parts = [];
+      const pc = v => Math.round(v / contrib * 100);
+      if (csh > 0.5) parts.push(pc(csh) + "% cash");
+      if (sv > 0.5) parts.push(pc(sv) + "% savings");
+      if (ix > 0.5) parts.push(pc(ix) + "% index");
+      if (ht > 0.5) parts.push(pc(ht) + "% hot stock");
+      logs.push({ cls: "info", text: "Saved " + this._f(contrib) + " → " + parts.join(", ") + "." });
     }
 
     // happiness drift from savings intensity
@@ -984,25 +1006,42 @@ const Learn = {
           '<div class="sb-event-choices">' +
           ev.choices(s.pendingEvent.params).map(c =>
             '<button class="learn-choice" data-action="sb-event-choice" data-id="' + c.id + '">' +
-              c.label + '<span class="lc-pts">' + c.hint + "</span></button>").join("") +
+              '<span class="lc-label">' + c.label + "</span>" +
+              '<span class="lc-pts">' + c.hint + "</span></button>").join("") +
           "</div></div>";
     } else {
       const rates = [10, 20, 35].map(r =>
         '<button class="sb-opt' + (s.rate === r ? " sel" : "") + '" data-action="sb-rate" data-id="' + r + '">' + r + "%</button>").join("");
-      const strategies = [
-        ["mattress", "🛏 Mattress", "0% — but always there"],
-        ["hysa", "🏦 High-yield savings", "+7%/yr, steady"],
-        ["index", "📈 Index fund", "~+9%/yr, bumpy"],
-        ["hot", "🎰 Hot stock", "wild: −55% to +90%"],
-        ["split", "⚖ Split 50/50", "savings + index"],
-      ].map(x =>
-        '<button class="sb-opt strat' + (s.strategy === x[0] ? " sel" : "") + '" data-action="sb-strategy" data-id="' + x[0] + '">' +
-        "<strong>" + x[1] + "</strong><span>" + x[2] + "</span></button>").join("");
+      const a = s.alloc;
+      const placed = Math.min(100, a.savings + a.index + a.hot);
+      const cashPct = 100 - placed;
+      const presets = Object.keys(SB_PRESETS).map(k =>
+        '<button class="sb-opt" data-action="sb-preset" data-id="' + k + '">' + SB_PRESETS[k].label + "</button>").join("");
+      const row = (key, name, sub, val, cls) =>
+        '<div class="sb-alloc-row">' +
+          '<div class="sb-alloc-name"><strong>' + name + "</strong><span>" + sub + "</span></div>" +
+          '<div class="sb-alloc-ctl">' +
+            '<button class="sb-step" data-action="sb-alloc" data-id="' + key + ':-5"' + (val <= 0 ? " disabled" : "") + ">−</button>" +
+            '<span class="sb-alloc-pct">' + val + "%</span>" +
+            '<button class="sb-step" data-action="sb-alloc" data-id="' + key + ':5"' + (placed >= 100 ? " disabled" : "") + ">+</button>" +
+          "</div>" +
+          '<div class="sb-alloc-bar"><div class="sb-alloc-fill ' + cls + '" style="width:' + val + '%"></div></div>' +
+        "</div>";
       controlsInner =
-        '<span class="micro-label" style="display:block;margin:14px 0 6px">Savings rate <em class="sb-hint">(higher builds wealth, drains the joy meter)</em></span>' +
+        '<span class="micro-label sb-label">Savings rate <em class="sb-hint">(higher builds wealth, drains the joy meter)</em></span>' +
         '<div class="sb-opts">' + rates + "</div>" +
-        '<span class="micro-label" style="display:block;margin:16px 0 6px">New savings go to…</span>' +
-        '<div class="sb-opts strat-grid">' + strategies + "</div>" +
+        '<div class="sb-alloc-head"><span class="micro-label">Where this year’s savings go</span>' +
+          '<span class="sb-alloc-total">' + placed + "% invested · " + cashPct + "% cash</span></div>" +
+        '<div class="sb-opts sb-quick">' + presets + "</div>" +
+        '<div class="sb-alloc">' +
+          row("savings", "🏦 Savings", "+7%/yr steady", a.savings, "savings") +
+          row("index", "📈 Index fund", "~+9%/yr bumpy", a.index, "index") +
+          row("hot", "🎰 Hot stock", "−55% to +90%", a.hot, "hot") +
+          '<div class="sb-alloc-row cashrow"><div class="sb-alloc-name"><strong>🛏 Cash buffer</strong>' +
+            "<span>whatever you don’t invest</span></div>" +
+            '<div class="sb-alloc-ctl"><span class="sb-alloc-pct">' + cashPct + "%</span></div>" +
+            '<div class="sb-alloc-bar"><div class="sb-alloc-fill cash" style="width:' + cashPct + '%"></div></div></div>' +
+        "</div>" +
         '<button class="btn primary sb-advance" data-action="sb-advance">▶ Live year ' + (s.year + 1) + "</button>";
     }
 
