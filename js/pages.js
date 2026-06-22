@@ -137,6 +137,7 @@ const Pages = {
         '<div class="stat"><span class="micro-label">Monthly income (net)</span><div class="stat-value gold">' + fmtMoney(eb.monthlyNet) + '</div><div class="stat-note">after tax · incl. interest &amp; dividends</div></div>' +
       "</div>" +
 
+      this._savingsRatePanel() +
       this._nwChartPanel() +
       this._nwCompositionPanel() +
 
@@ -181,6 +182,35 @@ const Pages = {
       "</div>" +
       '<div class="nw-chart-scale"><span>' + fmtDateShort(parseISO(snaps[0].d)) + " · " + fmtMoney(first, { compact: true }) + "</span>" +
       "<span>today · " + fmtMoney(lastV, { compact: true }) + "</span></div></div>";
+  },
+
+  /* savings rate (latest month) + 50/30/20 needs/wants/savings split */
+  _savingsRatePanel() {
+    const all = (typeof budgetSeries === "function") ? budgetSeries(null).filter(m => m.hasData) : [];
+    if (!all.length) return "";
+    const complete = all.filter(m => m.complete);
+    const m = (complete.length ? complete : all)[(complete.length ? complete : all).length - 1];
+    const income = Number(m.income) || 0;
+    if (income <= 0) return "";
+    const needs = Math.max(0, Number(m.needs) || 0);
+    const wants = Math.max(0, Number(m.wants) || 0);
+    const savings = Math.max(0, income - needs - wants);
+    const sr = m.savingsRate != null ? m.savingsRate : savings / income;
+    const pct = v => v / income * 100;
+    const tone = sr >= 0.2 ? "pos" : sr >= 0.05 ? "gold" : "neg";
+    const seg = (v, bg, label) => '<span style="width:' + Math.max(0, pct(v)).toFixed(2) + "%;background:" + bg + '" data-tip="' + esc(label + " · " + fmtMoney(v, { compact: true }) + " · " + Math.round(pct(v)) + "%") + '"></span>';
+    return '<div class="panel section"><div class="panel-head"><div class="panel-title">Savings rate</div>' +
+      '<span class="panel-sub">' + esc(m.short) + " · target 20%+</span></div>" +
+      '<div class="sr-row"><div class="sr-big ' + tone + '">' + Math.round(sr * 100) + "%</div>" +
+        '<div class="sr-detail"><div class="comp-bar">' +
+          seg(needs, "var(--sky)", "Needs") + seg(wants, "var(--gold)", "Wants") + seg(savings, "var(--mint)", "Savings") +
+        "</div>" +
+        '<div class="comp-legend" style="margin-top:10px">' +
+          '<span class="lg"><span class="dot" style="background:var(--sky)"></span>Needs ' + Math.round(pct(needs)) + "%</span>" +
+          '<span class="lg"><span class="dot" style="background:var(--gold)"></span>Wants ' + Math.round(pct(wants)) + "%</span>" +
+          '<span class="lg"><span class="dot" style="background:var(--mint)"></span>Savings ' + Math.round(pct(savings)) + "%</span>" +
+          '<span class="lg" style="margin-left:auto">50 / 30 / 20 rule</span>' +
+        "</div></div></div></div>";
   },
 
   /* stacked-area: HOW net worth is built over time — liquid + investments
@@ -376,7 +406,59 @@ const Pages = {
       "</div>";
     }).join("");
 
-    return stats + '<div class="grid cols-2 section">' + cardsHtml + "</div>";
+    return stats + this.debtPayoffPanel() + '<div class="grid cols-2 section">' + cardsHtml + "</div>";
+  },
+
+  /* debt-payoff calculator — snowball vs avalanche, live */
+  debtPayoffPanel() {
+    const debts = Store.state.cards.filter(c => conv(Number(c.balance) || 0, c.currency) > 0);
+    if (!debts.length) return "";
+    if (App.debtBudget == null) {
+      const tot = debts.reduce((a, c) => a + conv(Number(c.balance) || 0, c.currency), 0);
+      App.debtBudget = Math.max(500, Math.round(tot * 0.05 / 100) * 100);
+    }
+    const m = App.debtMethod || "avalanche";
+    return '<div class="panel section"><div class="panel-head"><div class="panel-title">Debt payoff plan</div>' +
+      '<span class="panel-sub">snowball vs avalanche · live</span></div>' +
+      '<div class="grid cols-2">' +
+        '<div class="field"><label>Monthly payment (' + displayCurrency() + ')</label>' +
+          '<input class="debt-input" type="number" min="0" step="100" value="' + App.debtBudget + '">' +
+          '<div class="hint">The total you can put toward all cards each month.</div></div>' +
+        '<div class="field"><label>Strategy</label>' +
+          '<div class="price-range-bar">' +
+            '<button class="range-btn' + (m === "avalanche" ? " on" : "") + '" data-action="debt-method" data-method="avalanche">Avalanche</button>' +
+            '<button class="range-btn' + (m === "snowball" ? " on" : "") + '" data-action="debt-method" data-method="snowball">Snowball</button>' +
+          "</div>" +
+          '<div class="hint">Avalanche = highest APR first (cheapest). Snowball = smallest balance first (fastest wins).</div></div>' +
+      "</div>" +
+      '<div id="debt-out">' + this.debtPayoffOutput() + "</div></div>";
+  },
+
+  debtPayoffOutput() {
+    const debts = Store.state.cards.filter(c => conv(Number(c.balance) || 0, c.currency) > 0)
+      .map(c => ({ id: c.id, name: c.name, balance: conv(Number(c.balance) || 0, c.currency), apr: Number(c.apr) || 0 }));
+    const budget = App.debtBudget || 0;
+    const method = App.debtMethod || "avalanche";
+    const plan = debtPayoff(debts, budget, method);
+    if (!plan.feasible) {
+      return '<div class="proj-note" style="color:var(--rose)">A ' + fmtMoney(budget) + "/mo payment is too low to clear this debt — interest keeps pace with it. Raise the monthly amount to see a payoff date.</div>";
+    }
+    const other = debtPayoff(debts, budget, method === "avalanche" ? "snowball" : "avalanche");
+    const payoff = new Date(); payoff.setMonth(payoff.getMonth() + plan.months);
+    const yrs = Math.floor(plan.months / 12), mos = plan.months % 12;
+    const dur = (yrs ? yrs + "y " : "") + mos + "mo";
+    const saving = other.feasible ? other.totalInterest - plan.totalInterest : null;
+    const names = plan.order.map(id => (debts.find(d => d.id === id) || {}).name).filter(Boolean);
+    const stat = (l, v, note, cls) => '<div class="stat"><span class="micro-label">' + l + '</span><div class="stat-value ' + (cls || "") + '">' + v + '</div><div class="stat-note">' + note + "</div></div>";
+    return '<div class="grid cols-3 section" style="margin:14px 0 0">' +
+      stat("Debt-free in", dur, "by " + fmtDateShort(payoff), "pos") +
+      stat("Total interest", fmtMoney(plan.totalInterest, { compact: true }), "on " + fmtMoney(plan.startBalance, { compact: true }) + " owed", "neg") +
+      stat(method === "avalanche" ? "vs snowball" : "vs avalanche",
+        saving == null ? "—" : (saving >= 0 ? "saves " : "costs ") + fmtMoney(Math.abs(saving), { compact: true }),
+        "in total interest", saving >= 0 ? "pos" : "neg") +
+      "</div>" +
+      (names.length ? '<div class="proj-note">Pay minimums on all, then pour every spare peso into <strong>' + esc(names[0]) + "</strong>" +
+        (names.length > 1 ? ", then " + names.slice(1).map(esc).join(" → ") : "") + ".</div>" : "");
   },
 
   /* ================= PORTFOLIO ================= */
@@ -1341,7 +1423,41 @@ const Pages = {
       '<div class="panel section"><div class="panel-head"><div class="panel-title">How this is estimated</div></div>' +
       '<p class="method-note">Percentiles compare you against the <strong>global adult population</strong>, interpolated from public datasets (UBS/Credit Suisse Global Wealth Report and the World Inequality Database, ~2024). Your figures are converted to USD using daily ECB exchange rates (with an offline fallback). Annual earnings are <strong>gross</strong> — global income statistics are pre-tax — and equal scheduled income + projected interest + dividends + investment returns annualized over each position\'s holding period. These are rough, directional estimates for motivation — not financial statistics about you.</p></div>';
 
-    return standing + badges + method;
+    return this._goalsPanel() + standing + badges + method;
+  },
+
+  /* savings goals / sinking funds — progress + monthly amount needed */
+  _goalsPanel() {
+    const goals = Store.state.goals || [];
+    const head = '<div class="panel-head"><div class="panel-title">Savings goals</div>' +
+      '<button class="btn small primary" data-action="add-goal">+ Add goal</button></div>';
+    if (!goals.length) {
+      return '<div class="panel section">' + head +
+        '<div class="all-clear" style="color:var(--text-mute)">No goals yet — set a target like an emergency fund or a trip, and FinanceOS works out the monthly amount to get there.</div></div>';
+    }
+    const today = todayMid();
+    const cards = goals.map(g => {
+      const target = Number(g.target) || 0, saved = Math.max(0, Number(g.saved) || 0);
+      const pct = target > 0 ? Math.min(100, saved / target * 100) : 0;
+      const remaining = Math.max(0, target - saved);
+      const done = remaining <= 0.005;
+      let line, tone = "";
+      if (done) { line = "Funded 🎉"; tone = "pos"; }
+      else if (g.targetDate) {
+        const d = parseISO(g.targetDate);
+        const months = d ? (d.getFullYear() - today.getFullYear()) * 12 + (d.getMonth() - today.getMonth()) : null;
+        if (d && (d < today || months <= 0)) { line = fmtMoneyIn(remaining, g.currency, { compact: true }) + " short · past the date"; tone = "neg"; }
+        else line = "Need <strong>" + fmtMoneyIn(remaining / months, g.currency, { compact: true }) + "/mo</strong> by " + fmtDateShort(d) + " (" + months + " mo)";
+      } else line = fmtMoneyIn(remaining, g.currency, { compact: true }) + " to go";
+      return '<div class="goal-card"><div class="goal-head">' +
+        '<span class="goal-name">' + esc(g.name) + "</span><span class=\"goal-actions\">" +
+          '<button class="icon-btn" data-action="edit-goal" data-id="' + g.id + '" title="Edit">' + icon("edit") + "</button>" +
+          '<button class="icon-btn danger" data-action="del-goal" data-id="' + g.id + '" title="Delete">' + icon("x") + "</button></span></div>" +
+        '<div class="goal-amt">' + fmtMoneyIn(saved, g.currency, { compact: true }) + " <span>of " + fmtMoneyIn(target, g.currency, { compact: true }) + "</span></div>" +
+        '<div class="goal-track"><div class="goal-fill' + (done ? " done" : "") + '" style="width:' + pct.toFixed(1) + '%"></div></div>' +
+        '<div class="goal-line ' + tone + '">' + Math.round(pct) + "% · " + line + "</div></div>";
+    }).join("");
+    return '<div class="panel section">' + head + '<div class="goal-grid">' + cards + "</div></div>";
   },
 
   /* ================= LEARN ================= */
@@ -1500,7 +1616,40 @@ const Pages = {
         "of " + mc.runs + " random-market runs the money outlives " + sim.maxDraw + " yr", succTone) +
       "</div>";
 
-    return stats + this._retireChart(sim, r, mc) + this._retireNote(sim, r, mc);
+    return stats + this._retireChart(sim, r, mc) + this._firePanel(r) + this._retireNote(sim, r, mc);
+  },
+
+  /* FIRE number + Coast FIRE — nest egg that funds your spending forever */
+  _firePanel(r) {
+    const series = (typeof budgetSeries === "function") ? budgetSeries(null).filter(m => m.hasData && m.complete) : [];
+    const annualSpend = series.length ? (series.reduce((a, m) => a + (Number(m.spend) || 0), 0) / series.length) * 12 : 0;
+    if (!(annualSpend > 0)) {
+      return '<div class="panel section"><div class="panel-head"><div class="panel-title">FIRE number</div></div>' +
+        '<p class="method-note">Log a month or two of expenses on the Budget tab and FinanceOS will compute your FIRE number — the nest egg that funds your spending forever at your withdrawal rate.</p></div>';
+    }
+    const swr = Math.max(0.5, Number(r.withdraw) || 4) / 100;
+    const fire = annualSpend / swr;
+    const now = Math.max(0, Number(r.start) || 0);
+    const progress = fire > 0 ? Math.min(100, now / fire * 100) : 0;
+    const realReturn = (Number(r.ret) || 0) - (Number(r.inflation) || 0);
+    const years = Math.max(1, Number(r.years) || 1);
+    const coast = fire / Math.pow(1 + Math.max(0, realReturn) / 100, years);
+    const hitFire = now >= fire, hitCoast = now >= coast;
+    const stat = (l, v, note, cls) => '<div class="stat"><span class="micro-label">' + l + '</span><div class="stat-value ' + (cls || "") + '">' + v + '</div><div class="stat-note">' + note + "</div></div>";
+    const verdict = hitFire
+      ? "You’ve reached <strong>FIRE</strong> — your assets can fund " + fmtMoney(annualSpend, { compact: true }) + "/yr indefinitely at " + r.withdraw + "%."
+      : hitCoast
+        ? "You’ve hit <strong>Coast FIRE</strong>: even with zero new savings, growth alone reaches your FIRE number in " + years + " years."
+        : "You’re <strong>" + Math.round(progress) + "%</strong> of the way. Reach " + fmtMoney(coast, { compact: true }) + " (Coast FIRE) and you could stop saving and still arrive in " + years + " years.";
+    return '<div class="panel section"><div class="panel-head"><div class="panel-title">FIRE number</div>' +
+      '<span class="panel-sub">spend ' + fmtMoney(annualSpend, { compact: true }) + "/yr · " + r.withdraw + "% rule</span></div>" +
+      '<div class="grid cols-3 section" style="margin:0 0 6px">' +
+        stat("FIRE number", fmtMoney(fire, { compact: true }), "≈ " + Math.round(1 / swr) + "× annual spend", "gold") +
+        stat("You’re at", Math.round(progress) + "%", fmtMoney(now, { compact: true }) + " of " + fmtMoney(fire, { compact: true }), progress >= 100 ? "pos" : "") +
+        stat("Coast FIRE", fmtMoney(coast, { compact: true }), hitCoast ? "reached — coasting" : "stop saving once here", hitCoast ? "pos" : "") +
+      "</div>" +
+      '<div class="goal-track"><div class="goal-fill' + (hitFire ? " done" : "") + '" style="width:' + progress.toFixed(1) + '%"></div></div>' +
+      '<p class="method-note" style="margin-top:12px">' + verdict + " Annual spend is averaged from your logged expenses; the withdrawal rate is the slider above.</p></div>";
   },
 
   _retireChart(sim, r, mc) {

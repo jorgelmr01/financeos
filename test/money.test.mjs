@@ -27,7 +27,7 @@ const bundle = [read("js/utils.js"), read("js/budget.js"), read("js/statements.j
   "\n;globalThis.__api = { interestPerPeriod, nextInterestDate, interestScheduleLabel, interestPeriodDays," +
   " accruedInterest, holdingReturnRate, parseAmount, parseExpenseDate, expenseSig, canonicalCategory," +
   " earningsBreakdown, retirementProjection, retirementMonteCarlo, realInterestEst, monthlyInterestEst," +
-  " convBetween, sparkline, categorySeries, toISO, parseISO, daysBetween, todayMid, Statements, INTEREST_FREQ, Store };";
+  " convBetween, sparkline, categorySeries, debtPayoff, toISO, parseISO, daysBetween, todayMid, Statements, INTEREST_FREQ, Store };";
 vm.runInContext(bundle, ctx, { filename: "bundle.js" });
 const A = ctx.__api;
 // fresh in-memory store, no persistence
@@ -369,6 +369,27 @@ group("sparkline + category series", () => {
   eq(cs.cats[0].name, "Groceries", "top category is the highest total");
   eq(cs.cats[0].values.length, cs.months.length, "one value per month");
   approx(cs.cats[0].total, 12300, 0.5, "category total sums every month");
+});
+
+group("debt payoff — snowball vs avalanche", () => {
+  const debts = [
+    { id: "a", name: "Store card", balance: 8000, apr: 36 },
+    { id: "b", name: "Big bank", balance: 40000, apr: 24 },
+    { id: "c", name: "Small", balance: 3000, apr: 18 },
+  ];
+  const av = A.debtPayoff(debts, 6000, "avalanche");
+  const sn = A.debtPayoff(debts, 6000, "snowball");
+  ok(av.feasible && sn.feasible, "a 6k/mo budget clears ~51k of debt");
+  ok(av.totalInterest <= sn.totalInterest + 1e-6, "avalanche never costs more interest than snowball");
+  ok(av.order[0] === "a", "avalanche targets the highest APR first");
+  ok(sn.order[0] === "c", "snowball targets the smallest balance first");
+  ok(av.months > 0 && av.startBalance === 51000, "reports the starting balance");
+
+  // a budget below the interest run-rate can never finish
+  const broke = A.debtPayoff(debts, 200, "avalanche");
+  ok(!broke.feasible, "a tiny budget is flagged infeasible, not looped forever");
+
+  eq(A.debtPayoff([], 1000, "avalanche").months, 0, "no debt → nothing to pay");
 });
 
 /* ---- report ---- */

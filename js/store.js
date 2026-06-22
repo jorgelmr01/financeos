@@ -18,7 +18,8 @@ const Store = {
       incomes: [],    // {id, name, category, amount, amountType, taxRate, accountId, frequency, payDay, startDate, currency}
       expenses: [],   // {id, date, description, category, amount, currency, sig, source}
       budgets: {},    // { [category]: { amount, currency } }  — monthly limit per category
-      snapshots: [],  // [{d: ISO date, usd: net worth in USD}]
+      goals: [],      // {id, name, target, saved, targetDate, currency} — savings goals / sinking funds
+      snapshots: [],  // [{d: ISO date, usd, liq, inv, debt} — net worth + composition in USD]
       learn: { scenarios: {}, sandbox: { best: 0, runs: 0 } },
       settings: {
         currency: "USD", privacy: false, pinEnabled: false, lastExport: null, theme: "dark",
@@ -36,6 +37,7 @@ const Store = {
     this.state.settings = Object.assign(d.settings, parsed.settings || {});
     this.state.settings.tax = Object.assign({ interest: 0, dividends: 0, capGains: 0, interestProvisional: 0, inflation: 4.5 }, (parsed.settings || {}).tax || {});
     if (!Array.isArray(this.state.snapshots)) this.state.snapshots = [];
+    if (!Array.isArray(this.state.goals)) this.state.goals = [];
     if (!Array.isArray(this.state.expenses)) this.state.expenses = [];
     if (!this.state.budgets || typeof this.state.budgets !== "object") this.state.budgets = {};
     this.state.learn = Object.assign({ scenarios: {}, sandbox: {} }, this.state.learn || {});
@@ -852,6 +854,55 @@ function retirementMonteCarlo(p) {
     band: cols.map((arr, y) => ({ year: y, p10: quant(arr, 0.1), p50: quant(arr, 0.5), p90: quant(arr, 0.9) })),
     successRate: runs ? survived / runs : 0,
     runs, vol: vol * 100,
+  };
+}
+
+/* Debt payoff simulator (the classic spreadsheet/undebt.it model). Each month:
+   accrue interest, pay each card its minimum, then roll every spare peso of the
+   monthly budget onto ONE target card — the smallest balance (snowball) or the
+   highest APR (avalanche). As cards clear, their freed minimums snowball into
+   the budget. Returns months to debt-free, total interest, payoff order, and
+   whether the budget is even enough to make progress. Pure & testable.
+   debts: [{id, name, balance, apr}] (balance & apr already in display ccy/%). */
+function debtPayoff(debts, monthlyBudget, method, opts) {
+  opts = opts || {};
+  const minPct = opts.minPct != null ? opts.minPct : 0.02;     // 2% of balance
+  const minFloor = opts.minFloor != null ? opts.minFloor : 200; // small absolute floor
+  const maxMonths = opts.maxMonths || 600;
+  const budget = Math.max(0, Number(monthlyBudget) || 0);
+  let cards = (debts || [])
+    .map(d => ({ id: d.id, name: d.name, bal: Math.max(0, Number(d.balance) || 0), apr: Math.max(0, Number(d.apr) || 0) }))
+    .filter(c => c.bal > 0.005);
+  const startBalance = cards.reduce((s, c) => s + c.bal, 0);
+  if (!cards.length) return { months: 0, totalInterest: 0, totalPaid: 0, startBalance: 0, order: [], feasible: true };
+  const order = cards.slice().sort((a, b) =>
+    method === "avalanche" ? (b.apr - a.apr) || (a.bal - b.bal) : (a.bal - b.bal) || (b.apr - a.apr)).map(c => c.id);
+  const orderIdx = id => order.indexOf(id);
+
+  let months = 0, totalInterest = 0;
+  while (cards.some(c => c.bal > 0.005) && months < maxMonths) {
+    months++;
+    cards.forEach(c => { if (c.bal > 0) { const it = c.bal * c.apr / 1200; c.bal += it; totalInterest += it; } });
+    let left = budget;
+    const active = cards.filter(c => c.bal > 0.005);
+    active.forEach(c => {
+      const min = Math.min(c.bal, Math.max(minFloor, c.bal * minPct));
+      const pay = Math.min(c.bal, min, left);
+      c.bal -= pay; left -= pay;
+    });
+    if (left > 0) {
+      active.slice().sort((a, b) => orderIdx(a.id) - orderIdx(b.id)).forEach(c => {
+        if (left <= 0 || c.bal <= 0.005) return;
+        const pay = Math.min(c.bal, left);
+        c.bal -= pay; left -= pay;
+      });
+    }
+  }
+  const feasible = !cards.some(c => c.bal > 0.005);
+  return {
+    months: feasible ? months : maxMonths,
+    totalInterest, totalPaid: startBalance + totalInterest,
+    startBalance, order, feasible,
   };
 }
 

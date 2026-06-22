@@ -947,6 +947,26 @@ body.light .score-ring { box-shadow: 0 10px 26px -14px rgba(40, 52, 43, 0.22); }
 .chip-spark { margin-top: 7px; height: 22px; }
 .chip-spark .spark, .spark { display: block; width: 100%; height: 100%; }
 
+/* ---------- savings goals / sinking funds ---------- */
+.goal-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+.goal-card { border: 1px solid var(--hairline); border-radius: 12px; padding: 14px 16px; background: var(--surface-2); }
+.goal-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.goal-name { font-weight: 600; font-size: 14px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.goal-actions { display: flex; gap: 2px; flex: none; }
+.goal-amt { font-family: var(--font-mono); font-size: 19px; font-weight: 600; margin: 8px 0; font-variant-numeric: tabular-nums; }
+.goal-amt span { font-size: 13px; color: var(--text-mute); font-weight: 400; }
+.goal-track { height: 9px; border-radius: 100px; background: var(--surface-3); overflow: hidden; }
+.goal-fill { height: 100%; border-radius: 100px; background: var(--mint); transition: width 0.5s cubic-bezier(.22,1,.36,1); }
+.goal-fill.done { background: var(--mint-bright); }
+.goal-line { font-size: 12.5px; color: var(--text-dim); margin-top: 8px; }
+@media (max-width: 560px) { .goal-grid { grid-template-columns: 1fr; } }
+
+/* ---------- savings-rate panel ---------- */
+.sr-row { display: flex; align-items: center; gap: 22px; }
+.sr-big { font-family: var(--font-display); font-style: italic; font-weight: 600; font-size: 46px; line-height: 1; flex: none; }
+.sr-detail { flex: 1; min-width: 0; }
+@media (max-width: 560px) { .sr-row { flex-direction: column; align-items: stretch; gap: 12px; } .sr-big { font-size: 38px; } }
+
 /* ---------- empty states ---------- */
 .empty {
   border: 1px dashed var(--hairline-strong); border-radius: var(--r-lg);

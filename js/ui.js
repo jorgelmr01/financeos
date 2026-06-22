@@ -223,6 +223,34 @@ const UI = {
     }
   },
 
+  goalForm(goal) {
+    goal = goal || {};
+    const isEdit = !!goal.id;
+    const body = '<div class="f-grid">' +
+      this.field("Goal name", '<input name="name" required maxlength="60" value="' + esc(goal.name || "") + '" placeholder="Emergency fund, trip to Japan…">', null, true) +
+      this.field("Target amount", '<input name="target" type="number" inputmode="decimal" step="0.01" min="0" required value="' + (goal.target != null ? goal.target : "") + '">', "What you want to save in total") +
+      this.field("Saved so far", '<input name="saved" type="number" inputmode="decimal" step="0.01" min="0" value="' + (goal.saved != null ? goal.saved : "") + '">', "Bump this up as you set money aside") +
+      this.field("Currency", this.currencySelect("currency", goal.currency)) +
+      this.field("Target date (optional)", '<input name="targetDate" type="date" value="' + esc(goal.targetDate || "") + '">', "We’ll work out the monthly amount you need to get there", true) +
+      "</div>";
+    this.openModal(isEdit ? "Edit goal" : "New savings goal", body, {
+      submitLabel: isEdit ? "Save changes" : "Add goal",
+      onSubmit(fd) {
+        const patch = {
+          name: (fd.get("name") || "").trim(),
+          target: parseFloat(fd.get("target")) || 0,
+          saved: parseFloat(fd.get("saved")) || 0,
+          currency: fd.get("currency"),
+          targetDate: fd.get("targetDate") || "",
+        };
+        if (isEdit) { Store.update("goals", goal.id, patch); UI.toast("Goal updated", { type: "success" }); }
+        else { Store.add("goals", patch); UI.toast("Goal added", { type: "success" }); }
+        UI.closeModal();
+        App.render();
+      },
+    });
+  },
+
   cardForm(card) {
     card = card || {};
     const isEdit = !!card.id;

@@ -10,6 +10,8 @@ const App = {
   earnHorizon: 1,      // income projection horizon in years (1|3|5)
   earnSel: 0,          // selected projection bucket
   retire: null,        // retirement-calculator assumptions (lazy-init from net worth)
+  debtMethod: "avalanche", // debt-payoff strategy: "avalanche" | "snowball"
+  debtBudget: null,    // monthly payment budget for the payoff calculator
 
   PAGE_META: {
     overview:   { title: "Today",        actions: "" },
@@ -251,6 +253,25 @@ const App = {
         break;
       }
 
+      case "add-goal": UI.goalForm(); break;
+      case "edit-goal": UI.goalForm(Store.find("goals", id)); break;
+      case "del-goal": {
+        const g = Store.find("goals", id);
+        UI.confirm("Delete goal?", "“" + esc(g.name) + "” will be removed.", () => {
+          Store.remove("goals", id);
+          UI.toast("Goal deleted");
+          App.render();
+        });
+        break;
+      }
+
+      case "debt-method": this.debtMethod = el.dataset.method; {
+        const out = document.getElementById("debt-out");
+        if (out) out.innerHTML = Pages.debtPayoffOutput();
+        document.querySelectorAll("[data-action='debt-method']").forEach(b => b.classList.toggle("on", b.dataset.method === this.debtMethod));
+        break;
+      }
+
       case "view-holding": this.holdingDetail = id; this.render(); window.scrollTo({ top: 0 }); break;
       case "back-portfolio": this.holdingDetail = null; this.render(); window.scrollTo({ top: 0 }); break;
       case "price-range": this.priceRange = el.dataset.range; this.render(); break;
@@ -474,6 +495,14 @@ const App = {
         }
         const out = document.getElementById("retire-out");
         if (out) out.innerHTML = Pages.retirementOutput();
+      }
+
+      /* debt payoff: live recompute on the monthly-budget input */
+      const di = e.target.closest(".debt-input");
+      if (di) {
+        this.debtBudget = parseFloat(di.value) || 0;
+        const out = document.getElementById("debt-out");
+        if (out) out.innerHTML = Pages.debtPayoffOutput();
       }
     });
 
