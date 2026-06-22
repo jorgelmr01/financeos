@@ -362,14 +362,20 @@ const Store = {
     if (!this.state) return;
     const s = this.state;
     if (!(s.accounts.length || s.cards.length || s.holdings.length || s.incomes.length)) return;
-    const usd = toUSD(computeTotals().netWorth);
+    const t = computeTotals();
+    const usd = toUSD(t.netWorth);
+    // also store the composition (in USD) so the net-worth chart can show HOW
+    // wealth is built — liquid accounts, investments and debt — over time.
+    const liq = toUSD(t.accountsTotal), inv = toUSD(t.marketValue), debt = toUSD(t.debt);
     const iso = toISO(todayMid());
     const snaps = s.snapshots;
     const last = snaps[snaps.length - 1];
     if (last && last.d === iso) {
-      if (Math.abs(last.usd - usd) > 0.005) { last.usd = usd; this.save(); }
+      if (Math.abs(last.usd - usd) > 0.005 || last.liq == null) {
+        last.usd = usd; last.liq = liq; last.inv = inv; last.debt = debt; this.save();
+      }
     } else {
-      snaps.push({ d: iso, usd: usd });
+      snaps.push({ d: iso, usd: usd, liq: liq, inv: inv, debt: debt });
       if (snaps.length > 730) snaps.splice(0, snaps.length - 730);
       this.save();
     }
@@ -759,6 +765,71 @@ function retirementProjection(p) {
     maxDraw,
     endBalance: pts.length ? pts[pts.length - 1].bal : 0,
     realReturn: ret - infl,
+  };
+}
+
+/* Seeded RNG (mulberry32) + standard normal, so the Monte-Carlo cone is stable
+   across re-renders instead of flickering on every slider tick. */
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function randNormal(rng) {
+  let u = 0, v = 0;
+  while (u === 0) u = rng();
+  while (v === 0) v = rng();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+/* Monte-Carlo retirement: same two phases as retirementProjection but with
+   random annual returns ~ N(ret, vol). Returns a per-year p10/p50/p90 balance
+   band (the cone of outcomes) and the share of runs whose money outlives the
+   horizon (success rate). Seeded → deterministic and testable. */
+function retirementMonteCarlo(p) {
+  p = p || {};
+  const start = Math.max(0, Number(p.start) || 0);
+  const ret = (Number(p.ret) || 0) / 100;
+  const vol = Math.max(0.0001, (p.vol != null ? Number(p.vol) : 12) / 100);
+  const years = Math.max(0, Math.round(Number(p.years) || 0));
+  const contrib = Math.max(0, Number(p.contrib) || 0) * 12;
+  const wd = Math.max(0, Number(p.withdraw) || 0) / 100;
+  const infl = (Number(p.inflation) || 0) / 100;
+  const maxDraw = Math.max(1, Math.round(Number(p.maxDraw) || 50));
+  const runs = Math.max(50, Math.round(Number(p.runs) || 300));
+  const totalYears = years + maxDraw;
+  const rng = mulberry32(0x9E3779B9);
+  const cols = [];
+  for (let y = 0; y <= totalYears; y++) cols.push([]);
+  let survived = 0;
+  for (let run = 0; run < runs; run++) {
+    let bal = start; cols[0].push(bal);
+    for (let y = 1; y <= years; y++) {
+      bal = bal * (1 + ret + vol * randNormal(rng)) + contrib;
+      cols[y].push(Math.max(0, bal));
+    }
+    let draw = bal * wd, alive = true;
+    for (let y = 1; y <= maxDraw; y++) {
+      bal = bal * (1 + ret + vol * randNormal(rng)) - draw;
+      if (bal <= 0) { bal = 0; alive = false; }
+      cols[years + y].push(Math.max(0, bal));
+      draw = draw * (1 + infl);
+    }
+    if (alive) survived++;
+  }
+  const quant = (arr, q) => {
+    if (!arr.length) return 0;
+    const s = arr.slice().sort((a, b) => a - b);
+    return s[Math.min(s.length - 1, Math.max(0, Math.round(q * (s.length - 1))))];
+  };
+  return {
+    band: cols.map((arr, y) => ({ year: y, p10: quant(arr, 0.1), p50: quant(arr, 0.5), p90: quant(arr, 0.9) })),
+    successRate: runs ? survived / runs : 0,
+    runs, vol: vol * 100,
   };
 }
 

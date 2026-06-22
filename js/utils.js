@@ -267,7 +267,8 @@ function dailyInterest(account) {
 function monthlyInterestEst(account) {
   const apy = Number(account.apy) || 0;
   if (apy <= 0) return 0;
-  return (Number(account.balance) || 0) * (apy / 100) / 12;
+  // compound monthly to match dailyInterest/accruedInterest/settleInterest
+  return (Number(account.balance) || 0) * (Math.pow(1 + apy / 100, 1 / 12) - 1);
 }
 
 function yearlyInterestEst(account) {
@@ -430,7 +431,11 @@ function fxRates() {
 function convBetween(amount, from, to) {
   if (from === to) return Number(amount) || 0;
   const r = fxRates();
-  return (Number(amount) || 0) * ((r[to] || 1) / (r[from] || 1));
+  // never silently treat a missing rate as 1 (that would read the amount as USD);
+  // fall back to the built-in offline rate for that currency instead.
+  const rf = r[from] || FALLBACK_FX[from] || 1;
+  const rt = r[to] || FALLBACK_FX[to] || 1;
+  return (Number(amount) || 0) * (rt / rf);
 }
 
 /* entity currency -> display currency */

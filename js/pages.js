@@ -138,6 +138,7 @@ const Pages = {
       "</div>" +
 
       this._nwChartPanel() +
+      this._nwCompositionPanel() +
 
       '<div class="grid cols-2 section">' +
         '<div class="panel"><div class="panel-head"><div class="panel-title">Incoming — next 14 days</div>' +
@@ -180,6 +181,50 @@ const Pages = {
       "</div>" +
       '<div class="nw-chart-scale"><span>' + fmtDateShort(parseISO(snaps[0].d)) + " · " + fmtMoney(first, { compact: true }) + "</span>" +
       "<span>today · " + fmtMoney(lastV, { compact: true }) + "</span></div></div>";
+  },
+
+  /* stacked-area: HOW net worth is built over time — liquid + investments
+     (assets) with debt drawn as an overlaid line. Uses the composition stored
+     on each daily snapshot; needs ≥2 days of composition history. */
+  _nwCompositionPanel() {
+    const snaps = (Store.state.snapshots || []).filter(x => x.liq != null);
+    if (snaps.length < 2) return "";
+    const liq = snaps.map(x => fromUSD(x.liq || 0));
+    const inv = snaps.map(x => fromUSD(x.inv || 0));
+    const debt = snaps.map(x => fromUSD(x.debt || 0));
+    const assets = liq.map((v, i) => v + inv[i]);
+    const max = Math.max.apply(null, assets.concat(debt).concat([1]));
+    const W = 1000, H = 200, PAD = 8, n = snaps.length;
+    const X = (i) => PAD + i * (W - 2 * PAD) / (n - 1);
+    const Y = (v) => H - PAD - v / max * (H - 2 * PAD);
+    const base = (H - PAD).toFixed(1);
+    const liqTop = liq.map((v, i) => X(i).toFixed(1) + "," + Y(v).toFixed(1)).join(" ");
+    const liqArea = liqTop + " " + X(n - 1).toFixed(1) + "," + base + " " + X(0).toFixed(1) + "," + base;
+    const invTop = assets.map((v, i) => X(i).toFixed(1) + "," + Y(v).toFixed(1)).join(" ");
+    const invBotRev = liq.map((v, i) => X(i).toFixed(1) + "," + Y(v).toFixed(1)).reverse().join(" ");
+    const invArea = invTop + " " + invBotRev;
+    const debtLine = debt.map((v, i) => X(i).toFixed(1) + "," + Y(v).toFixed(1)).join(" ");
+    const hasDebt = debt.some(v => v > 0.005);
+    const grid = [1, 2 / 3, 1 / 3].map(f =>
+      '<div class="proj-grid" style="top:' + ((1 - f) * 100).toFixed(1) + '%"><span>' + fmtMoney(max * f, { compact: true }) + "</span></div>").join("");
+    const hits = this._chartHits(snaps.map((x, i) =>
+      ({ tip: fmtDateShort(parseISO(x.d)) + " · liquid <strong>" + fmtMoney(liq[i], { compact: true }) + "</strong> · invest <strong>" + fmtMoney(inv[i], { compact: true }) + "</strong>" + (hasDebt ? " · debt " + fmtMoney(debt[i], { compact: true }) : "") })));
+    return '<div class="panel section"><div class="panel-head"><div class="panel-title">How your wealth is built</div>' +
+      '<span class="panel-sub">liquid + investments over time' + (hasDebt ? ", debt overlaid" : "") + "</span></div>" +
+      '<div class="chart-wrap"><div class="comp-plot">' + grid +
+        '<svg class="comp-area-chart" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none">' +
+          '<defs><linearGradient id="liqfill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="rgba(143,227,166,0.45)"/><stop offset="100%" stop-color="rgba(143,227,166,0.05)"/></linearGradient>' +
+          '<linearGradient id="invfill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="rgba(143,201,227,0.5)"/><stop offset="100%" stop-color="rgba(143,201,227,0.08)"/></linearGradient></defs>' +
+          '<polygon points="' + invArea + '" fill="url(#invfill)"/>' +
+          '<polygon points="' + liqArea + '" fill="url(#liqfill)"/>' +
+          '<polyline points="' + invTop + '" fill="none" stroke="#8fc9e3" stroke-width="2" stroke-linejoin="round"/>' +
+          (hasDebt ? '<polyline points="' + debtLine + '" fill="none" stroke="#ea8770" stroke-width="2" stroke-dasharray="5 4" stroke-linejoin="round"/>' : "") +
+        "</svg>" + hits + "</div></div>" +
+      '<div class="comp-legend" style="margin-top:12px">' +
+        '<span class="lg"><span class="dot" style="background:#8fe3a6"></span>Liquid</span>' +
+        '<span class="lg"><span class="dot" style="background:#8fc9e3"></span>Investments</span>' +
+        (hasDebt ? '<span class="lg"><span class="dot" style="background:#ea8770"></span>Debt</span>' : "") +
+      "</div></div>";
   },
 
   _topHoldingsPanel() {
@@ -372,7 +417,7 @@ const Pages = {
         '<div class="stat"><span class="micro-label">Total invested</span><div class="stat-value">' + fmtMoney(t.invested) + "</div></div>" +
         '<div class="stat"><span class="micro-label">Total return</span><div class="stat-value ' + (t.pnl >= 0 ? "pos" : "neg") + '">' + fmtMoney(t.pnl, { sign: true }) + '</div><div class="stat-note ' + (t.pnl >= 0 ? "pos" : "neg") + '">' + fmtPct(retPct) +
           (taxCG > 0 && t.pnl > 0 ? ' · <span style="color:var(--text-mute)">' + fmtMoney(pnlAfterTax, { sign: true }) + " after " + taxCG + "% tax</span>" : "") + "</div></div>" +
-        '<div class="stat"><span class="micro-label">Best / Worst</span><div class="stat-value" style="font-size:17px;line-height:1.5">' +
+        '<div class="stat"><span class="micro-label">Best / Worst</span><div class="stat-value stat-sm">' +
           (best ? '<span class="pos">' + esc(best.h.symbol) + " " + fmtPct(best.p, 1) + "</span><br>" : "") +
           (worst && worst.h !== (best && best.h) ? '<span class="neg">' + esc(worst.h.symbol) + " " + fmtPct(worst.p, 1) + "</span>" : "") +
         "</div></div>" +
@@ -383,9 +428,15 @@ const Pages = {
       conv(b.shares * b.currentPrice, b.currency) - conv(a.shares * a.currentPrice, a.currency));
     const mvTotal = t.marketValue || 1;
     const weight = h => conv(h.shares * h.currentPrice, h.currency) / mvTotal * 100;
+    // concentration risk = share held in the top 3 positions
+    const top3 = sorted.slice(0, 3).reduce((a, h) => a + weight(h), 0);
+    const concTone = top3 > 70 ? "neg" : top3 > 50 ? "gold" : "pos";
+    const concNote = s.holdings.length > 3
+      ? '<span class="panel-sub ' + concTone + '">top 3 = ' + top3.toFixed(0) + "% of portfolio</span>"
+      : '<span class="panel-sub">' + s.holdings.length + " position" + (s.holdings.length === 1 ? "" : "s") + "</span>";
     const alloc =
       '<div class="panel section"><div class="panel-head"><div class="panel-title">Allocation</div>' +
-      '<span class="panel-sub">' + s.holdings.length + " positions</span></div>" +
+      concNote + "</div>" +
       '<div class="alloc-bar">' +
       sorted.map((h, i) =>
         '<span style="width:' + weight(h).toFixed(2) + '%;background:' + CHART_COLORS[i % CHART_COLORS.length] + '" data-tip="' + esc(h.symbol) + " · <strong>" + fmtMoney(conv(h.shares * h.currentPrice, h.currency), { compact: true }) + "</strong> · " + weight(h).toFixed(1) + '%"></span>').join("") +
@@ -424,30 +475,7 @@ const Pages = {
         "<th>Position</th><th class=\"num\">Shares</th><th class=\"num\">Paid</th><th class=\"num\">Price now</th><th class=\"num\">Value</th><th class=\"num\">Return</th><th></th>" +
       "</tr></thead><tbody>" + rows + "</tbody></table></div></div>";
 
-    return stats + this._returnsChart(sorted) + alloc + table;
-  },
-
-  /* horizontal diverging return-by-position chart (click → detail) */
-  _returnsChart(sorted) {
-    const rows = sorted.map(h => {
-      const cost = conv(h.shares * h.costBasis, h.currency), mv = conv(h.shares * h.currentPrice, h.currency);
-      return { h: h, pct: cost ? (mv - cost) / cost * 100 : 0 };
-    });
-    const maxAbs = Math.max.apply(null, rows.map(r => Math.abs(r.pct)).concat([1]));
-    const bars = rows.map(r => {
-      const w = Math.min(50, Math.abs(r.pct) / maxAbs * 50);
-      const pos = r.pct >= 0;
-      return '<div class="ret-row" data-action="view-holding" data-id="' + r.h.id + '" title="See details">' +
-        '<div class="ret-name"><span class="sym-badge sm">' + esc(r.h.symbol.slice(0, 5)) + "</span></div>" +
-        '<div class="ret-track"><div class="ret-zero"></div>' +
-          (pos ? '<div class="ret-bar pos" style="left:50%;width:' + w.toFixed(1) + '%"></div>'
-               : '<div class="ret-bar neg" style="right:50%;width:' + w.toFixed(1) + '%"></div>') +
-        "</div>" +
-        '<div class="ret-val ' + (pos ? "pos" : "neg") + '">' + fmtPct(r.pct, 1) + "</div>" +
-      "</div>";
-    }).join("");
-    return '<div class="panel section"><div class="panel-head"><div class="panel-title">Return by position</div>' +
-      '<span class="panel-sub">tap a position for details &amp; price history</span></div>' + bars + "</div>";
+    return stats + alloc + table;
   },
 
   /* ---------- single-stock detail ---------- */
@@ -1120,12 +1148,32 @@ const Pages = {
     const streaksPanel = chips.length ? panel("Streaks", st.count + " months tracked", '<div class="streak-row">' + chips.join("") + "</div>") : "";
 
     return cards +
+      panel("Cash flow — in vs out", "income (net) vs spending, last " + series.length + " months", this._cashflowChart(series)) +
       panel("Monthly spending", "last " + series.length + " months", spendChart) +
       '<div class="grid cols-2 stack-wide section" style="align-items:start">' +
         panel("Spending-health score", "0–100 per month", scoreChart) +
         panel("Savings rate", "share of income kept", saveChart) +
       "</div>" +
       moversPanel + streaksPanel;
+  },
+
+  /* paired bars: net income vs spending per month, with a net-savings tooltip */
+  _cashflowChart(series) {
+    const rows = series.filter(r => r.hasData && (Number(r.income) > 0 || Number(r.spend) > 0));
+    if (rows.length < 2) return '<div class="all-clear" style="color:var(--text-mute)">Not enough history yet — log another month to compare money in vs out.</div>';
+    const max = Math.max.apply(null, rows.map(r => Math.max(Number(r.income) || 0, Number(r.spend) || 0)).concat([1]));
+    const cols = rows.map(r => {
+      const inc = Number(r.income) || 0, sp = Number(r.spend) || 0, net = inc - sp;
+      const tip = (r.short || "") + " · in <strong>" + fmtMoney(inc, { compact: true }) + "</strong> · out <strong>" + fmtMoney(sp, { compact: true }) + "</strong> · net <strong class=\"" + (net >= 0 ? "pos" : "neg") + "\">" + fmtMoney(net, { compact: true, sign: true }) + "</strong>";
+      return '<div class="cf-col" data-tip="' + esc(tip) + '"><div class="cf-pair">' +
+        '<div class="cf-bar cf-in" style="height:' + (inc / max * 100).toFixed(1) + '%"></div>' +
+        '<div class="cf-bar cf-out" style="height:' + (sp / max * 100).toFixed(1) + '%"></div>' +
+        '</div><span class="cf-x">' + esc((r.short || "").split(" ")[0]) + "</span></div>";
+    }).join("");
+    return '<div class="comp-legend" style="margin-bottom:10px">' +
+        '<span class="lg"><span class="dot" style="background:var(--mint)"></span>Income (net)</span>' +
+        '<span class="lg"><span class="dot" style="background:var(--rose)"></span>Spending</span></div>' +
+      '<div class="cf-plot">' + cols + "</div>";
   },
 
   /* bar trend: series rows -> bars; opts {value, color, refs, fmt, max} */
@@ -1376,6 +1424,12 @@ const Pages = {
       start: r.start, ret: r.ret, years: r.years, contrib: r.contrib,
       withdraw: r.withdraw, inflation: r.inflation, maxDraw: 50,
     });
+    const mc = retirementMonteCarlo({
+      start: r.start, ret: r.ret, years: r.years, contrib: r.contrib,
+      withdraw: r.withdraw, inflation: r.inflation, vol: 12, maxDraw: 50, runs: 300,
+    });
+    const succ = Math.round(mc.successRate * 100);
+    const succTone = succ >= 85 ? "pos" : succ >= 60 ? "gold" : "neg";
     const stat = (label, val, note, cls) =>
       '<div class="stat"><span class="micro-label">' + label + '</span><div class="stat-value ' + (cls || "") +
       '">' + val + '</div><div class="stat-note">' + note + "</div></div>";
@@ -1386,38 +1440,50 @@ const Pages = {
         "in " + r.years + " yr · " + fmtMoney(sim.nestReal, { compact: true }) + " in today’s pesos", "gold") +
       stat("Monthly income", fmtMoney(sim.monthlyIncome, { compact: true }),
         "at " + r.withdraw + "% · " + fmtMoney(sim.monthlyIncomeReal, { compact: true }) + " today’s pesos", "pos") +
-      stat("Your money lasts", lasts,
+      stat("Money lasts (base case)", lasts,
         sim.sustainable ? "capital stays intact" : "until the pot runs dry", sim.sustainable ? "pos" : "neg") +
-      stat("Left after " + sim.maxDraw + " yr", fmtMoney(sim.endBalance, { compact: true }),
-        sim.sustainable ? "still going strong" : "fully depleted", sim.endBalance > 0 ? "" : "neg") +
+      stat("Success rate", succ + "%",
+        "of " + mc.runs + " random-market runs the money outlives " + sim.maxDraw + " yr", succTone) +
       "</div>";
 
-    return stats + this._retireChart(sim, r) + this._retireNote(sim, r);
+    return stats + this._retireChart(sim, r, mc) + this._retireNote(sim, r, mc);
   },
 
-  _retireChart(sim, r) {
+  _retireChart(sim, r, mc) {
     const pts = sim.pts;
     if (pts.length < 2) return "";
-    const max = Math.max.apply(null, pts.map(p => p.bal)) || 1;
-    const W = 1000, H = 240, PAD = 8, n = pts.length;
+    const n = pts.length;
+    const band = (mc && mc.band) || [];
+    const bandMax = band.slice(0, n).reduce((m, b) => Math.max(m, b.p90), 0);
+    const max = Math.max(Math.max.apply(null, pts.map(p => p.bal)), bandMax) || 1;
+    const W = 1000, H = 240, PAD = 8;
     const X = (i) => PAD + i * (W - 2 * PAD) / (n - 1);
     const Y = (v) => H - PAD - v / max * (H - 2 * PAD);
     const line = pts.map((p, i) => X(i).toFixed(1) + "," + Y(p.bal).toFixed(1)).join(" ");
     const area = line + " " + X(n - 1).toFixed(1) + "," + (H - PAD) + " " + X(0).toFixed(1) + "," + (H - PAD);
+    // Monte-Carlo p10–p90 cone behind the base-case line
+    let cone = "";
+    if (band.length >= n) {
+      const top = band.slice(0, n).map((b, i) => X(i).toFixed(1) + "," + Y(b.p90).toFixed(1)).join(" ");
+      const bot = band.slice(0, n).map((b, i) => X(i).toFixed(1) + "," + Y(b.p10).toFixed(1)).reverse().join(" ");
+      cone = '<polygon points="' + top + " " + bot + '" fill="rgba(143,201,227,0.16)"/>';
+    }
     const rx = X(Math.min(r.years, n - 1));
     const grid = [1, 2 / 3, 1 / 3].map(f =>
       '<div class="proj-grid" style="top:' + ((1 - f) * 100).toFixed(1) + '%"><span>' + fmtMoney(max * f, { compact: true }) + "</span></div>").join("");
-    const hits = this._chartHits(pts.map(p => ({
-      tip: (p.phase === "save" ? "Saving" : "Retired") + " · year " + p.year + " · <strong>" + fmtMoney(p.bal, { compact: true }) + "</strong>",
+    const hits = this._chartHits(pts.map((p, i) => ({
+      tip: (p.phase === "save" ? "Saving" : "Retired") + " · yr " + p.year + " · base <strong>" + fmtMoney(p.bal, { compact: true }) + "</strong>" +
+        (band[i] ? " · range " + fmtMoney(band[i].p10, { compact: true }) + "–" + fmtMoney(band[i].p90, { compact: true }) : ""),
     })));
     return '<div class="panel section"><div class="panel-head">' +
       '<div class="panel-title">Your money over a lifetime</div>' +
-      '<span class="panel-sub">grow ' + r.years + "y at " + r.ret + "%, then draw " + r.withdraw + "%/yr</span></div>" +
+      '<span class="panel-sub">grow ' + r.years + "y at " + r.ret + "%, then draw " + r.withdraw + "%/yr · shaded = likely range</span></div>" +
       '<div class="chart-wrap"><div class="retire-plot">' + grid +
         '<svg class="retire-chart" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none">' +
           '<defs><linearGradient id="retfill" x1="0" y1="0" x2="0" y2="1">' +
             '<stop offset="0%" stop-color="rgba(143,227,166,0.30)"/>' +
             '<stop offset="100%" stop-color="rgba(143,227,166,0)"/></linearGradient></defs>' +
+          cone +
           '<polygon points="' + area + '" fill="url(#retfill)"/>' +
           '<line x1="' + rx.toFixed(1) + '" y1="0" x2="' + rx.toFixed(1) + '" y2="' + H + '" stroke="#e6cb80" stroke-width="1.5" stroke-dasharray="5 4" opacity="0.85"/>' +
           '<polyline points="' + line + '" fill="none" stroke="#8fe3a6" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>' +
@@ -1427,16 +1493,20 @@ const Pages = {
         "<span>+" + sim.maxDraw + "y · " + fmtMoney(sim.endBalance, { compact: true }) + "</span></div></div>";
   },
 
-  _retireNote(sim, r) {
+  _retireNote(sim, r, mc) {
     const realR = sim.realReturn.toFixed(1);
+    const succ = mc ? Math.round(mc.successRate * 100) : null;
     const body = sim.sustainable
       ? "At a <strong>" + realR + "% real return</strong> (" + r.ret + "% − " + r.inflation + "% inflation), a " + r.withdraw +
-        "% withdrawal keeps its buying power and barely touches the principal — your income lasts " + sim.maxDraw +
-        "+ years and there’s still " + fmtMoney(sim.endBalance, { compact: true }) + " left."
+        "% withdrawal keeps its buying power and barely touches the principal — in the base case your income lasts " + sim.maxDraw +
+        "+ years with " + fmtMoney(sim.endBalance, { compact: true }) + " left."
       : "A " + r.withdraw + "% withdrawal rising with " + r.inflation + "% inflation outpaces a " + r.ret +
-        "% return, so the pot lasts about <strong>" + sim.depletedYear + " years</strong> in retirement. Lower the rate, grow longer, or add monthly contributions to extend it.";
+        "% return, so the base case lasts about <strong>" + sim.depletedYear + " years</strong>. Lower the rate, grow longer, or add monthly contributions to extend it.";
+    const risk = succ != null
+      ? " Allowing for real market swings (±" + Math.round(mc.vol) + "% a year), the money outlasts " + sim.maxDraw + " years in <strong class=\"" + (succ >= 85 ? "pos" : succ >= 60 ? "gold" : "neg") + "\">" + succ + "%</strong> of simulated runs."
+      : "";
     return '<div class="panel section"><div class="panel-head"><div class="panel-title">What this means</div></div>' +
-      '<p class="method-note">' + body + " Of the " + fmtMoney(sim.nest, { compact: true }) + " nest egg, " +
+      '<p class="method-note">' + body + risk + " Of the " + fmtMoney(sim.nest, { compact: true }) + " nest egg, " +
       fmtMoney(sim.contributed, { compact: true }) + " is money you put in and " +
       fmtMoney(sim.growth, { compact: true }) + " is investment growth. Figures are nominal unless marked “today’s pesos”.</p></div>";
   },

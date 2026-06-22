@@ -895,7 +895,7 @@ body.light .score-ring { box-shadow: 0 10px 26px -14px rgba(40, 52, 43, 0.22); }
 .proj-note { margin-top: 14px; font-size: 12.5px; color: var(--text-mute); }
 
 /* ---------- retirement calculator ---------- */
-.r-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 28px; margin-top: 14px; }
+.r-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; margin-top: 14px; }
 .r-row { display: flex; flex-direction: column; }
 .r-row label {
   display: flex; justify-content: space-between; align-items: baseline;
@@ -909,6 +909,25 @@ body.light .score-ring { box-shadow: 0 10px 26px -14px rgba(40, 52, 43, 0.22); }
 .retire-scale { display: flex; justify-content: space-between; gap: 10px; margin-top: 8px; font-family: var(--font-mono); font-size: 10px; color: var(--text-mute); }
 .retire-scale .gold { color: var(--gold); }
 @media (max-width: 640px) { .r-grid { grid-template-columns: 1fr; } }
+
+/* ---------- net-worth composition (stacked area) ---------- */
+.comp-plot { position: relative; height: 200px; padding-top: 8px; }
+.comp-area-chart { width: 100%; height: 100%; display: block; }
+
+/* ---------- cash flow in vs out (paired bars) ---------- */
+.cf-plot { display: flex; align-items: flex-end; gap: 8px; height: 160px; }
+.cf-col { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; height: 100%; cursor: pointer; }
+.cf-pair { display: flex; align-items: flex-end; justify-content: center; gap: 3px; width: 100%; height: calc(100% - 16px); }
+.cf-bar { width: 44%; max-width: 18px; min-height: 2px; border-radius: 4px 4px 2px 2px; transition: filter 0.15s; }
+.cf-col:hover .cf-bar { filter: brightness(1.15); }
+.cf-in { background: var(--mint); opacity: 0.92; }
+.cf-out { background: var(--rose); opacity: 0.92; }
+.cf-x { font-family: var(--font-mono); font-size: 9.5px; color: var(--text-mute); margin-top: 5px; white-space: nowrap; }
+
+/* compact stat value (e.g. Best/Worst two-line) */
+.stat-value.stat-sm { font-size: 17px; line-height: 1.5; }
+
+@media (max-width: 480px) { .date-pill { min-width: 100%; } }
 
 /* ---------- empty states ---------- */
 .empty {

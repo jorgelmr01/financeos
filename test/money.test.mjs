@@ -26,7 +26,8 @@ vm.createContext(ctx);
 const bundle = [read("js/utils.js"), read("js/budget.js"), read("js/statements.js"), read("js/store.js")].join("\n;\n") +
   "\n;globalThis.__api = { interestPerPeriod, nextInterestDate, interestScheduleLabel, interestPeriodDays," +
   " accruedInterest, holdingReturnRate, parseAmount, parseExpenseDate, expenseSig, canonicalCategory," +
-  " earningsBreakdown, retirementProjection, realInterestEst, toISO, parseISO, daysBetween, todayMid, Statements, INTEREST_FREQ, Store };";
+  " earningsBreakdown, retirementProjection, retirementMonteCarlo, realInterestEst, monthlyInterestEst," +
+  " convBetween, toISO, parseISO, daysBetween, todayMid, Statements, INTEREST_FREQ, Store };";
 vm.runInContext(bundle, ctx, { filename: "bundle.js" });
 const A = ctx.__api;
 // fresh in-memory store, no persistence
@@ -312,6 +313,35 @@ group("retirement projection — accumulation & drawdown", () => {
   const dep = A.retirementProjection({ start: 1000000, ret: 2, years: 0, contrib: 0, withdraw: 10, inflation: 4, maxDraw: 50 });
   ok(!dep.sustainable && dep.depletedYear > 0 && dep.depletedYear < 50, "10% withdrawals on a 2% return run out before the cap");
   ok(dep.endBalance === 0, "depleted projection ends at zero");
+});
+
+group("monthly interest estimate compounds (not simple)", () => {
+  const a = { balance: 100000, apy: 12, currency: "MXN" };
+  approx(A.monthlyInterestEst(a), 100000 * (Math.pow(1.12, 1 / 12) - 1), 0.01, "monthly est compounds the APY");
+  ok(A.monthlyInterestEst(a) < 100000 * 0.12 / 12, "compound monthly is below the naive apy/12");
+  eq(A.monthlyInterestEst({ balance: 100000, apy: 0 }), 0, "no APY → no interest");
+});
+
+group("FX never silently treats a missing rate as USD", () => {
+  // with no Store fx configured, convBetween must use the built-in fallback,
+  // not collapse a missing rate to 1 (which would read MXN as USD)
+  resetStore({ settings: { currency: "USD", fx: null }, accounts: [] });
+  const mxnToUsd = A.convBetween(1820, "MXN", "USD");
+  approx(mxnToUsd, 100, 1, "1820 MXN ≈ 100 USD via fallback (18.2/USD), not 1820");
+  approx(A.convBetween(100, "USD", "USD"), 100, 0.0001, "same-currency is identity");
+});
+
+group("retirement Monte Carlo — seeded, stable, sane", () => {
+  const p = { start: 2000000, ret: 7, years: 10, contrib: 0, withdraw: 4, inflation: 4, vol: 12, maxDraw: 40, runs: 200 };
+  const a = A.retirementMonteCarlo(p);
+  const b = A.retirementMonteCarlo(p);
+  eq(a.successRate, b.successRate, "seeded RNG → identical success rate across runs");
+  ok(a.successRate >= 0 && a.successRate <= 1, "success rate is a probability");
+  ok(a.band.length === p.years + p.maxDraw + 1, "band has one point per year incl. year 0");
+  a.band.forEach(pt => ok(pt.p10 <= pt.p50 + 1e-6 && pt.p50 <= pt.p90 + 1e-6, "percentiles ordered p10≤p50≤p90"));
+  // higher withdrawals should not improve survival
+  const greedy = A.retirementMonteCarlo(Object.assign({}, p, { withdraw: 9 }));
+  ok(greedy.successRate <= a.successRate + 1e-9, "a higher withdrawal rate never raises success");
 });
 
 /* ---- report ---- */
