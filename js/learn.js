@@ -613,21 +613,45 @@ const Learn = {
       case "learn-next": this.next(); break;
       case "learn-exit": this.session = null; break;
       case "sb-start": this.startSandbox(); break;
-      case "sb-rate": this.session.rate = parseInt(id, 10); break;
-      case "sb-alloc": {
-        const parts = String(id).split(":"), k = parts[0], delta = parseInt(parts[1], 10) || 0;
-        const a = this.session.alloc;
-        if (a[k] == null) break;
-        const others = (a.savings + a.index + a.hot) - a[k];
-        a[k] = Math.max(0, Math.min(100 - others, a[k] + delta));
-        break;
-      }
-      case "sb-preset": { const p = SB_PRESETS[id]; if (p) this.session.alloc = Object.assign({}, p.alloc); break; }
+      // rate + preset update in place (no full re-render → no flicker)
+      case "sb-rate":
+        this.session.rate = parseInt(id, 10);
+        document.querySelectorAll("[data-action='sb-rate']").forEach(b => b.classList.toggle("sel", parseInt(b.dataset.id, 10) === this.session.rate));
+        return;
+      case "sb-preset": { const p = SB_PRESETS[id]; if (p) { this.session.alloc = Object.assign({}, p.alloc); this.syncAlloc(); } return; }
       case "sb-advance": this.sandboxYear(); break;
       case "sb-event-choice": this.resolveEvent(id); break;
       case "sb-finish": this.session = null; break;
     }
     App.render();
+  },
+
+  /* push the current allocation into the live DOM without re-rendering the page */
+  syncAlloc() {
+    const a = this.session && this.session.alloc;
+    if (!a) return;
+    const placed = a.savings + a.index + a.hot, cash = 100 - placed;
+    ["savings", "index", "hot"].forEach(k => {
+      const sl = document.querySelector('.sb-alloc-input[data-bucket="' + k + '"]');
+      if (sl && Number(sl.value) !== a[k]) sl.value = a[k];
+      const p = document.querySelector('.sb-alloc-pct[data-pct="' + k + '"]');
+      if (p) p.textContent = a[k] + "%";
+    });
+    const cp = document.querySelector('.sb-alloc-pct[data-pct="cash"]');
+    if (cp) cp.textContent = cash + "%";
+    const cf = document.querySelector('.sb-alloc-fill[data-fill="cash"]');
+    if (cf) cf.style.width = cash + "%";
+    const tot = document.querySelector("[data-alloc-total]");
+    if (tot) tot.textContent = placed + "% invested · " + cash + "% cash";
+  },
+
+  /* live slider drag: clamp so savings+index+hot ≤ 100, then sync the DOM */
+  updateAlloc(bucket, rawVal) {
+    const a = this.session && this.session.alloc;
+    if (!a || a[bucket] == null) return;
+    const others = (a.savings + a.index + a.hot) - a[bucket];
+    a[bucket] = Math.max(0, Math.min(100 - others, Math.round(Number(rawVal) || 0)));
+    this.syncAlloc();
   },
 
   /* ---------- scenarios ---------- */
@@ -1020,18 +1044,14 @@ const Learn = {
       const row = (key, name, sub, val, cls) =>
         '<div class="sb-alloc-row">' +
           '<div class="sb-alloc-name"><strong>' + name + "</strong><span>" + sub + "</span></div>" +
-          '<div class="sb-alloc-ctl">' +
-            '<button class="sb-step" data-action="sb-alloc" data-id="' + key + ':-5"' + (val <= 0 ? " disabled" : "") + ">−</button>" +
-            '<span class="sb-alloc-pct">' + val + "%</span>" +
-            '<button class="sb-step" data-action="sb-alloc" data-id="' + key + ':5"' + (placed >= 100 ? " disabled" : "") + ">+</button>" +
-          "</div>" +
-          '<div class="sb-alloc-bar"><div class="sb-alloc-fill ' + cls + '" style="width:' + val + '%"></div></div>' +
+          '<div class="sb-alloc-ctl"><span class="sb-alloc-pct" data-pct="' + key + '">' + val + "%</span></div>" +
+          '<input class="sb-alloc-input" data-bucket="' + key + '" type="range" min="0" max="100" step="1" value="' + val + '" aria-label="' + name + ' allocation">' +
         "</div>";
       controlsInner =
         '<span class="micro-label sb-label">Savings rate <em class="sb-hint">(higher builds wealth, drains the joy meter)</em></span>' +
         '<div class="sb-opts">' + rates + "</div>" +
         '<div class="sb-alloc-head"><span class="micro-label">Where this year’s savings go</span>' +
-          '<span class="sb-alloc-total">' + placed + "% invested · " + cashPct + "% cash</span></div>" +
+          '<span class="sb-alloc-total" data-alloc-total>' + placed + "% invested · " + cashPct + "% cash</span></div>" +
         '<div class="sb-opts sb-quick">' + presets + "</div>" +
         '<div class="sb-alloc">' +
           row("savings", "🏦 Savings", "+7%/yr steady", a.savings, "savings") +
@@ -1039,8 +1059,8 @@ const Learn = {
           row("hot", "🎰 Hot stock", "−55% to +90%", a.hot, "hot") +
           '<div class="sb-alloc-row cashrow"><div class="sb-alloc-name"><strong>🛏 Cash buffer</strong>' +
             "<span>whatever you don’t invest</span></div>" +
-            '<div class="sb-alloc-ctl"><span class="sb-alloc-pct">' + cashPct + "%</span></div>" +
-            '<div class="sb-alloc-bar"><div class="sb-alloc-fill cash" style="width:' + cashPct + '%"></div></div></div>' +
+            '<div class="sb-alloc-ctl"><span class="sb-alloc-pct" data-pct="cash">' + cashPct + "%</span></div>" +
+            '<div class="sb-alloc-bar"><div class="sb-alloc-fill cash" data-fill="cash" style="width:' + cashPct + '%"></div></div></div>' +
         "</div>" +
         '<button class="btn primary sb-advance" data-action="sb-advance">▶ Live year ' + (s.year + 1) + "</button>";
     }

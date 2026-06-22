@@ -488,6 +488,13 @@ const App = {
       const w = e.target.closest(".lw");
       if (w && typeof WIDGETS !== "undefined" && WIDGETS[w.dataset.lw]) WIDGETS[w.dataset.lw].update(w);
 
+      // sandbox allocation sliders — update in place, no page re-render (no flicker)
+      const sa = e.target.closest(".sb-alloc-input");
+      if (sa && typeof Learn !== "undefined" && Learn.session && Learn.session.alloc) {
+        Learn.updateAlloc(sa.dataset.bucket, sa.value);
+        return;
+      }
+
       /* retirement calculator — recompute just the results, keep inputs alive
          (so a slider drag isn't interrupted by a full re-render) */
       const ri = e.target.closest(".r-input");
