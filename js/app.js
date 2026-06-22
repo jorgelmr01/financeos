@@ -9,6 +9,7 @@ const App = {
   priceRange: "6mo",   // price-history range for the detail chart
   earnHorizon: 1,      // income projection horizon in years (1|3|5)
   earnSel: 0,          // selected projection bucket
+  retire: null,        // retirement-calculator assumptions (lazy-init from net worth)
 
   PAGE_META: {
     overview:   { title: "Today",        actions: "" },
@@ -17,9 +18,18 @@ const App = {
     portfolio:  { title: "Portfolio",    actions: '<button class="btn" data-action="refresh-prices">↻ Update prices</button><button class="btn primary" data-action="add-holding">+ Add position</button>' },
     earnings:   { title: "Income",       actions: '<button class="btn primary" data-action="add-income">+ Add income stream</button>' },
     budget:     { title: "Budget",       actions: '<button class="btn" data-action="expense-template">↓ Template</button><button class="btn" data-action="expense-import">↑ Upload</button><button class="btn primary" data-action="add-expense">+ Add expense</button>' },
+    retirement: { title: "Retirement",   actions: '<button class="btn" data-action="retire-reset">↺ Use my net worth</button>' },
     milestones: { title: "Milestones",   actions: "" },
     learn:      { title: "Learn",        actions: "" },
     guide:      { title: "Guide",        actions: "" },
+  },
+
+  /* starting assumptions for the retirement calculator, seeded from current
+     net worth and the configured inflation rate */
+  retireDefaults() {
+    const t = computeTotals();
+    const infl = (Store.state.settings.tax && Number(Store.state.settings.tax.inflation)) || 4.5;
+    return { start: Math.max(0, Math.round(t.netWorth)), contrib: 0, ret: 8, years: 20, withdraw: 4, inflation: infl };
   },
 
   navigate(page) {
@@ -152,6 +162,13 @@ const App = {
   handleAction(action, id, el) {
     switch (action) {
       case "nav": this.navigate(el.dataset.page); break;
+
+      case "retire-reset": {
+        this.retire = this.retireDefaults();
+        this.render();
+        UI.toast("Reset to your current net worth");
+        break;
+      }
 
       case "toggle-nav": this.setNav(!document.body.classList.contains("nav-open")); break;
       case "close-nav": this.setNav(false); break;
@@ -429,6 +446,20 @@ const App = {
     document.addEventListener("input", e => {
       const w = e.target.closest(".lw");
       if (w && typeof WIDGETS !== "undefined" && WIDGETS[w.dataset.lw]) WIDGETS[w.dataset.lw].update(w);
+
+      /* retirement calculator — recompute just the results, keep inputs alive
+         (so a slider drag isn't interrupted by a full re-render) */
+      const ri = e.target.closest(".r-input");
+      if (ri && this.retire) {
+        const k = ri.dataset.rk;
+        this.retire[k] = parseFloat(ri.value) || 0;
+        if (ri.dataset.suffix != null) {
+          const lab = document.querySelector('.r-val[data-rv="' + k + '"]');
+          if (lab) lab.textContent = ri.value + ri.dataset.suffix;
+        }
+        const out = document.getElementById("retire-out");
+        if (out) out.innerHTML = Pages.retirementOutput();
+      }
     });
 
     /* inline price edits (portfolio) */

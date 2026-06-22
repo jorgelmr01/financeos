@@ -23,7 +23,7 @@ const Store = {
       settings: {
         currency: "USD", privacy: false, pinEnabled: false, lastExport: null, theme: "dark",
         fx: null,                 // {base:'USD', rates:{...units per USD}, asOf}
-        tax: { interest: 0, dividends: 0, capGains: 0, interestProvisional: 0 },
+        tax: { interest: 0, dividends: 0, capGains: 0, interestProvisional: 0, inflation: 4.5 },
         autoInterest: true,       // credit interest to balances on its schedule
         finnhubKey: "", lastQuoteSync: null,
       },
@@ -34,7 +34,7 @@ const Store = {
     const d = this.defaults();
     this.state = Object.assign(d, parsed);
     this.state.settings = Object.assign(d.settings, parsed.settings || {});
-    this.state.settings.tax = Object.assign({ interest: 0, dividends: 0, capGains: 0, interestProvisional: 0 }, (parsed.settings || {}).tax || {});
+    this.state.settings.tax = Object.assign({ interest: 0, dividends: 0, capGains: 0, interestProvisional: 0, inflation: 4.5 }, (parsed.settings || {}).tax || {});
     if (!Array.isArray(this.state.snapshots)) this.state.snapshots = [];
     if (!Array.isArray(this.state.expenses)) this.state.expenses = [];
     if (!this.state.budgets || typeof this.state.budgets !== "object") this.state.budgets = {};
@@ -441,7 +441,7 @@ const Store = {
     const acc1 = uid(), acc2 = uid(), acc3 = uid(), acc4 = uid(), acc5 = uid();
     const termStart = toISO(new Date(t.getFullYear(), t.getMonth(), t.getDate() - 30));
     const settings = Object.assign(this.defaults().settings, this.state ? this.state.settings : {});
-    settings.tax = { interest: 5, dividends: 10, capGains: 10, interestProvisional: 0.5 };
+    settings.tax = { interest: 5, dividends: 10, capGains: 10, interestProvisional: 0.5, inflation: 4.5 };
     this.state = {
       settings: settings,
       learn: this.state && this.state.learn ? this.state.learn : { scenarios: {}, sandbox: { best: 0, runs: 0 } },
@@ -667,16 +667,18 @@ function earningsBreakdown() {
   });
 
   // Interest is paid GROSS; the income ISR is settled in the April return, not
-  // withheld at source (unlike dividends). During the year the bank only
-  // withholds a small provisional ISR on capital, which is a credit toward that
-  // annual bill. intNet = what you ultimately keep after the full annual ISR.
-  let intGross = 0, intProvisional = 0;
+  // withheld at source (unlike dividends). Crucially, the ISR only hits the
+  // *real* interest (nominal less inflation) — not the inflationary portion.
+  // During the year the bank withholds a small provisional ISR on capital, a
+  // credit toward that annual bill. intNet = what you keep after the full ISR.
+  let intGross = 0, intReal = 0, intProvisional = 0;
   const provR = Math.max(0, Number(tax.interestProvisional) || 0) / 100;
   s.accounts.forEach(a => {
     intGross += conv(yearlyInterestEst(a), a.currency);
+    intReal += conv(realInterestEst(a), a.currency);
     intProvisional += conv((Number(a.balance) || 0) * provR, a.currency);
   });
-  const intAnnualISR = intGross * Math.max(0, Number(tax.interest) || 0) / 100;
+  const intAnnualISR = intReal * Math.max(0, Number(tax.interest) || 0) / 100;
   const intTaxDueApril = Math.max(0, intAnnualISR - intProvisional);
   const intNet = intGross - intAnnualISR;
 
@@ -698,11 +700,65 @@ function earningsBreakdown() {
 
   return {
     schedGross, schedNet, intGross, intNet, divGross, divNet, investGross, investNet,
-    intProvisional, intAnnualISR, intTaxDueApril,
+    intReal, intProvisional, intAnnualISR, intTaxDueApril,
     totalGross: schedGross + intGross + divGross + investGross,
     totalNet: schedNet + intNet + divNet + investNet,
     /* steady monthly cash-flow estimate (excludes market swings) */
     monthlyNet: (schedNet + intNet + divNet) / 12,
+  };
+}
+
+/* ---------- retirement projection ----------
+   Two phases on one timeline. ACCUMULATION: grow `start` for `years` at `ret`%
+   (nominal), adding `contrib` every month. DRAWDOWN: from the nest egg, pull
+   `withdraw`% in year one and raise that withdrawal each year by `inflation`%
+   so its buying power holds (the inflation-adjusted "4% rule"), while the pot
+   keeps earning `ret`%. We simulate monthly for smooth curves and stop when the
+   money runs out or after `maxDraw` years. Real (today's-pesos) figures deflate
+   by inflation over the accumulation horizon. Pure function — easy to test. */
+function retirementProjection(p) {
+  p = p || {};
+  const start = Math.max(0, Number(p.start) || 0);
+  const ret = Number(p.ret) || 0;                                   // annual nominal return %
+  const years = Math.max(0, Math.round(Number(p.years) || 0));      // accumulation years
+  const contrib = Math.max(0, Number(p.contrib) || 0);             // monthly contribution
+  const wd = Math.max(0, Number(p.withdraw) || 0);                 // withdrawal rate %
+  const infl = Number(p.inflation) || 0;                          // inflation assumption %
+  const maxDraw = Math.max(1, Math.round(Number(p.maxDraw) || 50)); // cap drawdown sim (yrs)
+  const mRet = Math.pow(1 + ret / 100, 1 / 12) - 1;
+
+  const pts = [{ year: 0, bal: start, phase: "save" }];
+  let bal = start, contributed = start;
+  for (let y = 1; y <= years; y++) {
+    for (let m = 0; m < 12; m++) { bal = bal * (1 + mRet) + contrib; contributed += contrib; }
+    pts.push({ year: y, bal: bal, phase: "save" });
+  }
+  const nest = bal;
+  const annualWithdraw0 = nest * wd / 100;
+
+  let draw = annualWithdraw0, depletedYear = null;
+  for (let y = 1; y <= maxDraw; y++) {
+    for (let m = 0; m < 12; m++) {
+      bal = bal * (1 + mRet) - draw / 12;
+      if (bal <= 0) { bal = 0; break; }
+    }
+    pts.push({ year: years + y, bal: Math.max(0, bal), phase: "draw" });
+    if (bal <= 0) { depletedYear = y; break; }
+    draw = draw * (1 + infl / 100);
+  }
+  const realFactor = Math.pow(1 + infl / 100, years);
+
+  return {
+    pts, nest, contributed, growth: nest - contributed,
+    nestReal: nest / realFactor,
+    annualWithdraw0,
+    monthlyIncome: annualWithdraw0 / 12,
+    monthlyIncomeReal: (annualWithdraw0 / 12) / realFactor,
+    depletedYear,                      // years into retirement, or null if it lasted the cap
+    sustainable: depletedYear == null,
+    maxDraw,
+    endBalance: pts.length ? pts[pts.length - 1].bal : 0,
+    realReturn: ret - infl,
   };
 }
 

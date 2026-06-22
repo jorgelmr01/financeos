@@ -213,6 +213,7 @@ const Pages = {
 
     const taxI = (s.settings.tax && Number(s.settings.tax.interest)) || 0;
     const provI = (s.settings.tax && Number(s.settings.tax.interestProvisional)) || 0;
+    const inflI = (s.settings.tax && Number(s.settings.tax.inflation)) || 0;
     const interestMo = s.accounts.reduce((a, x) => a + conv(monthlyInterestEst(x), x.currency), 0);
     const accruedTotal = s.accounts.reduce((a, x) => a + conv(accruedInterest(x), x.currency), 0);
 
@@ -254,7 +255,7 @@ const Pages = {
             '<div class="ai-item"><span class="micro-label">Monthly</span><span class="ai-val">' + fmtMoneyIn(monthlyInterestEst(a), a.currency, { sign: true }) + "</span></div>" +
             '<div class="ai-item"><span class="micro-label">Yearly</span><span class="ai-val">' + fmtMoneyIn(yearlyInterestEst(a), a.currency, { sign: true }) + "</span></div>" +
           "</div>" +
-          (taxI > 0 ? '<div class="ai-note">Paid gross — set aside ' + taxI + "% (≈" + fmtMoneyIn(yearlyInterestEst(a) * taxI / 100, a.currency) + "/yr) for the ISR due in April" + (provI > 0 ? "; " + provI + "% withheld on capital meanwhile" : "") + "</div>" : "") +
+          (taxI > 0 ? '<div class="ai-note">Paid gross — ' + taxI + "% ISR hits only real interest (nominal − " + inflI + "% inflation); set aside ≈" + fmtMoneyIn(realInterestEst(a) * taxI / 100, a.currency) + "/yr for the April return" + (provI > 0 ? ", " + provI + "% withheld on capital meanwhile" : "") + "</div>" : "") +
           '<div class="acct-sched">' +
             '<span class="micro-label">' + (isTerm ? "Pays " : "Paid ") + esc(interestScheduleLabel(a)) + "</span>" +
             '<span class="sched-next">' + (isTerm ? "matures " : "next ") + fmtDateShort(nextInterestDate(a)) +
@@ -769,11 +770,11 @@ const Pages = {
 
     const interestPanel =
       '<div class="panel section"><div class="panel-head"><div class="panel-title">Interest engine</div>' +
-      '<span class="panel-sub">paid gross · ' + (tax.interest > 0 ? tax.interest + "% ISR settled in April · " : "") + "compounding estimates per account</span></div>" +
+      '<span class="panel-sub">paid gross · ' + (tax.interest > 0 ? tax.interest + "% ISR on real interest, settled in April · " : "") + "compounding estimates per account</span></div>" +
       '<div style="overflow-x:auto"><table class="tbl"><thead><tr>' +
         "<th>Account</th><th class=\"num\">Balance</th><th class=\"num\">Rate</th><th class=\"num\">Daily</th><th class=\"num\">Monthly</th><th class=\"num\">Yearly</th><th>Paid</th>" +
       "</tr></thead><tbody>" + interestRows + "</tbody></table></div>" +
-      (eb.intTaxDueApril > 0 ? '<div class="proj-note" style="margin-top:10px">Interest lands in full and compounds gross. Set aside ≈<strong>' + fmtMoney(eb.intTaxDueApril) + "</strong> for the ISR due in your April return" + (eb.intProvisional > 0 ? ", after the " + fmtMoney(eb.intProvisional) + " provisional ISR the bank withholds on your capital" : "") + ".</div>" : "") + "</div>";
+      (eb.intTaxDueApril > 0 ? '<div class="proj-note" style="margin-top:10px">Interest lands in full and compounds gross. The ISR hits only the real interest (≈<strong>' + fmtMoney(eb.intReal) + "</strong>/yr above inflation), so set aside ≈<strong>" + fmtMoney(eb.intTaxDueApril) + "</strong> for your April return" + (eb.intProvisional > 0 ? ", after the " + fmtMoney(eb.intProvisional) + " provisional ISR the bank withholds on your capital" : "") + ".</div>" : "") + "</div>";
 
     /* ---- dividends by holding ---- */
     const taxDF = 1 - (Number(tax.dividends) || 0) / 100;
@@ -1333,5 +1334,110 @@ const Pages = {
       "<strong>Forgot your PIN?</strong> Encrypted data can't be recovered — use the erase option on the lock screen and import your latest backup.</p></div>";
 
     return steps + cards + faq;
+  },
+
+  /* ================= RETIREMENT ================= */
+  retirement() {
+    if (!App.retire) App.retire = App.retireDefaults();
+    const r = App.retire;
+    const cur = displayCurrency();
+    const controls =
+      '<div class="panel section retire-controls"><div class="panel-head">' +
+        '<div class="panel-title">Assumptions</div>' +
+        '<span class="panel-sub">drag to explore — everything updates live</span></div>' +
+        '<div class="grid cols-2">' +
+          '<div class="field"><label>Starting amount (' + cur + ')</label>' +
+            '<input class="r-input" data-rk="start" type="number" min="0" step="1000" value="' + r.start + '">' +
+            '<div class="hint">Seeded from your current net worth — edit freely, or hit “Use my net worth”.</div></div>' +
+          '<div class="field"><label>Monthly contribution (' + cur + ')</label>' +
+            '<input class="r-input" data-rk="contrib" type="number" min="0" step="500" value="' + r.contrib + '">' +
+            '<div class="hint">Extra you add every month while still saving.</div></div>' +
+        "</div>" +
+        '<div class="r-grid">' +
+          this._rslider("ret", "Annual return", r.ret, 0, 15, 0.5, "%") +
+          this._rslider("years", "Years to grow", r.years, 0, 50, 1, " yr") +
+          this._rslider("withdraw", "Withdrawal rate", r.withdraw, 1, 10, 0.1, "%") +
+          this._rslider("inflation", "Inflation", r.inflation, 0, 12, 0.1, "%") +
+        "</div>" +
+      "</div>";
+    return controls + '<div id="retire-out">' + this.retirementOutput() + "</div>";
+  },
+
+  _rslider(key, label, val, min, max, step, suffix) {
+    return '<div class="r-row"><label>' + label +
+      '<output class="r-val" data-rv="' + key + '">' + val + suffix + "</output></label>" +
+      '<input class="r-input" data-rk="' + key + '" data-suffix="' + suffix + '" type="range" min="' + min +
+      '" max="' + max + '" step="' + step + '" value="' + val + '"></div>';
+  },
+
+  retirementOutput() {
+    const r = App.retire;
+    const sim = retirementProjection({
+      start: r.start, ret: r.ret, years: r.years, contrib: r.contrib,
+      withdraw: r.withdraw, inflation: r.inflation, maxDraw: 50,
+    });
+    const stat = (label, val, note, cls) =>
+      '<div class="stat"><span class="micro-label">' + label + '</span><div class="stat-value ' + (cls || "") +
+      '">' + val + '</div><div class="stat-note">' + note + "</div></div>";
+    const lasts = sim.sustainable ? sim.maxDraw + "+ yrs" : sim.depletedYear + " yr" + (sim.depletedYear === 1 ? "" : "s");
+
+    const stats = '<div class="grid cols-4 section">' +
+      stat("Nest egg at retirement", fmtMoney(sim.nest, { compact: true }),
+        "in " + r.years + " yr · " + fmtMoney(sim.nestReal, { compact: true }) + " in today’s pesos", "gold") +
+      stat("Monthly income", fmtMoney(sim.monthlyIncome, { compact: true }),
+        "at " + r.withdraw + "% · " + fmtMoney(sim.monthlyIncomeReal, { compact: true }) + " today’s pesos", "pos") +
+      stat("Your money lasts", lasts,
+        sim.sustainable ? "capital stays intact" : "until the pot runs dry", sim.sustainable ? "pos" : "neg") +
+      stat("Left after " + sim.maxDraw + " yr", fmtMoney(sim.endBalance, { compact: true }),
+        sim.sustainable ? "still going strong" : "fully depleted", sim.endBalance > 0 ? "" : "neg") +
+      "</div>";
+
+    return stats + this._retireChart(sim, r) + this._retireNote(sim, r);
+  },
+
+  _retireChart(sim, r) {
+    const pts = sim.pts;
+    if (pts.length < 2) return "";
+    const max = Math.max.apply(null, pts.map(p => p.bal)) || 1;
+    const W = 1000, H = 240, PAD = 8, n = pts.length;
+    const X = (i) => PAD + i * (W - 2 * PAD) / (n - 1);
+    const Y = (v) => H - PAD - v / max * (H - 2 * PAD);
+    const line = pts.map((p, i) => X(i).toFixed(1) + "," + Y(p.bal).toFixed(1)).join(" ");
+    const area = line + " " + X(n - 1).toFixed(1) + "," + (H - PAD) + " " + X(0).toFixed(1) + "," + (H - PAD);
+    const rx = X(Math.min(r.years, n - 1));
+    const grid = [1, 2 / 3, 1 / 3].map(f =>
+      '<div class="proj-grid" style="top:' + ((1 - f) * 100).toFixed(1) + '%"><span>' + fmtMoney(max * f, { compact: true }) + "</span></div>").join("");
+    const hits = this._chartHits(pts.map(p => ({
+      tip: (p.phase === "save" ? "Saving" : "Retired") + " · year " + p.year + " · <strong>" + fmtMoney(p.bal, { compact: true }) + "</strong>",
+    })));
+    return '<div class="panel section"><div class="panel-head">' +
+      '<div class="panel-title">Your money over a lifetime</div>' +
+      '<span class="panel-sub">grow ' + r.years + "y at " + r.ret + "%, then draw " + r.withdraw + "%/yr</span></div>" +
+      '<div class="chart-wrap"><div class="retire-plot">' + grid +
+        '<svg class="retire-chart" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none">' +
+          '<defs><linearGradient id="retfill" x1="0" y1="0" x2="0" y2="1">' +
+            '<stop offset="0%" stop-color="rgba(143,227,166,0.30)"/>' +
+            '<stop offset="100%" stop-color="rgba(143,227,166,0)"/></linearGradient></defs>' +
+          '<polygon points="' + area + '" fill="url(#retfill)"/>' +
+          '<line x1="' + rx.toFixed(1) + '" y1="0" x2="' + rx.toFixed(1) + '" y2="' + H + '" stroke="#e6cb80" stroke-width="1.5" stroke-dasharray="5 4" opacity="0.85"/>' +
+          '<polyline points="' + line + '" fill="none" stroke="#8fe3a6" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>' +
+        "</svg>" + hits + "</div></div>" +
+      '<div class="retire-scale"><span>today · ' + fmtMoney(pts[0].bal, { compact: true }) + "</span>" +
+        '<span class="gold">retire yr ' + r.years + " · " + fmtMoney(sim.nest, { compact: true }) + "</span>" +
+        "<span>+" + sim.maxDraw + "y · " + fmtMoney(sim.endBalance, { compact: true }) + "</span></div></div>";
+  },
+
+  _retireNote(sim, r) {
+    const realR = sim.realReturn.toFixed(1);
+    const body = sim.sustainable
+      ? "At a <strong>" + realR + "% real return</strong> (" + r.ret + "% − " + r.inflation + "% inflation), a " + r.withdraw +
+        "% withdrawal keeps its buying power and barely touches the principal — your income lasts " + sim.maxDraw +
+        "+ years and there’s still " + fmtMoney(sim.endBalance, { compact: true }) + " left."
+      : "A " + r.withdraw + "% withdrawal rising with " + r.inflation + "% inflation outpaces a " + r.ret +
+        "% return, so the pot lasts about <strong>" + sim.depletedYear + " years</strong> in retirement. Lower the rate, grow longer, or add monthly contributions to extend it.";
+    return '<div class="panel section"><div class="panel-head"><div class="panel-title">What this means</div></div>' +
+      '<p class="method-note">' + body + " Of the " + fmtMoney(sim.nest, { compact: true }) + " nest egg, " +
+      fmtMoney(sim.contributed, { compact: true }) + " is money you put in and " +
+      fmtMoney(sim.growth, { compact: true }) + " is investment growth. Figures are nominal unless marked “today’s pesos”.</p></div>";
   },
 };

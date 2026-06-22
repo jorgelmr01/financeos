@@ -275,6 +275,18 @@ function yearlyInterestEst(account) {
   return (Number(account.balance) || 0) * (apy / 100);
 }
 
+/* Taxable "interés real" — the only interest the ISR actually hits in Mexico:
+   nominal interest less the inflationary adjustment on capital. Inflation is the
+   configurable assumption in settings.tax.inflation (a rational long-run MX rate
+   is ≈4–4.5%). Never negative — a real loss isn't taxed. */
+function realInterestEst(account) {
+  const apy = Number(account.apy) || 0;
+  if (apy <= 0) return 0;
+  const infl = (typeof Store !== "undefined" && Store.state && Store.state.settings &&
+    Store.state.settings.tax && Number(Store.state.settings.tax.inflation)) || 0;
+  return (Number(account.balance) || 0) * Math.max(0, apy - infl) / 100;
+}
+
 /* ---------- expected investment return ----------
    A holding's expReturn is its long-run (10y / max history) average annual
    return, populated from live data on "Update prices". Falls back to 9% — the

@@ -389,8 +389,9 @@ const UI = {
       this.field("Finnhub API key (optional)",
         '<input name="finnhubKey" value="' + esc(st.finnhubKey || "") + '" placeholder="works without one — Yahoo fallback" autocomplete="off">',
         "“Update prices” works with no key via Yahoo (through a public CORS proxy, which sees only the ticker symbols). A free finnhub.io key adds a direct, faster source for stock quotes. Stored only in this browser.", true) +
-      this.field("Annual ISR on interest %", '<input name="taxInterest" type="number" step="0.1" min="0" max="99" value="' + (tax.interest || "") + '" placeholder="0">', "In Mexico interest is paid gross and you settle this in your April return — it is not withheld at source") +
+      this.field("Annual ISR on interest %", '<input name="taxInterest" type="number" step="0.1" min="0" max="99" value="' + (tax.interest || "") + '" placeholder="0">', "In Mexico interest is paid gross and you settle this in your April return — and only on the real interest (above inflation), never withheld at source") +
       this.field("Provisional ISR on capital %", '<input name="taxIntProvisional" type="number" step="0.01" min="0" max="20" value="' + (tax.interestProvisional || "") + '" placeholder="0.5">', "Small advance (≈0.5%, set yearly by the Ley de Ingresos) the bank withholds on your capital; it's a credit against the annual ISR above") +
+      this.field("Inflation assumption %", '<input name="inflation" type="number" step="0.1" min="0" max="50" value="' + (tax.inflation != null ? tax.inflation : "") + '" placeholder="4.5">', "Used for taxable real interest (nominal − inflation) and the Retirement calculator's today's-pesos values. A rational long-run Mexico figure is ≈4–4.5%") +
       this.field("Tax on dividends %", '<input name="taxDividends" type="number" step="0.1" min="0" max="99" value="' + (tax.dividends || "") + '" placeholder="0">', "withholding rate — withheld at source (definitive 10% in Mexico)") +
       this.field("Tax on capital gains %", '<input name="taxCapGains" type="number" step="0.1" min="0" max="99" value="' + (tax.capGains || "") + '" placeholder="0">', "applied to projected gains", true) +
       this.field("Auto-credit interest",
@@ -406,6 +407,7 @@ const UI = {
         Store.state.settings.tax = {
           interest: parseFloat(fd.get("taxInterest")) || 0,
           interestProvisional: parseFloat(fd.get("taxIntProvisional")) || 0,
+          inflation: parseFloat(fd.get("inflation")) || 0,
           dividends: parseFloat(fd.get("taxDividends")) || 0,
           capGains: parseFloat(fd.get("taxCapGains")) || 0,
         };

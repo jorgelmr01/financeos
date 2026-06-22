@@ -26,7 +26,7 @@ vm.createContext(ctx);
 const bundle = [read("js/utils.js"), read("js/budget.js"), read("js/statements.js"), read("js/store.js")].join("\n;\n") +
   "\n;globalThis.__api = { interestPerPeriod, nextInterestDate, interestScheduleLabel, interestPeriodDays," +
   " accruedInterest, holdingReturnRate, parseAmount, parseExpenseDate, expenseSig, canonicalCategory," +
-  " earningsBreakdown, toISO, parseISO, daysBetween, todayMid, Statements, INTEREST_FREQ, Store };";
+  " earningsBreakdown, retirementProjection, realInterestEst, toISO, parseISO, daysBetween, todayMid, Statements, INTEREST_FREQ, Store };";
 vm.runInContext(bundle, ctx, { filename: "bundle.js" });
 const A = ctx.__api;
 // fresh in-memory store, no persistence
@@ -273,10 +273,45 @@ group("Store.settleInterest credits scheduled interest, idempotently", () => {
   approx(eb.intTaxDueApril, 500, 0.5, "April liability = annual ISR − provisional already withheld");
   approx(eb.intNet, 9000, 0.5, "net kept = gross − full annual ISR");
 
+  // ISR applies ONLY to real interest (nominal less the inflation assumption)
+  resetStore({ settings: { currency: "MXN", tax: { interest: 10, inflation: 4, interestProvisional: 0, dividends: 0, capGains: 0 }, autoInterest: true, fx: null }, accounts: [{ id: "rl", balance: 100000, apy: 10, currency: "MXN", balanceAsOf: A.toISO(today) }], incomes: [], holdings: [] });
+  const ebr = A.earningsBreakdown();
+  approx(ebr.intGross, 10000, 0.5, "gross interest is nominal");
+  approx(ebr.intReal, 6000, 0.5, "real interest = balance × (apy − inflation)");
+  approx(ebr.intAnnualISR, 600, 0.5, "ISR hits only the real interest");
+  approx(ebr.intNet, 9400, 0.5, "net kept = gross − ISR on real interest");
+
+  // when inflation ≥ apy there is no real interest, so no ISR is due
+  resetStore({ settings: { currency: "MXN", tax: { interest: 10, inflation: 12 }, autoInterest: true, fx: null }, accounts: [{ id: "rl2", balance: 100000, apy: 10, currency: "MXN", balanceAsOf: A.toISO(today) }], incomes: [], holdings: [] });
+  approx(A.earningsBreakdown().intAnnualISR, 0, 0.01, "inflation above APY → no real interest → no ISR");
+
   // off switch leaves balances untouched
   resetStore({ settings: { currency: "MXN", tax: { interest: 0 }, autoInterest: false, fx: null }, accounts: [{ id: "x", balance: 100000, apy: 10, currency: "MXN", interestFreq: "monthly", interestDay: 31, balanceAsOf: back(95) }] });
   eq(A.Store.settleInterest().count, 0, "autoInterest off → no settlement");
   eq(A.Store.state.accounts[0].balance, 100000, "balance untouched when off");
+});
+
+group("retirement projection — accumulation & drawdown", () => {
+  // pure growth, no contributions: 1,000,000 at 7% for 10y
+  const g = A.retirementProjection({ start: 1000000, ret: 7, years: 10, contrib: 0, withdraw: 0, inflation: 0, maxDraw: 5 });
+  approx(g.nest, 1000000 * Math.pow(Math.pow(1.07, 1 / 12), 120), 5, "nest egg compounds monthly at the annual rate");
+  approx(g.contributed, 1000000, 0.01, "contributed = starting amount when no monthly adds");
+  approx(g.growth, g.nest - 1000000, 0.01, "growth = nest − contributed");
+  ok(g.pts[0].year === 0 && g.pts[0].phase === "save", "timeline starts at year 0 in the saving phase");
+
+  // real (today's-pesos) nest egg deflates by inflation over the horizon
+  const ri = A.retirementProjection({ start: 1000000, ret: 7, years: 10, contrib: 0, withdraw: 0, inflation: 5, maxDraw: 1 });
+  approx(ri.nestReal, ri.nest / Math.pow(1.05, 10), 5, "real nest egg deflates by inflation");
+
+  // withdrawing well under the real return lasts the whole horizon
+  const sus2 = A.retirementProjection({ start: 2000000, ret: 7, years: 0, contrib: 0, withdraw: 3, inflation: 0, maxDraw: 40 });
+  ok(sus2.sustainable, "withdrawing 3% with a 7% return lasts the full horizon");
+  approx(sus2.monthlyIncome, 2000000 * 0.03 / 12, 0.5, "monthly income = withdrawal rate × nest / 12");
+
+  // an aggressive withdrawal depletes the pot in a finite number of years
+  const dep = A.retirementProjection({ start: 1000000, ret: 2, years: 0, contrib: 0, withdraw: 10, inflation: 4, maxDraw: 50 });
+  ok(!dep.sustainable && dep.depletedYear > 0 && dep.depletedYear < 50, "10% withdrawals on a 2% return run out before the cap");
+  ok(dep.endBalance === 0, "depleted projection ends at zero");
 });
 
 /* ---- report ---- */
