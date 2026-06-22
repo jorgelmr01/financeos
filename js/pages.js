@@ -422,7 +422,7 @@ const Pages = {
       '<span class="panel-sub">snowball vs avalanche · live</span></div>' +
       '<div class="grid cols-2">' +
         '<div class="field"><label>Monthly payment (' + displayCurrency() + ')</label>' +
-          '<input class="debt-input" type="number" min="0" step="100" value="' + App.debtBudget + '">' +
+          '<input class="debt-input fmt-num" type="text" inputmode="decimal" value="' + fmtNumInput(App.debtBudget) + '">' +
           '<div class="hint">The total you can put toward all cards each month.</div></div>' +
         '<div class="field"><label>Strategy</label>' +
           '<div class="price-range-bar">' +
@@ -541,7 +541,7 @@ const Pages = {
           "</div></div></div></td>" +
         '<td class="num">' + fmtNum(h.shares) + "</td>" +
         '<td class="num">' + fmtMoneyIn(h.costBasis, h.currency) + "</td>" +
-        '<td class="num"><input class="price-input" type="number" step="any" min="0" value="' + h.currentPrice + '" data-price-id="' + h.id + '" title="Edit current price (' + esc(h.currency) + ')"></td>' +
+        '<td class="num"><input class="price-input fmt-num" type="text" inputmode="decimal" value="' + fmtNumInput(h.currentPrice) + '" data-price-id="' + h.id + '" title="Edit current price (' + esc(h.currency) + ')"></td>' +
         '<td class="num">' + fmtMoney(mv) + "</td>" +
         '<td class="num ' + (pnl >= 0 ? "pos" : "neg") + '">' + fmtMoney(pnl, { sign: true }) + '<div class="cell-sub ' + (pnl >= 0 ? "pos" : "neg") + '">' + fmtPct(pct) + "</div></td>" +
         '<td class="actions-cell">' +
@@ -614,7 +614,7 @@ const Pages = {
         stat("Dividends / yr", annualDiv > 0 ? fmtMoney(annualDiv) : "—", yieldPct > 0 ? yieldPct.toFixed(2) + "% yield" : "no dividend") +
       "</div>" +
       '<div class="panel section"><div class="panel-head"><div class="panel-title">Update price</div><span class="panel-sub">in ' + esc(cur) + ' · or refresh all from Yahoo</span></div>' +
-        '<div class="detail-update"><input class="price-input" type="number" step="any" min="0" value="' + now + '" data-price-id="' + h.id + '">' +
+        '<div class="detail-update"><input class="price-input fmt-num" type="text" inputmode="decimal" value="' + fmtNumInput(now) + '" data-price-id="' + h.id + '">' +
         '<button class="btn small" data-action="refresh-prices">↻ Update all prices</button></div></div>'
     );
   },
@@ -1563,19 +1563,23 @@ const Pages = {
       '<div class="panel section retire-controls"><div class="panel-head">' +
         '<div class="panel-title">Assumptions</div>' +
         '<span class="panel-sub">drag to explore — everything updates live</span></div>' +
-        '<div class="grid cols-2">' +
+        '<div class="grid cols-3">' +
           '<div class="field"><label>Starting amount (' + cur + ')</label>' +
-            '<input class="r-input" data-rk="start" type="number" min="0" step="1000" value="' + r.start + '">' +
+            '<input class="r-input fmt-num" data-rk="start" type="text" inputmode="decimal" value="' + fmtNumInput(r.start) + '">' +
             '<div class="hint">Seeded from your current net worth — edit freely, or hit “Use my net worth”.</div></div>' +
           '<div class="field"><label>Monthly contribution (' + cur + ')</label>' +
-            '<input class="r-input" data-rk="contrib" type="number" min="0" step="500" value="' + r.contrib + '">' +
+            '<input class="r-input fmt-num" data-rk="contrib" type="text" inputmode="decimal" value="' + fmtNumInput(r.contrib) + '">' +
             '<div class="hint">Extra you add every month while still saving.</div></div>' +
+          '<div class="field"><label>Annual spending in retirement (' + cur + ')</label>' +
+            '<input class="r-input fmt-num" data-rk="annualSpend" type="text" inputmode="decimal" value="' + fmtNumInput(r.annualSpend) + '">' +
+            '<div class="hint">Drives the FIRE number. Pre-filled from your budget — override to model spending more or less.</div></div>' +
         "</div>" +
         '<div class="r-grid">' +
           this._rslider("ret", "Annual return", r.ret, 0, 15, 0.5, "%") +
           this._rslider("years", "Years to grow", r.years, 0, 50, 1, " yr") +
           this._rslider("withdraw", "Withdrawal rate", r.withdraw, 1, 10, 0.1, "%") +
           this._rslider("inflation", "Inflation", r.inflation, 0, 12, 0.1, "%") +
+          this._rslider("vol", "Market volatility", r.vol, 0, 30, 1, "%") +
         "</div>" +
       "</div>";
     return controls + '<div id="retire-out">' + this.retirementOutput() + "</div>";
@@ -1596,10 +1600,11 @@ const Pages = {
     });
     const mc = retirementMonteCarlo({
       start: r.start, ret: r.ret, years: r.years, contrib: r.contrib,
-      withdraw: r.withdraw, inflation: r.inflation, vol: 12, maxDraw: 50, runs: 300,
+      withdraw: r.withdraw, inflation: r.inflation, vol: r.vol, maxDraw: 50, runs: 300,
     });
     const succ = Math.round(mc.successRate * 100);
     const succTone = succ >= 85 ? "pos" : succ >= 60 ? "gold" : "neg";
+    const succHint = this._hint("Across " + mc.runs + " simulated lifetimes, each year's return is drawn at random from a bell curve centred on your " + r.ret + "% return with a ±" + Math.round(mc.vol) + "% yearly swing (the Market-volatility slider). Withdrawals still rise every year with " + r.inflation + "% inflation. The success rate is the share of those runs where the money isn't exhausted after " + sim.maxDraw + " years. Lower volatility, a smaller withdrawal rate, or more years all raise it.");
     const stat = (label, val, note, cls) =>
       '<div class="stat"><span class="micro-label">' + label + '</span><div class="stat-value ' + (cls || "") +
       '">' + val + '</div><div class="stat-note">' + note + "</div></div>";
@@ -1612,7 +1617,7 @@ const Pages = {
         "at " + r.withdraw + "% · " + fmtMoney(sim.monthlyIncomeReal, { compact: true }) + " today’s pesos", "pos") +
       stat("Money lasts (base case)", lasts,
         sim.sustainable ? "capital stays intact" : "until the pot runs dry", sim.sustainable ? "pos" : "neg") +
-      stat("Success rate", succ + "%",
+      stat("Success rate" + succHint, succ + "%",
         "of " + mc.runs + " random-market runs the money outlives " + sim.maxDraw + " yr", succTone) +
       "</div>";
 
@@ -1621,11 +1626,15 @@ const Pages = {
 
   /* FIRE number + Coast FIRE — nest egg that funds your spending forever */
   _firePanel(r) {
-    const series = (typeof budgetSeries === "function") ? budgetSeries(null).filter(m => m.hasData && m.complete) : [];
-    const annualSpend = series.length ? (series.reduce((a, m) => a + (Number(m.spend) || 0), 0) / series.length) * 12 : 0;
+    const est = (typeof budgetSpendEstimate === "function") ? budgetSpendEstimate() : { annual: 0, months: 0, cov: 0, basis: "" };
+    const annualSpend = Math.max(0, Number(r.annualSpend) || 0);
+    const hint = this._hint("FIRE number = annual spending ÷ withdrawal rate (the slider above). Annual spending is the editable field in Assumptions" +
+      (est.months ? ", pre-filled from your budget as the " + est.basis + " of your " + est.months + " logged month" + (est.months === 1 ? "" : "s") +
+        (est.cov > 0.0001 ? " (which vary ±" + Math.round(est.cov * 100) + "% month-to-month)" : "") : "") +
+      ". Coast FIRE = the amount that, growing at your real return for " + Math.max(1, Number(r.years) || 1) + " years, reaches the FIRE number with zero further saving.");
     if (!(annualSpend > 0)) {
-      return '<div class="panel section"><div class="panel-head"><div class="panel-title">FIRE number</div></div>' +
-        '<p class="method-note">Log a month or two of expenses on the Budget tab and FinanceOS will compute your FIRE number — the nest egg that funds your spending forever at your withdrawal rate.</p></div>';
+      return '<div class="panel section"><div class="panel-head"><div class="panel-title">FIRE number' + hint + "</div></div>" +
+        '<p class="method-note">Enter your <strong>Annual spending in retirement</strong> in the Assumptions above (or log a month or two on the Budget tab to auto-fill it) and FinanceOS will show your FIRE number — the nest egg that funds that spending forever at your withdrawal rate.</p></div>';
     }
     const swr = Math.max(0.5, Number(r.withdraw) || 4) / 100;
     const fire = annualSpend / swr;
@@ -1641,7 +1650,7 @@ const Pages = {
       : hitCoast
         ? "You’ve hit <strong>Coast FIRE</strong>: even with zero new savings, growth alone reaches your FIRE number in " + years + " years."
         : "You’re <strong>" + Math.round(progress) + "%</strong> of the way. Reach " + fmtMoney(coast, { compact: true }) + " (Coast FIRE) and you could stop saving and still arrive in " + years + " years.";
-    return '<div class="panel section"><div class="panel-head"><div class="panel-title">FIRE number</div>' +
+    return '<div class="panel section"><div class="panel-head"><div class="panel-title">FIRE number' + hint + "</div>" +
       '<span class="panel-sub">spend ' + fmtMoney(annualSpend, { compact: true }) + "/yr · " + r.withdraw + "% rule</span></div>" +
       '<div class="grid cols-3 section" style="margin:0 0 6px">' +
         stat("FIRE number", fmtMoney(fire, { compact: true }), "≈ " + Math.round(1 / swr) + "× annual spend", "gold") +
@@ -1649,7 +1658,10 @@ const Pages = {
         stat("Coast FIRE", fmtMoney(coast, { compact: true }), hitCoast ? "reached — coasting" : "stop saving once here", hitCoast ? "pos" : "") +
       "</div>" +
       '<div class="goal-track"><div class="goal-fill' + (hitFire ? " done" : "") + '" style="width:' + progress.toFixed(1) + '%"></div></div>' +
-      '<p class="method-note" style="margin-top:12px">' + verdict + " Annual spend is averaged from your logged expenses; the withdrawal rate is the slider above.</p></div>";
+      '<p class="method-note" style="margin-top:12px">' + verdict +
+      (est.months ? " Spending estimate: " + est.basis + " from " + est.months + " logged month" + (est.months === 1 ? "" : "s") +
+        (est.cov > 0.15 ? " — but it varies ±" + Math.round(est.cov * 100) + "% month-to-month, so treat this as rough and edit the Annual spending field" : "") + "."
+        : " Set Annual spending in the Assumptions to refine this.") + "</p></div>";
   },
 
   _retireChart(sim, r, mc) {
@@ -1678,8 +1690,9 @@ const Pages = {
       tip: (p.phase === "save" ? "Saving" : "Retired") + " · yr " + p.year + " · base <strong>" + fmtMoney(p.bal, { compact: true }) + "</strong>" +
         (band[i] ? " · range " + fmtMoney(band[i].p10, { compact: true }) + "–" + fmtMoney(band[i].p90, { compact: true }) : ""),
     })));
+    const chartHint = this._hint("The solid line is the base case (a steady " + r.ret + "% return every year). The shaded band is the 10th–90th percentile of " + ((mc && mc.runs) || 300) + " Monte-Carlo runs where each year's return is random (mean " + r.ret + "%, ±" + Math.round((mc && mc.vol) || 12) + "% volatility) — so in roughly 80% of simulated markets you end each year inside the band. Tap a point for its range.");
     return '<div class="panel section"><div class="panel-head">' +
-      '<div class="panel-title">Your money over a lifetime</div>' +
+      '<div class="panel-title">Your money over a lifetime' + chartHint + "</div>" +
       '<span class="panel-sub">grow ' + r.years + "y at " + r.ret + "%, then draw " + r.withdraw + "%/yr · shaded = likely range</span></div>" +
       '<div class="chart-wrap"><div class="retire-plot">' + grid +
         '<svg class="retire-chart" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none">' +

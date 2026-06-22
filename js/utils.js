@@ -412,6 +412,39 @@ const ACCOUNT_TYPE_META = {
 
 const CHART_COLORS = ["#8fe3a6", "#e5c97b", "#8fc9e3", "#c5b3e6", "#e8a26f", "#9be3d2", "#e3b8cf", "#b8c8e3"];
 
+/* ---------- number-input grouping (live thousands separators) ----------
+   <input type="number"> can't show commas, so money fields are text inputs with
+   class "fmt-num"; these helpers format the display and parse it back. */
+function parseNum(s) {
+  const n = parseFloat(String(s == null ? "" : s).replace(/,/g, ""));
+  return isFinite(n) ? n : 0;
+}
+function fmtNumInput(raw) {
+  if (raw == null || raw === "") return "";
+  let s = String(raw).replace(/[^\d.\-]/g, "");
+  if (s === "" || s === "-") return s;
+  const neg = s[0] === "-";
+  s = s.replace(/-/g, "");
+  const dot = s.indexOf(".");
+  let intPart = dot === -1 ? s : s.slice(0, dot);
+  const decPart = dot === -1 ? null : s.slice(dot + 1).replace(/\./g, "");
+  intPart = intPart.replace(/^0+(?=\d)/, "");
+  if (intPart === "") intPart = "0";
+  const grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return (neg ? "-" : "") + grouped + (decPart !== null ? "." + decPart : "");
+}
+/* reformat an input in place, keeping the caret after the same digit */
+function reformatNumInput(el) {
+  const old = el.value, caret = el.selectionStart == null ? old.length : el.selectionStart;
+  const sig = old.slice(0, caret).replace(/[^\d.\-]/g, "").length;
+  const next = fmtNumInput(old);
+  if (next === old) return;
+  el.value = next;
+  let seen = 0, pos = 0;
+  while (pos < next.length && seen < sig) { if (/[\d.\-]/.test(next[pos])) seen++; pos++; }
+  try { el.setSelectionRange(pos, pos); } catch (e) { /* not focusable */ }
+}
+
 /* tiny inline sparkline SVG from a list of numbers (green if up, rose if down) */
 function sparkline(values, opts) {
   opts = opts || {};

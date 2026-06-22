@@ -26,6 +26,9 @@ const UI = {
     const form = document.getElementById("modal-form");
     form.addEventListener("submit", e => {
       e.preventDefault();
+      // strip the display grouping (commas) from formatted number fields so the
+      // existing parseFloat(fd.get(...)) logic reads clean numbers
+      form.querySelectorAll(".fmt-num").forEach(el => { el.value = el.value.replace(/,/g, ""); });
       if (UI.onSubmit) UI.onSubmit(new FormData(form), form);
     });
     // keep Tab focus inside the dialog
@@ -101,7 +104,7 @@ const UI = {
             '<option value="' + t + '"' + (acc.type === t ? " selected" : "") + ">" + ACCOUNT_TYPE_META[t].label + "</option>"
           ).join("") +
         "</select>") +
-      this.field("Current balance", '<input name="balance" type="number" inputmode="decimal" step="0.01" min="0" required value="' + (acc.balance != null ? acc.balance : "") + '" placeholder="0.00">') +
+      this.field("Current balance", '<input name="balance" type="text" inputmode="decimal" class="fmt-num" required value="' + (acc.balance != null ? fmtNumInput(acc.balance) : "") + '" placeholder="0.00">') +
       this.field("Currency", this.currencySelect("currency", acc.currency), "Converted automatically in totals") +
       this.field("Interest rate — annual % (APY)", '<input name="apy" type="number" inputmode="decimal" step="0.01" min="0" max="100" value="' + (acc.apy != null && acc.apy !== 0 ? acc.apy : "") + '" placeholder="e.g. 11.50">', "The yearly rate. For custom intervals & fixed terms it's pro-rated to the period — not paid in full each time.") +
       this.field("Interest paid",
@@ -169,7 +172,7 @@ const UI = {
 
       // live, plain-language preview of what each payout works out to — so the
       // annual-vs-period distinction is obvious before saving.
-      const num = (name) => parseFloat(form.querySelector("[name=" + name + "]").value) || 0;
+      const num = (name) => parseNum(form.querySelector("[name=" + name + "]").value);
       const preview = () => {
         if (!previewEl) return;
         const apy = num("apy"), bal = num("balance");
@@ -228,8 +231,8 @@ const UI = {
     const isEdit = !!goal.id;
     const body = '<div class="f-grid">' +
       this.field("Goal name", '<input name="name" required maxlength="60" value="' + esc(goal.name || "") + '" placeholder="Emergency fund, trip to Japan…">', null, true) +
-      this.field("Target amount", '<input name="target" type="number" inputmode="decimal" step="0.01" min="0" required value="' + (goal.target != null ? goal.target : "") + '">', "What you want to save in total") +
-      this.field("Saved so far", '<input name="saved" type="number" inputmode="decimal" step="0.01" min="0" value="' + (goal.saved != null ? goal.saved : "") + '">', "Bump this up as you set money aside") +
+      this.field("Target amount", '<input name="target" type="text" inputmode="decimal" class="fmt-num" required value="' + (goal.target != null ? fmtNumInput(goal.target) : "") + '">', "What you want to save in total") +
+      this.field("Saved so far", '<input name="saved" type="text" inputmode="decimal" class="fmt-num" value="' + (goal.saved != null ? fmtNumInput(goal.saved) : "") + '">', "Bump this up as you set money aside") +
       this.field("Currency", this.currencySelect("currency", goal.currency)) +
       this.field("Target date (optional)", '<input name="targetDate" type="date" value="' + esc(goal.targetDate || "") + '">', "We’ll work out the monthly amount you need to get there", true) +
       "</div>";
@@ -264,8 +267,8 @@ const UI = {
     const body = '<div class="f-grid">' +
       this.field("Card name", '<input name="name" required maxlength="60" value="' + esc(card.name || "") + '" placeholder="Platinum Rewards">', null, true) +
       this.field("Issuer", '<input name="issuer" maxlength="40" value="' + esc(card.issuer || "") + '" placeholder="Bank">') +
-      this.field("Credit limit", '<input name="limit" type="number" inputmode="decimal" step="0.01" min="0" required value="' + (card.limit != null ? card.limit : "") + '">') +
-      this.field("Current balance", '<input name="balance" type="number" inputmode="decimal" step="0.01" min="0" required value="' + (card.balance != null ? card.balance : "") + '">', "What you currently owe") +
+      this.field("Credit limit", '<input name="limit" type="text" inputmode="decimal" class="fmt-num" required value="' + (card.limit != null ? fmtNumInput(card.limit) : "") + '">') +
+      this.field("Current balance", '<input name="balance" type="text" inputmode="decimal" class="fmt-num" required value="' + (card.balance != null ? fmtNumInput(card.balance) : "") + '">', "What you currently owe") +
       this.field("Currency", this.currencySelect("currency", card.currency)) +
       this.field("APR % (optional)", '<input name="apr" type="number" inputmode="decimal" step="0.01" min="0" max="200" value="' + (card.apr != null && card.apr !== 0 ? card.apr : "") + '">') +
       this.field("Statement cut day", '<select name="cutDay">' + dayOpts(card.cutDay || 1) + "</select>", "Day of month the statement closes") +
@@ -311,11 +314,11 @@ const UI = {
           '<option value="etf"' + (h.kind === "etf" ? " selected" : "") + ">ETF</option>" +
         "</select>") +
       this.field("Name", '<input name="hname" maxlength="60" value="' + esc(h.name || "") + '" placeholder="Vanguard S&P 500 ETF">', null, true) +
-      this.field("Shares", '<input name="shares" type="number" inputmode="decimal" step="any" min="0" required value="' + (h.shares != null ? h.shares : "") + '">', "Fractional shares allowed") +
+      this.field("Shares", '<input name="shares" type="text" inputmode="decimal" class="fmt-num" required value="' + (h.shares != null ? fmtNumInput(h.shares) : "") + '">', "Fractional shares allowed") +
       this.field("Prices in", this.currencySelect("currency", h.currency || "USD"), "Currency of this listing (US tickers: USD)") +
-      this.field("Avg. price paid", '<input name="costBasis" type="number" inputmode="decimal" step="any" min="0" required value="' + (h.costBasis != null ? h.costBasis : "") + '">', "Per share") +
-      this.field("Current price", '<input name="currentPrice" type="number" inputmode="decimal" step="any" min="0" required value="' + (h.currentPrice != null ? h.currentPrice : "") + '">', "Auto-updates with a Finnhub key") +
-      this.field("Dividend / share / year", '<input name="divPerShare" type="number" inputmode="decimal" step="any" min="0" value="' + (h.divPerShare != null && h.divPerShare !== 0 ? h.divPerShare : "") + '">', "Optional — auto-fills when refreshing prices") +
+      this.field("Avg. price paid", '<input name="costBasis" type="text" inputmode="decimal" class="fmt-num" required value="' + (h.costBasis != null ? fmtNumInput(h.costBasis) : "") + '">', "Per share") +
+      this.field("Current price", '<input name="currentPrice" type="text" inputmode="decimal" class="fmt-num" required value="' + (h.currentPrice != null ? fmtNumInput(h.currentPrice) : "") + '">', "Auto-updates with a Finnhub key") +
+      this.field("Dividend / share / year", '<input name="divPerShare" type="text" inputmode="decimal" class="fmt-num" value="' + (h.divPerShare != null && h.divPerShare !== 0 ? fmtNumInput(h.divPerShare) : "") + '">', "Optional — auto-fills when refreshing prices") +
       this.field("Purchase date", '<input name="purchaseDate" type="date" value="' + esc(h.purchaseDate || toISO(todayMid())) + '">') +
       this.field("Held in account", '<select name="accountId">' + acctOpts + "</select>", invAccounts.length ? null : "Tip: add an Investment account to link", true) +
       "</div>";
@@ -360,7 +363,7 @@ const UI = {
           ["Salary", "Freelance", "Rent", "Dividends", "Business", "Other"].map(c =>
             '<option' + (inc.category === c ? " selected" : "") + ">" + c + "</option>").join("") +
         "</select>") +
-      this.field("Amount per deposit", '<input name="amount" type="number" inputmode="decimal" step="0.01" min="0" required value="' + (inc.amount != null ? inc.amount : "") + '">') +
+      this.field("Amount per deposit", '<input name="amount" type="text" inputmode="decimal" class="fmt-num" required value="' + (inc.amount != null ? fmtNumInput(inc.amount) : "") + '">') +
       this.field("Currency", this.currencySelect("currency", inc.currency)) +
       this.field("This amount is",
         '<select name="amountType" id="amount-type-select">' +
@@ -505,7 +508,7 @@ const UI = {
       '<option value="' + esc(c.name) + '"' + (e.category === c.name ? " selected" : "") + ">" + esc(c.name) + "</option>").join("");
     const body = '<div class="f-grid">' +
       this.field("Date", '<input name="date" type="date" required value="' + esc(e.date || toISO(todayMid())) + '">') +
-      this.field("Amount", '<input name="amount" type="number" inputmode="decimal" step="0.01" required value="' + (e.amount != null ? e.amount : "") + '" placeholder="0.00">', "Positive for spending · minus for a refund") +
+      this.field("Amount", '<input name="amount" type="text" inputmode="decimal" class="fmt-num" required value="' + (e.amount != null ? fmtNumInput(e.amount) : "") + '" placeholder="0.00">', "Positive for spending · minus for a refund") +
       this.field("Description", '<input name="description" maxlength="80" value="' + esc(e.description || "") + '" placeholder="Where it went">', null, true) +
       this.field("Category", '<select name="category">' + catOpts + "</select>") +
       this.field("Currency", this.currencySelect("currency", e.currency)) +
@@ -534,9 +537,9 @@ const UI = {
     const b = Store.state.budgets || {};
     const firstCur = EXPENSE_CATEGORIES.map(c => b[c.name] && b[c.name].currency).find(Boolean) || displayCurrency();
     const rows = EXPENSE_CATEGORIES.map((c, i) => {
-      const v = b[c.name] && b[c.name].amount != null ? b[c.name].amount : "";
+      const v = b[c.name] && b[c.name].amount != null ? fmtNumInput(b[c.name].amount) : "";
       return this.field('<span class="field-ic">' + icon(c.icon) + "</span>" + esc(c.name),
-        '<input name="b' + i + '" type="number" inputmode="decimal" step="0.01" min="0" value="' + v + '" placeholder="—">');
+        '<input name="b' + i + '" type="text" inputmode="decimal" class="fmt-num" value="' + v + '" placeholder="—">');
     }).join("");
     const body =
       '<p class="modal-note">Set an optional monthly limit per category — leave blank for no limit. Your spending each month is tracked against these.</p>' +

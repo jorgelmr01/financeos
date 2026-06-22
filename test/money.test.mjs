@@ -27,7 +27,8 @@ const bundle = [read("js/utils.js"), read("js/budget.js"), read("js/statements.j
   "\n;globalThis.__api = { interestPerPeriod, nextInterestDate, interestScheduleLabel, interestPeriodDays," +
   " accruedInterest, holdingReturnRate, parseAmount, parseExpenseDate, expenseSig, canonicalCategory," +
   " earningsBreakdown, retirementProjection, retirementMonteCarlo, realInterestEst, monthlyInterestEst," +
-  " convBetween, sparkline, categorySeries, debtPayoff, toISO, parseISO, daysBetween, todayMid, Statements, INTEREST_FREQ, Store };";
+  " convBetween, sparkline, categorySeries, debtPayoff, fmtNumInput, parseNum, budgetSpendEstimate," +
+  " toISO, parseISO, daysBetween, todayMid, Statements, INTEREST_FREQ, Store };";
 vm.runInContext(bundle, ctx, { filename: "bundle.js" });
 const A = ctx.__api;
 // fresh in-memory store, no persistence
@@ -390,6 +391,36 @@ group("debt payoff — snowball vs avalanche", () => {
   ok(!broke.feasible, "a tiny budget is flagged infeasible, not looped forever");
 
   eq(A.debtPayoff([], 1000, "avalanche").months, 0, "no debt → nothing to pay");
+});
+
+group("number input grouping (live thousands separators)", () => {
+  eq(A.fmtNumInput(92000), "92,000", "groups thousands");
+  eq(A.fmtNumInput("1234567"), "1,234,567", "groups millions");
+  eq(A.fmtNumInput("1234.5"), "1,234.5", "keeps the decimal part as typed");
+  eq(A.fmtNumInput("0.5"), "0.5", "leading zero before a decimal");
+  eq(A.fmtNumInput("-2500"), "-2,500", "negatives keep their sign");
+  eq(A.fmtNumInput(""), "", "empty stays empty");
+  eq(A.fmtNumInput("00042"), "42", "strips leading zeros");
+  // round-trips back to a clean number for storage
+  eq(A.parseNum("1,234,567.89"), 1234567.89, "parses grouped value");
+  eq(A.parseNum("92,000"), 92000, "strips commas");
+  eq(A.parseNum(""), 0, "blank → 0");
+  eq(A.parseNum("abc"), 0, "garbage → 0");
+});
+
+group("smart annual-spend estimate for FIRE", () => {
+  const m = (mm) => "2026-" + String(mm).padStart(2, "0") + "-05";
+  // 4 complete months of ~stable spend → 3-month-average window, low variance
+  resetStore({
+    settings: { currency: "MXN", fx: null, tax: {} }, incomes: [], holdings: [], cards: [],
+    expenses: [1, 2, 3, 4].map((mm, i) => ({ id: "e" + i, date: m(mm), amount: 20000 + i * 200, category: "Rent", currency: "MXN" })),
+  });
+  const est = A.budgetSpendEstimate();
+  ok(est.months >= 3, "counts the complete months");
+  eq(est.window, 3, "3–5 months → 3-month window");
+  ok(est.annual > 0 && est.cov < 0.1, "stable spend → low coefficient of variation");
+  ok(Math.abs(est.annual / 12 - est.annual / 12) < 1e-9, "annual is monthly × 12");
+  eq(A.budgetSpendEstimate.length, 0, "takes no args");
 });
 
 /* ---- report ---- */

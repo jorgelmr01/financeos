@@ -31,7 +31,8 @@ const App = {
   retireDefaults() {
     const t = computeTotals();
     const infl = (Store.state.settings.tax && Number(Store.state.settings.tax.inflation)) || 4.5;
-    return { start: Math.max(0, Math.round(t.netWorth)), contrib: 0, ret: 8, years: 20, withdraw: 4, inflation: infl };
+    const spend = (typeof budgetSpendEstimate === "function") ? Math.round(budgetSpendEstimate().annual) : 0;
+    return { start: Math.max(0, Math.round(t.netWorth)), contrib: 0, ret: 8, years: 20, withdraw: 4, inflation: infl, vol: 12, annualSpend: spend };
   },
 
   navigate(page) {
@@ -480,6 +481,10 @@ const App = {
 
     /* live learn-widget sliders */
     document.addEventListener("input", e => {
+      // live thousands separators on money fields (keeps the caret in place)
+      const nf = e.target.closest(".fmt-num");
+      if (nf) reformatNumInput(nf);
+
       const w = e.target.closest(".lw");
       if (w && typeof WIDGETS !== "undefined" && WIDGETS[w.dataset.lw]) WIDGETS[w.dataset.lw].update(w);
 
@@ -488,7 +493,7 @@ const App = {
       const ri = e.target.closest(".r-input");
       if (ri && this.retire) {
         const k = ri.dataset.rk;
-        this.retire[k] = parseFloat(ri.value) || 0;
+        this.retire[k] = parseNum(ri.value);
         if (ri.dataset.suffix != null) {
           const lab = document.querySelector('.r-val[data-rv="' + k + '"]');
           if (lab) lab.textContent = ri.value + ri.dataset.suffix;
@@ -500,7 +505,7 @@ const App = {
       /* debt payoff: live recompute on the monthly-budget input */
       const di = e.target.closest(".debt-input");
       if (di) {
-        this.debtBudget = parseFloat(di.value) || 0;
+        this.debtBudget = parseNum(di.value);
         const out = document.getElementById("debt-out");
         if (out) out.innerHTML = Pages.debtPayoffOutput();
       }
@@ -510,7 +515,7 @@ const App = {
     document.addEventListener("change", e => {
       const input = e.target.closest("[data-price-id]");
       if (input) {
-        const v = parseFloat(input.value);
+        const v = parseNum(input.value);
         if (!isNaN(v) && v >= 0) {
           Store.update("holdings", input.dataset.priceId, { currentPrice: v });
           UI.toast("Price updated");

@@ -323,6 +323,34 @@ function categorySeries(maxMonths, topN) {
   };
 }
 
+/* Smart annual-spending estimate for the FIRE calculator. Picks the averaging
+   window from how much COMPLETE history exists and how noisy it is, and reports
+   the coefficient of variation so the UI can warn when spending is erratic:
+     1–2 months  → use what's there, extended to a year
+     3–5 months  → 3-month average
+     6–11 months → 6-month average
+     12+ months  → 12-month average
+   Returns { annual, window, months, cov, basis }. */
+function budgetSpendEstimate() {
+  const months = (typeof budgetSeries === "function") ? budgetSeries(null).filter(m => m.hasData && m.complete) : [];
+  if (!months.length) return { annual: 0, window: 0, months: 0, cov: 0, basis: "no complete months yet" };
+  const spends = months.map(m => Number(m.spend) || 0);
+  const mean = spends.reduce((a, b) => a + b, 0) / spends.length;
+  const variance = spends.reduce((a, b) => a + (b - mean) * (b - mean), 0) / spends.length;
+  const cov = mean > 0 ? Math.sqrt(variance) / mean : 0;
+  let win;
+  if (spends.length >= 12) win = 12;
+  else if (spends.length >= 6) win = 6;
+  else if (spends.length >= 3) win = 3;
+  else win = spends.length;
+  const used = spends.slice(-win);
+  const avg = used.reduce((a, b) => a + b, 0) / used.length;
+  const basis = spends.length === 1 ? "last month × 12"
+    : spends.length === 2 ? "2-month average × 12"
+    : win + "-month average × 12";
+  return { annual: avg * 12, window: win, months: spends.length, cov: cov, basis: basis };
+}
+
 /* Consistency streaks, counting back from the most recent month with data. */
 function budgetStreaks() {
   const s = budgetSeries(null).filter(m => m.hasData && m.complete);
