@@ -88,6 +88,11 @@ const App = {
 
     const t = computeTotals();
     document.getElementById("sidebar-networth").textContent = fmtMoney(t.netWorth, { compact: true });
+    const sparkEl = document.getElementById("sidebar-spark");
+    if (sparkEl) {
+      const snaps = Store.state.snapshots || [];
+      sparkEl.innerHTML = snaps.length >= 2 ? sparkline(snaps.map(x => fromUSD(x.usd)), { w: 132, h: 22 }) : "";
+    }
 
     const today = new Date();
     document.getElementById("page-date").textContent =
@@ -205,15 +210,18 @@ const App = {
         UI.toast("Fetching live prices & dividends…");
         Store.fetchQuotes().then(res => {
           if (res.prices === 0 && res.divs === 0) {
-            UI.toast("Couldn't reach any price service — check your connection and try again");
+            UI.toast("Couldn't reach any price service — check your connection and try again", { type: "error" });
           } else {
             let msg = "Updated " + res.prices + " price" + (res.prices === 1 ? "" : "s") + ", " + res.divs + " dividend" + (res.divs === 1 ? "" : "s");
-            if (res.failed.length) msg += " · no quote for " + res.failed.join(", ");
-            UI.toast(msg);
-            if (res.keyBad) UI.toast("Finnhub rejected your key — data came from the Yahoo fallback; fix the key in Settings");
-            if (res.noDiv && res.noDiv.length) UI.toast("No dividend data found for " + res.noDiv.join(", ") + " — set div/share via the edit (pencil) button if it pays one");
+            UI.toast(msg, { type: "success" });
+            if (res.failed.length) UI.toast("Couldn't get a fresh price for " + res.failed.join(", ") + " — kept the last known price. Check the symbol or try again.", { type: "warn" });
+            if (res.keyBad) UI.toast("Finnhub rejected your key — data came from the Yahoo fallback; fix the key in Settings", { type: "warn" });
+            if (res.noDiv && res.noDiv.length) UI.toast("No dividend data found for " + res.noDiv.join(", ") + " — set div/share via the edit (pencil) button if it pays one", { type: "warn" });
           }
           App.render();
+        }).catch(err => {
+          console.error("FinanceOS: price sync failed", err);
+          UI.toast("Price update failed unexpectedly — your data is unchanged. Try again in a moment.", { type: "error" });
         });
         break;
       }
@@ -223,8 +231,11 @@ const App = {
       case "refresh-fx":
         UI.toast("Refreshing exchange rates…");
         Store.refreshFx(true).then(ok => {
-          UI.toast(ok ? "Exchange rates updated (ECB)" : "Couldn't reach the rate service — using cached rates");
+          UI.toast(ok ? "Exchange rates updated (ECB)" : "Couldn't reach the rate service — using cached rates", ok ? { type: "success" } : { type: "warn" });
           App.render();
+        }).catch(err => {
+          console.error("FinanceOS: FX refresh failed", err);
+          UI.toast("Couldn't refresh exchange rates — using cached rates.", { type: "warn" });
         });
         break;
 
@@ -406,9 +417,13 @@ const App = {
     if (Store.state) {
       document.getElementById("currency-select").value = Store.state.settings.currency;
     }
+    // saved data existed but couldn't be read — warn instead of silently resetting
+    if (Store.loadFailed) {
+      setTimeout(() => UI.toast("Couldn't read your saved data — it may be corrupted. Import your last .json backup from the ⋯ menu.", { type: "error", duration: 12000 }), 600);
+    }
 
     /* swap the nav glyphs for the consistent SVG icon set */
-    const navIcons = { overview: "home", accounts: "bank", cards: "card", portfolio: "growth", earnings: "wallet", budget: "pie", milestones: "award", learn: "cap", guide: "book" };
+    const navIcons = { overview: "home", accounts: "bank", cards: "card", portfolio: "growth", earnings: "wallet", budget: "pie", retirement: "clock", milestones: "award", learn: "cap", guide: "book" };
     document.querySelectorAll(".nav-item").forEach(b => {
       const g = b.querySelector(".nav-glyph");
       if (g && navIcons[b.dataset.page]) g.innerHTML = icon(navIcons[b.dataset.page]);
@@ -495,12 +510,13 @@ const App = {
           const data = JSON.parse(reader.result);
           Store.replaceAll(data);
           document.getElementById("currency-select").value = Store.state.settings.currency;
-          UI.toast("Data imported");
+          UI.toast("Data imported", { type: "success" });
           this.render();
         } catch (err) {
-          UI.toast("Import failed — not a valid FinanceOS backup");
+          UI.toast("Import failed — that file isn't a valid FinanceOS backup.", { type: "error" });
         }
       };
+      reader.onerror = () => UI.toast("Couldn't read that file — check it isn't open elsewhere and try again.", { type: "error" });
       reader.readAsText(f);
       e.target.value = "";
     });
@@ -513,18 +529,19 @@ const App = {
       reader.onload = () => {
         const res = BudgetIO.importText(reader.result);
         if (res.errors.length && res.added === 0 && res.skipped === 0) {
-          UI.toast(res.errors[0]);
+          UI.toast(res.errors[0], { type: "error" });
         } else {
           let msg = "Imported " + res.added + " expense" + (res.added === 1 ? "" : "s");
           if (res.skipped) msg += " · " + res.skipped + " duplicate" + (res.skipped === 1 ? "" : "s") + " skipped";
-          UI.toast(msg);
-          if (res.errors.length) UI.toast(res.errors[0]);
+          UI.toast(msg, { type: "success" });
+          if (res.errors.length) UI.toast(res.errors.length + " row" + (res.errors.length === 1 ? "" : "s") + " skipped: " + res.errors[0], { type: "warn" });
           if (res.added) {
             App.budgetMonth = null; // jump to the latest month with data
             App.navigate("budget");
           }
         }
       };
+      reader.onerror = () => UI.toast("Couldn't read that file — check it isn't open elsewhere and try again.", { type: "error" });
       reader.readAsText(f);
       e.target.value = "";
     });
@@ -535,7 +552,7 @@ const App = {
       e.target.value = "";
       if (!f) return;
       if (!/\.pdf$/i.test(f.name) && f.type !== "application/pdf") {
-        UI.toast("Please choose a PDF statement");
+        UI.toast("Please choose a PDF statement", { type: "warn" });
         return;
       }
       UI.statementProgress("Reading statement on your device…");
@@ -550,8 +567,9 @@ const App = {
         });
         UI.statementReview(parse);
       } catch (err) {
+        console.error("FinanceOS: statement parse failed", err);
         UI.closeModal();
-        UI.toast("Couldn't read that PDF — it may be password-protected or corrupted");
+        UI.toast("Couldn't read that PDF — it may be password-protected or corrupted.", { type: "error" });
       }
     });
 

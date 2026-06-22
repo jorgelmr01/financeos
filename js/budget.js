@@ -299,6 +299,30 @@ function categoryMovers(n) {
   }).filter(x => Math.abs(x.delta) >= 1).sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
 }
 
+/* Per-category monthly spend for the highest-spend categories — feeds the
+   small-multiple "spending by category" trend. Returns the month labels plus,
+   for each top category, its monthly values and total. */
+function categorySeries(maxMonths, topN) {
+  const rows = budgetSeries(maxMonths || 12).filter(m => m.hasData);
+  if (rows.length < 2) return { months: [], cats: [] };
+  const totals = {};
+  const perMonth = rows.map(r => {
+    const m = {};
+    categoryTotalsSorted(expensesForMonth(r.mk)).forEach(c => {
+      m[c.name] = c.amount; totals[c.name] = (totals[c.name] || 0) + c.amount;
+    });
+    return m;
+  });
+  const top = Object.keys(totals).sort((a, b) => totals[b] - totals[a]).slice(0, topN || 6);
+  return {
+    months: rows.map(r => r.short),
+    cats: top.map(name => ({
+      name: name, meta: categoryMeta(name), total: totals[name],
+      values: perMonth.map(m => m[name] || 0),
+    })),
+  };
+}
+
 /* Consistency streaks, counting back from the most recent month with data. */
 function budgetStreaks() {
   const s = budgetSeries(null).filter(m => m.hasData && m.complete);

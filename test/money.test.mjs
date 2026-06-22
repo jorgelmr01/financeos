@@ -27,7 +27,7 @@ const bundle = [read("js/utils.js"), read("js/budget.js"), read("js/statements.j
   "\n;globalThis.__api = { interestPerPeriod, nextInterestDate, interestScheduleLabel, interestPeriodDays," +
   " accruedInterest, holdingReturnRate, parseAmount, parseExpenseDate, expenseSig, canonicalCategory," +
   " earningsBreakdown, retirementProjection, retirementMonteCarlo, realInterestEst, monthlyInterestEst," +
-  " convBetween, toISO, parseISO, daysBetween, todayMid, Statements, INTEREST_FREQ, Store };";
+  " convBetween, sparkline, categorySeries, toISO, parseISO, daysBetween, todayMid, Statements, INTEREST_FREQ, Store };";
 vm.runInContext(bundle, ctx, { filename: "bundle.js" });
 const A = ctx.__api;
 // fresh in-memory store, no persistence
@@ -342,6 +342,33 @@ group("retirement Monte Carlo — seeded, stable, sane", () => {
   // higher withdrawals should not improve survival
   const greedy = A.retirementMonteCarlo(Object.assign({}, p, { withdraw: 9 }));
   ok(greedy.successRate <= a.successRate + 1e-9, "a higher withdrawal rate never raises success");
+});
+
+group("sparkline + category series", () => {
+  eq(A.sparkline([5]), "", "needs ≥2 points");
+  eq(A.sparkline([]), "", "empty → no svg");
+  ok(/polyline/.test(A.sparkline([1, 2, 3])), "renders a polyline for ≥2 points");
+  ok(/#8fe3a6/.test(A.sparkline([1, 5])), "rising series is green");
+  ok(/#e8836f/.test(A.sparkline([5, 1])), "falling series is rose");
+
+  // category series: top categories with per-month values across 3 months
+  const m = (mm, dd) => "2026-0" + mm + "-0" + dd;
+  resetStore({
+    settings: { currency: "MXN", fx: null, tax: {} },
+    incomes: [], holdings: [], cards: [],
+    expenses: [
+      { id: "1", date: m(4, 5), amount: 4000, category: "Groceries", currency: "MXN" },
+      { id: "2", date: m(5, 5), amount: 4500, category: "Groceries", currency: "MXN" },
+      { id: "3", date: m(6, 5), amount: 3800, category: "Groceries", currency: "MXN" },
+      { id: "4", date: m(4, 7), amount: 1200, category: "Dining", currency: "MXN" },
+      { id: "5", date: m(6, 7), amount: 1600, category: "Dining", currency: "MXN" },
+    ],
+  });
+  const cs = A.categorySeries(12, 6);
+  ok(cs.months.length >= 3, "covers the active months");
+  eq(cs.cats[0].name, "Groceries", "top category is the highest total");
+  eq(cs.cats[0].values.length, cs.months.length, "one value per month");
+  approx(cs.cats[0].total, 12300, 0.5, "category total sums every month");
 });
 
 /* ---- report ---- */

@@ -40,6 +40,7 @@ const ICON_PATHS = {
   star: '<path d="M12 3.5l2.55 5.2 5.7.85-4.13 4 .98 5.7L12 16.6l-5.08 2.65.98-5.7L3.75 9.55l5.7-.85z"/>',
   edit: '<path d="M4 20h4L18.5 9.5a2 2 0 0 0-2.83-2.83L5 17.2z"/><path d="M13.5 6.7l3.8 3.8"/>',
   x: '<path d="M6 6l12 12M18 6 6 18"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 1.8"/>',
 };
 
 function icon(name, cls) {
@@ -410,6 +411,20 @@ const ACCOUNT_TYPE_META = {
 };
 
 const CHART_COLORS = ["#8fe3a6", "#e5c97b", "#8fc9e3", "#c5b3e6", "#e8a26f", "#9be3d2", "#e3b8cf", "#b8c8e3"];
+
+/* tiny inline sparkline SVG from a list of numbers (green if up, rose if down) */
+function sparkline(values, opts) {
+  opts = opts || {};
+  const W = opts.w || 96, H = opts.h || 22, PAD = 2;
+  const vals = (values || []).filter(v => isFinite(v));
+  if (vals.length < 2) return "";
+  const min = Math.min.apply(null, vals), max = Math.max.apply(null, vals), span = (max - min) || 1, n = vals.length;
+  const pts = vals.map((v, i) =>
+    (PAD + i * (W - 2 * PAD) / (n - 1)).toFixed(1) + "," + (H - PAD - (v - min) / span * (H - 2 * PAD)).toFixed(1)).join(" ");
+  const col = vals[n - 1] >= vals[0] ? "#8fe3a6" : "#e8836f";
+  return '<svg class="spark" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" aria-hidden="true">' +
+    '<polyline points="' + pts + '" fill="none" stroke="' + col + '" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg>';
+}
 
 function ordinal(n) {
   n = Number(n);

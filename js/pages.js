@@ -543,23 +543,47 @@ const Pages = {
     const cur = opts.cur || displayCurrency();
     if (!points || points.length < 2) return '<div class="all-clear" style="color:var(--text-mute)">No price history to chart yet.</div>';
     const cs = points.map(p => p.c);
-    const min = Math.min.apply(null, cs), max = Math.max.apply(null, cs);
+    const n = points.length;
+    // optional benchmark (e.g. S&P 500), resampled to n points and rebased to
+    // this position's starting price so the two lines start together and the
+    // chart reads as relative performance regardless of currency.
+    let bench = null;
+    if (opts.benchmark && opts.benchmark.length >= 2) {
+      const b = opts.benchmark, nb = b.length, base = b[0].c || 1, p0 = cs[0];
+      bench = points.map((p, i) => p0 * (b[Math.round((nb - 1) * (n <= 1 ? 0 : i / (n - 1)))].c / base));
+    }
+    const allV = bench ? cs.concat(bench) : cs;
+    const min = Math.min.apply(null, allV), max = Math.max.apply(null, allV);
     const span = (max - min) || 1;
-    const W = 1000, H = 230, PAD = 10, n = points.length;
+    const W = 1000, H = 230, PAD = 10;
     const X = (i) => PAD + (n <= 1 ? 0 : i * (W - 2 * PAD) / (n - 1));
     const Y = (c) => H - PAD - ((c - min) / span) * (H - 2 * PAD);
     const line = points.map((p, i) => X(i).toFixed(1) + "," + Y(p.c).toFixed(1)).join(" ");
     const area = line + " " + X(n - 1).toFixed(1) + "," + (H - PAD) + " " + X(0).toFixed(1) + "," + (H - PAD);
     const up = cs[n - 1] >= cs[0];
     const col = up ? "#8fe3a6" : "#e8836f";
+    let benchSvg = "", benchLegend = "";
+    if (bench) {
+      const bl = bench.map((c, i) => X(i).toFixed(1) + "," + Y(c).toFixed(1)).join(" ");
+      benchSvg = '<polyline points="' + bl + '" fill="none" stroke="#9aa3b2" stroke-width="1.8" stroke-dasharray="5 4" stroke-linejoin="round"/>';
+      const myRet = cs[0] ? (cs[n - 1] / cs[0] - 1) * 100 : 0;
+      const b0 = opts.benchmark[0].c, bN = opts.benchmark[opts.benchmark.length - 1].c;
+      const bRet = b0 ? (bN / b0 - 1) * 100 : 0;
+      const diff = myRet - bRet;
+      benchLegend = '<div class="comp-legend" style="margin-top:10px">' +
+        '<span class="lg"><span class="dot" style="background:' + col + '"></span>' + esc(opts.symbol || "This position") + " " + fmtPct(myRet, 1) + "</span>" +
+        '<span class="lg"><span class="dot" style="background:#9aa3b2"></span>S&amp;P 500 ' + fmtPct(bRet, 1) + "</span>" +
+        '<span class="lg ' + (diff >= 0 ? "pos" : "neg") + '" style="margin-left:auto">' + (diff >= 0 ? "beating" : "trailing") + " the market by " + Math.abs(diff).toFixed(1) + "%</span></div>";
+    }
     return '<div class="chart-wrap"><svg class="price-chart" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none">' +
       '<defs><linearGradient id="phfill" x1="0" y1="0" x2="0" y2="1">' +
         '<stop offset="0%" stop-color="' + col + '" stop-opacity="0.22"/><stop offset="100%" stop-color="' + col + '" stop-opacity="0"/></linearGradient></defs>' +
       '<polygon points="' + area + '" fill="url(#phfill)"/>' +
+      benchSvg +
       '<polyline points="' + line + '" fill="none" stroke="' + col + '" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>' +
       "</svg>" +
       this._chartHits(points.map(p => ({ tip: fmtDateShort(new Date(p.t)) + " · <strong>" + fmtMoneyIn(p.c, cur) + "</strong>" }))) +
-      "</div>" +
+      "</div>" + benchLegend +
       '<div class="price-scale"><span>' + fmtDateShort(new Date(points[0].t)) + "</span>" +
         '<span>low ' + fmtMoneyIn(min, cur) + " · high " + fmtMoneyIn(max, cur) + "</span>" +
         "<span>" + fmtDateShort(new Date(points[n - 1].t)) + "</span></div>";
@@ -583,12 +607,18 @@ const Pages = {
 
   loadPriceChart(mount) {
     const sym = mount.dataset.symbol, range = mount.dataset.range, cur = mount.dataset.cur;
-    Store.fetchHistory(sym, range).then((data) => {
+    const wantBench = sym !== "^GSPC";
+    Promise.all([
+      Store.fetchHistory(sym, range),
+      wantBench ? Store.fetchHistory("^GSPC", range).catch(() => null) : Promise.resolve(null),
+    ]).then(([data, bench]) => {
       const live = document.getElementById("price-chart");
       if (!live || live.dataset.symbol !== sym || live.dataset.range !== range) return; // re-rendered
       if (data && data.points && data.points.length >= 2) {
-        live.innerHTML = this._priceLineChart(data.points, { cur: cur }) +
-          '<div class="price-source">' + data.points.length + " pts · Yahoo Finance</div>";
+        const opts = { cur: cur, symbol: sym };
+        if (bench && bench.points && bench.points.length >= 2) opts.benchmark = bench.points;
+        live.innerHTML = this._priceLineChart(data.points, opts) +
+          '<div class="price-source">' + data.points.length + " pts · Yahoo Finance" + (opts.benchmark ? " · vs S&amp;P 500" : "") + "</div>";
       } else {
         const l = live.querySelector(".price-loading");
         if (l) l.textContent = "Couldn't load live history (offline or blocked) — showing your cost vs current price.";
@@ -1154,7 +1184,31 @@ const Pages = {
         panel("Spending-health score", "0–100 per month", scoreChart) +
         panel("Savings rate", "share of income kept", saveChart) +
       "</div>" +
+      this._categoryTrends() +
       moversPanel + streaksPanel;
+  },
+
+  /* small-multiple mini bar charts: monthly spend per top category */
+  _categoryTrends() {
+    const cs = categorySeries(12, 6);
+    if (!cs.cats.length || cs.months.length < 2) return "";
+    const cards = cs.cats.map(cat => {
+      const max = Math.max.apply(null, cat.values.concat([1]));
+      const bars = cat.values.map((v, i) =>
+        '<div class="ct-col" data-tip="' + esc(cs.months[i] + " · " + fmtMoney(v, { compact: true })) + '"><div class="ct-bar" style="height:' + Math.max(1.5, v / max * 100).toFixed(1) + '%"></div></div>').join("");
+      const last = cat.values[cat.values.length - 1];
+      const prev = cat.values.slice(0, -1);
+      const avg = prev.length ? prev.reduce((a, b) => a + b, 0) / prev.length : 0;
+      const tone = last > avg * 1.05 ? "neg" : last < avg * 0.95 ? "pos" : "";
+      const arrow = last > avg * 1.05 ? "↑" : last < avg * 0.95 ? "↓" : "→";
+      return '<div class="ct-card"><div class="ct-head">' +
+        '<span class="ct-name">' + icon(cat.meta.icon, "ic-cat") + esc(cat.name) + "</span>" +
+        '<span class="ct-last ' + tone + '">' + arrow + " " + fmtMoney(last, { compact: true }) + "</span></div>" +
+        '<div class="ct-plot">' + bars + "</div></div>";
+    }).join("");
+    return '<div class="panel section"><div class="panel-head"><div class="panel-title">Spending by category</div>' +
+      '<span class="panel-sub">top ' + cs.cats.length + " · last " + cs.months.length + " months</span></div>" +
+      '<div class="ct-grid">' + cards + "</div></div>";
   },
 
   /* paired bars: net income vs spending per month, with a net-savings tooltip */

@@ -72,6 +72,7 @@ const Store = {
     } catch (e) {
       console.error("FinanceOS: failed to load saved data", e);
       this.state = this.defaults();
+      this.loadFailed = true;   // app.init() surfaces this to the user
       return { locked: false };
     }
   },
@@ -139,12 +140,33 @@ const Store = {
         // serialize writes so the last state always wins
         this._saveChain = this._saveChain
           .then(() => this._encryptAndStore(json))
-          .catch(e => console.error("FinanceOS: encrypted save failed", e));
+          .then(() => this._saveOk())
+          .catch(e => { console.error("FinanceOS: encrypted save failed", e); this._saveFailed(e); });
       } else {
         localStorage.setItem(STORAGE_KEY, json);
+        this._saveOk();
       }
+      return true;
     } catch (e) {
       console.error("FinanceOS: failed to save", e);
+      this._saveFailed(e);
+      return false;
+    }
+  },
+
+  _saveOk() { this._saveErrShown = false; },
+
+  /* A failed save means changes live only in memory and will vanish on reload —
+     a real data-loss risk, so tell the user (once, until the next good save). */
+  _saveFailed(e) {
+    if (this._saveErrShown) return;
+    this._saveErrShown = true;
+    const quota = e && (e.name === "QuotaExceededError" || e.code === 22 || /quota|exceeded/i.test(String((e && e.message) || "")));
+    if (typeof UI !== "undefined" && UI.toast) {
+      UI.toast(quota
+        ? "Storage is full — your latest changes may NOT be saved. Export a backup (⋯ menu) and delete old expenses/snapshots."
+        : "Couldn't save your changes on this device — export a backup (⋯ menu) so you don't lose them.",
+        { type: "error", duration: 12000 });
     }
   },
 

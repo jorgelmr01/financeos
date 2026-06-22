@@ -54,13 +54,20 @@ const UI = {
     this._lastFocus = null;
   },
 
-  toast(msg) {
+  /* toast(msg) or toast(msg, "error"|"warn"|"success") or toast(msg, {type,duration}) */
+  toast(msg, opts) {
+    opts = opts || {};
+    if (typeof opts === "string") opts = { type: opts };
+    const type = opts.type || "";
+    const dur = opts.duration || (type === "error" ? 7000 : type === "warn" ? 4800 : 2600);
     const root = document.getElementById("toast-root");
+    if (!root) { if (type === "error") console.error("FinanceOS:", msg); return; }
     const el = document.createElement("div");
-    el.className = "toast";
+    el.className = "toast" + (type ? " " + type : "");
+    el.setAttribute("role", type === "error" ? "alert" : "status");
     el.innerHTML = '<span class="t-dot"></span>' + esc(msg);
     root.appendChild(el);
-    setTimeout(() => { el.classList.add("out"); setTimeout(() => el.remove(), 350); }, 2600);
+    setTimeout(() => { el.classList.add("out"); setTimeout(() => el.remove(), 350); }, dur);
   },
 
   field(label, inputHtml, hint, full, id) {
