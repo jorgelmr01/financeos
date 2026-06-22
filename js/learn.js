@@ -601,18 +601,43 @@ function buildDeck() {
 
 /* ============================== engine ============================== */
 
+/* maps a lesson's feature_app to a page + deep-link label */
+const FEATURE_NAV = {
+  budget: ["budget", "Open Budget"],
+  accounts: ["accounts", "Open Accounts"],
+  goals: ["milestones", "Open Goals"],
+  investments: ["portfolio", "Open Portfolio"],
+  tax: ["earnings", "Open Income & taxes"],
+  debt: ["cards", "Open Credit cards"],
+  retirement: ["retirement", "Open Retirement"],
+};
+
 const Learn = {
   session: null,
+  courseTrack: null,   // open curriculum track id, or null
+  lessonId: null,      // open lesson id, or null
 
   handle(action, el) {
     const id = el ? el.dataset.id : null;
     switch (action) {
-      case "learn-start": this.startScenario(id); break;
+      case "learn-track": this.session = null; this.courseTrack = id; this.lessonId = null; break;
+      case "learn-lesson": this.session = null; this.lessonId = id; break;
+      case "learn-lesson-back": this.lessonId = null; break;
+      case "learn-course-home": this.courseTrack = null; this.lessonId = null; break;
+      case "learn-lesson-done": {
+        const Ls = Store.state.learn; Ls.lessons = Ls.lessons || {}; Ls.lessons[id] = true; Store.save();
+        const lsn = LESSONS.find(x => x.id === id);
+        const arr = lsn ? LESSONS.filter(x => x.track === lsn.track) : [];
+        const pos = arr.findIndex(x => x.id === id);
+        this.lessonId = arr[pos + 1] ? arr[pos + 1].id : null;   // advance, or back to the track list
+        break;
+      }
+      case "learn-start": this.courseTrack = null; this.lessonId = null; this.startScenario(id); break;
       case "learn-choice": this.choose(parseInt(id, 10)); break;
       case "learn-quiz": this.quizPick(parseInt(id, 10)); break;
       case "learn-next": this.next(); break;
       case "learn-exit": this.session = null; break;
-      case "sb-start": this.startSandbox(); break;
+      case "sb-start": this.courseTrack = null; this.lessonId = null; this.startSandbox(); break;
       // rate + preset update in place (no full re-render → no flicker)
       case "sb-rate":
         this.session.rate = parseInt(id, 10);
@@ -829,7 +854,75 @@ const Learn = {
   render() {
     if (this.session && this.session.type === "scenario") return this.renderScenario();
     if (this.session && this.session.type === "sandbox") return this.renderSandbox();
+    if (this.lessonId) return this.renderLesson();
+    if (this.courseTrack) return this.renderTrack();
     return this.renderHome();
+  },
+
+  /* ---------- curriculum (60 lessons) ---------- */
+  _coursePanel() {
+    const done = (Store.state.learn && Store.state.learn.lessons) || {};
+    const tracks = (typeof LESSON_TRACKS !== "undefined" ? LESSON_TRACKS : []).map(tr => {
+      const items = LESSONS.filter(x => x.track === tr.id);
+      const n = items.filter(x => done[x.id]).length;
+      const pct = items.length ? Math.round(n / items.length * 100) : 0;
+      return '<button class="course-track" data-action="learn-track" data-id="' + tr.id + '">' +
+        '<span class="course-ic">' + tr.icon + "</span>" +
+        '<span class="course-tx"><strong>' + esc(tr.title) + "</strong><span>" + esc(tr.blurb) + "</span>" +
+          '<span class="course-prog"><span class="course-bar"><span style="width:' + pct + '%"></span></span>' + n + "/" + items.length + "</span></span>" +
+        '<span class="lsn-row-go">›</span></button>';
+    }).join("");
+    const total = LESSONS.length, totDone = LESSONS.filter(x => done[x.id]).length;
+    return '<div class="panel section"><div class="panel-head"><div class="panel-title">Course · ' + total + " lessons</div>" +
+      '<span class="panel-sub">' + totDone + " done · 3–5 min each</span></div>" +
+      '<p class="method-note" style="margin-bottom:14px">Short, practical lessons in Spanish, made for Mexico — from budgeting to investing and taxes. Each ends with one action to do right here in the app.</p>' +
+      '<div class="course-tracks">' + tracks + "</div></div>";
+  },
+
+  renderTrack() {
+    const tr = (typeof LESSON_TRACKS !== "undefined" ? LESSON_TRACKS : []).find(t => t.id === this.courseTrack);
+    if (!tr) { this.courseTrack = null; return this.renderHome(); }
+    const done = (Store.state.learn && Store.state.learn.lessons) || {};
+    const items = LESSONS.filter(x => x.track === this.courseTrack);
+    const rows = items.map(x => {
+      const d = !!done[x.id];
+      return '<button class="lsn-row' + (d ? " done" : "") + '" data-action="learn-lesson" data-id="' + x.id + '">' +
+        '<span class="lsn-num">' + (d ? "✓" : x.n) + "</span>" +
+        '<span class="lsn-row-tx"><strong>' + esc(x.title) + "</strong><span>" + x.mins + " min" +
+          (x.tags.length ? " · " + esc(x.tags.slice(0, 3).join(", ")) : "") + "</span></span>" +
+        '<span class="lsn-row-go">›</span></button>';
+    }).join("");
+    const cnt = items.filter(x => done[x.id]).length;
+    return '<div class="panel section">' +
+      '<div class="learn-play-head" style="margin-bottom:14px"><button class="btn small ghost" data-action="learn-course-home">← All tracks</button>' +
+        '<span class="micro-label">' + cnt + " / " + items.length + " done</span></div>" +
+      '<div class="course-track-head"><span class="course-ic big">' + tr.icon + "</span>" +
+        "<div><h2>" + esc(tr.title) + "</h2><p>" + esc(tr.blurb) + "</p></div></div>" +
+      '<div class="lsn-list">' + rows + "</div></div>";
+  },
+
+  renderLesson() {
+    const lsn = LESSONS.find(x => x.id === this.lessonId);
+    if (!lsn) { this.lessonId = null; return this.render(); }
+    const tr = (typeof LESSON_TRACKS !== "undefined" ? LESSON_TRACKS : []).find(t => t.id === lsn.track) || { title: "Course" };
+    const done = !!(Store.state.learn && Store.state.learn.lessons && Store.state.learn.lessons[lsn.id]);
+    const arr = LESSONS.filter(x => x.track === lsn.track);
+    const pos = arr.findIndex(x => x.id === lsn.id);
+    const prev = arr[pos - 1], next = arr[pos + 1];
+    const feat = FEATURE_NAV[lsn.feature];
+    const featBtn = feat ? '<button class="btn small" data-action="nav" data-page="' + feat[0] + '">' + feat[1] + " →</button>" : "";
+    const navBtn = (lk, label, before) => lk
+      ? '<button class="btn small ghost" data-action="learn-lesson" data-id="' + lk.id + '">' + (before ? "← " : "") + label + (before ? "" : " →") + "</button>"
+      : "<span></span>";
+    return '<div class="panel section lsn-reader">' +
+      '<div class="learn-play-head" style="margin-bottom:10px"><button class="btn small ghost" data-action="learn-lesson-back">← ' + esc(tr.title) + "</button>" +
+        '<span class="micro-label">Lesson ' + lsn.n + " / " + arr.length + " · " + lsn.mins + " min</span></div>" +
+      '<h1 class="lsn-title">' + esc(lsn.title) + "</h1>" +
+      '<div class="lsn-prose">' + lsn.html + "</div>" +
+      (featBtn ? '<div class="lsn-feature">' + featBtn + "</div>" : "") +
+      '<div class="lsn-foot">' + navBtn(prev, "Prev", true) +
+        '<button class="btn ' + (done ? "" : "primary") + '" data-action="learn-lesson-done" data-id="' + lsn.id + '">' + (done ? "✓ Completed" : "Mark complete") + "</button>" +
+        navBtn(next, "Next", false) + "</div></div>";
   },
 
   renderHome() {
@@ -879,7 +972,7 @@ const Learn = {
         '<button class="btn primary" data-action="sb-start">' + (sb.runs ? "Play again" : "▶ Start the game") + "</button>" +
       "</div>";
 
-    return header + '<div class="learn-grid section">' + cards + "</div>" + sandbox;
+    return header + this._coursePanel() + '<div class="learn-grid section">' + cards + "</div>" + sandbox;
   },
 
   renderScenario() {

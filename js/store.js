@@ -20,7 +20,7 @@ const Store = {
       budgets: {},    // { [category]: { amount, currency } }  — monthly limit per category
       goals: [],      // {id, name, target, saved, targetDate, currency} — savings goals / sinking funds
       snapshots: [],  // [{d: ISO date, usd, liq, inv, debt} — net worth + composition in USD]
-      learn: { scenarios: {}, sandbox: { best: 0, runs: 0 } },
+      learn: { scenarios: {}, sandbox: { best: 0, runs: 0 }, lessons: {} },
       settings: {
         currency: "USD", privacy: false, pinEnabled: false, lastExport: null, theme: "dark",
         fx: null,                 // {base:'USD', rates:{...units per USD}, asOf}
@@ -40,8 +40,9 @@ const Store = {
     if (!Array.isArray(this.state.goals)) this.state.goals = [];
     if (!Array.isArray(this.state.expenses)) this.state.expenses = [];
     if (!this.state.budgets || typeof this.state.budgets !== "object") this.state.budgets = {};
-    this.state.learn = Object.assign({ scenarios: {}, sandbox: {} }, this.state.learn || {});
+    this.state.learn = Object.assign({ scenarios: {}, sandbox: {}, lessons: {} }, this.state.learn || {});
     this.state.learn.sandbox = Object.assign({ best: 0, runs: 0 }, this.state.learn.sandbox || {});
+    if (!this.state.learn.lessons || typeof this.state.learn.lessons !== "object") this.state.learn.lessons = {};
     // migrate pre-multicurrency data: tag entities with the display currency
     const cur = this.state.settings.currency || "USD";
     ["accounts", "cards", "holdings", "incomes", "expenses"].forEach(coll =>
