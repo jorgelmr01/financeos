@@ -1467,91 +1467,103 @@ const Pages = {
 
   /* ================= GUIDE ================= */
   guide() {
-    const card = (glyph, title, items) =>
-      '<div class="guide-card"><div class="guide-glyph">' + glyph + '</div><h3>' + title + "</h3><ul>" +
-      items.map(i => "<li>" + i + "</li>").join("") + "</ul></div>";
+    // why-use-it benefits (snappy)
+    const why = [
+      ["◉", "One clear number", "Accounts, cards, investments, income and budget roll up into a single net-worth figure."],
+      ["✦", "Real taxes & currencies", "After-tax projections, Mexican ISR on real interest, and any mix of currencies at live FX."],
+      ["◔", "Plan the big decisions", "Retirement odds (Monte-Carlo), your FIRE number, and a snowball-vs-avalanche debt plan."],
+      ["⛨", "Totally private", "Everything stays in this browser — no sign-up, no servers, optional PIN encryption."],
+    ].map(b => '<div class="why-card"><span class="why-glyph">' + b[0] + "</span><div><strong>" + b[1] + "</strong><p>" + b[2] + "</p></div></div>").join("");
 
-    const steps =
-      '<div class="panel section guide-intro">' +
-        '<div class="panel-head"><div class="panel-title">Three steps to total clarity</div></div>' +
-        '<div class="guide-steps">' +
-          '<div class="g-step"><span class="step-num">1</span><strong>Add what you have.</strong> Your bank accounts (with their interest rate), credit cards, and the stocks or ETFs you own with the price you paid.</div>' +
-          '<div class="g-step"><span class="step-num">2</span><strong>Add what comes in.</strong> Salaries and any recurring income, each mapped to the account that receives it and the dates it arrives.</div>' +
-          '<div class="g-step"><span class="step-num">3</span><strong>Check in weekly.</strong> Update portfolio prices and card balances. FinanceOS recalculates everything else — interest, returns, alerts and your global standing.</div>' +
-        "</div></div>";
+    const hero =
+      '<div class="panel section guide-hero">' +
+        '<div class="panel-head"><div class="panel-title">Why FinanceOS</div><span class="panel-sub">free · private · no sign-up</span></div>' +
+        '<p class="guide-lede">Your whole financial life on one screen — and the tools to act on it. See what you have, where it’s going, and what’s next, all after tax and in any currency.</p>' +
+        '<div class="why-grid">' + why + "</div>" +
+        '<div class="guide-steps-mini"><span class="micro-label">Get going in 3 steps</span>' +
+          "<ol><li><strong>Add what you have</strong> — accounts (with their rate), cards, holdings.</li>" +
+          "<li><strong>Add what comes in</strong> — salary &amp; recurring income.</li>" +
+          "<li><strong>Check in weekly</strong> — update prices &amp; balances; we recalc the rest.</li></ol></div>" +
+      "</div>";
 
-    const cards =
-      '<div class="guide-grid section">' +
-      card("▤", "Accounts & interest", [
-        "Set the <strong>APY %</strong> on savings accounts and FinanceOS projects daily, monthly and yearly interest automatically.",
-        "Choose how often interest is paid — <strong>daily, monthly, quarterly or annually</strong> — and the exact day it lands. The card shows your next payment and the date it's due.",
-        "The <em>accrued</em> line shows interest earned since you last updated the balance (daily compounding).",
-        "Press <strong>Capitalize</strong> when your bank actually credits the interest — it folds the accrual into the balance.",
-        "Updating a balance resets the accrual clock to today.",
+    // section card: glyph + title + one-line summary + a "See more" disclosure
+    const sec = (glyph, title, summary, detail) =>
+      '<div class="guide-card">' +
+        '<div class="guide-card-head"><span class="guide-glyph">' + glyph + "</span>" +
+          '<div class="guide-card-h"><h3>' + title + '</h3><p class="guide-sum">' + summary + "</p></div></div>" +
+        '<details class="guide-more"><summary>See more</summary><ul>' +
+          detail.map(i => "<li>" + i + "</li>").join("") + "</ul></details>" +
+      "</div>";
+
+    const cards = '<div class="guide-grid section">' +
+      sec("▤", "Accounts & interest", "Balances plus interest that projects and compounds on your schedule.", [
+        "Set the <strong>APY %</strong> on savings and FinanceOS projects daily, monthly and yearly interest automatically.",
+        "Choose how often interest is paid — <strong>daily, monthly, quarterly or annually</strong> — and the exact day; the card shows the next payment.",
+        "The <em>accrued</em> line is interest earned since you last updated the balance. Press <strong>Capitalize</strong> when the bank actually credits it.",
+        "Interest is treated the Mexican way: paid gross, with ISR settled annually on the <strong>real</strong> (above-inflation) portion.",
       ]) +
-      card("▭", "Credit cards", [
-        "<strong>Statement cut</strong> is when the bank closes your bill; <strong>payment due</strong> is the deadline to pay it. FinanceOS counts down to both.",
-        "Alerts fire 5 days before the cut and 7 days before payment is due.",
-        "The colored bar is your <strong>utilization</strong> (balance ÷ limit). Keep it under 30% — it goes gold above 30% and red above 70%.",
-        "Tip: big purchases made right <em>after</em> the cut date give you the longest interest-free period.",
+      sec("▭", "Credit cards & debt payoff", "Utilization, due-date countdowns, and a snowball-vs-avalanche plan.", [
+        "<strong>Statement cut</strong> closes the bill; <strong>payment due</strong> is the deadline. Alerts fire 5 days before the cut and 7 before payment.",
+        "The colored bar is <strong>utilization</strong> (balance ÷ limit) — keep it under 30%; gold above 30%, red above 70%.",
+        "The <strong>payoff planner</strong> compares <strong>avalanche</strong> (highest APR first) vs <strong>snowball</strong> (smallest balance first): months to debt-free, total interest, and which to attack.",
+        "Tip: big purchases right <em>after</em> the cut date give the longest interest-free window.",
       ]) +
-      card("◮", "Portfolio & live prices", [
-        "Add each stock or ETF with the <strong>shares and average price you paid</strong>, in the listing's own currency (US tickers are USD).",
-        "Press <strong>↻ Update prices</strong> to pull live quotes and annual dividends — <strong>no API key needed</strong>. Stocks and ETFs both work: dividends come from the actual payments of the last 12 months (Yahoo data via a public proxy that sees only ticker symbols). An optional free <strong>finnhub.io</strong> key in Settings adds a direct quote source.",
-        "Values and returns are converted to your display currency with daily ECB exchange rates.",
-        "Dividends feed the Earnings page and your annual-earnings milestone automatically. If a ticker still reports no dividend, set <strong>Dividend / share / year</strong> yourself in the position editor (pencil button) — manual values are never overwritten.",
+      sec("◮", "Portfolio & live prices", "Live quotes &amp; dividends (no key) and your return vs the S&amp;P 500.", [
+        "Add each holding with the <strong>shares and average price you paid</strong>, in its listing currency.",
+        "Press <strong>↻ Update prices</strong> for live quotes and annual dividends — <strong>no API key needed</strong> (an optional free finnhub.io key adds a direct source).",
+        "The detail chart overlays the <strong>S&amp;P 500</strong> so you see whether you’re beating the market; a concentration readout flags if your top 3 dominate.",
+        "Values and returns convert to your display currency at daily ECB rates.",
       ]) +
-      card("✦", "Earnings & taxes", [
-        "Income streams support <strong>monthly</strong> (any day), <strong>every 15 days</strong> (15th & month-end), <strong>every 14 days</strong> and <strong>weekly</strong> schedules.",
-        "When adding income, say whether the amount is <strong>gross</strong> (before tax, with your effective rate) or <strong>net</strong> (take-home). Projections and the timeline always show what actually lands.",
-        "Set tax rates for <strong>interest, dividends and capital gains</strong> in Settings — every projection becomes after-tax.",
-        "The 12-month chart projects net scheduled income + net interest + net dividends, prorating the current month.",
+      sec("✦", "Income & taxes", "Gross or net income on any schedule — every projection is after-tax.", [
+        "Schedules: <strong>monthly</strong>, <strong>every 15 days</strong>, <strong>every 14 days</strong> and <strong>weekly</strong>.",
+        "Say whether an amount is <strong>gross</strong> (with your rate) or <strong>net</strong> — the timeline always shows what actually lands.",
+        "Set tax on <strong>interest, dividends and capital gains</strong> in Settings; the 12-month chart projects net income + interest + dividends.",
       ]) +
-      card("◓", "Budget & expenses", [
-        "Hate logging expenses? <strong>Download the spreadsheet template</strong> (Budget → Template), fill it in Excel / Sheets / Numbers, and upload it. Columns are Date, Description, Category, Amount, Currency.",
-        "Even easier: paste the template and your <strong>credit-card statement</strong> into ChatGPT or Claude and ask it to return the rows — the exact prompt is in the Upload dialog. Drop the result under the header and upload.",
-        "<strong>Re-uploading is safe.</strong> FinanceOS fingerprints every row, so importing the same file twice — or overlapping months — never creates duplicates, while genuine same-day repeats are kept.",
-        "You get a <strong>spending-health score</strong> from your savings rate, runway and needs-vs-wants split, plus insights, a 50/30/20 breakdown, and per-category budgets. Set monthly limits with <strong>Set budgets</strong>.",
-        "Switch to <strong>Trends</strong> to compare months: this month vs your trailing average, spending &amp; score charts, the categories you're spending more/less on, and saving streaks.",
-        "Insights default to your most recent <strong>complete</strong> month — the current month is marked <em>“in progress”</em> and its score is paced against the days elapsed, so a few days into a new statement never looks like you suddenly saved a fortune.",
+      sec("◓", "Budget & expenses", "Import a sheet or paste a statement; get a spending-health score.", [
+        "Hate logging? <strong>Download the template</strong> (Budget → Template), fill it in Excel/Sheets, and upload — or paste your statement into ChatGPT/Claude with the built-in prompt.",
+        "<strong>Re-uploading is safe</strong> — every row is fingerprinted, so the same file never double-counts.",
+        "Get a <strong>spending-health score</strong> from your savings rate, runway and needs-vs-wants, a 50/30/20 split, per-category budgets, and a <strong>cash-flow in-vs-out</strong> chart.",
+        "<strong>Trends</strong> compares months: spending &amp; score over time, per-category small-multiples, movers, and streaks.",
       ]) +
-      card("◔", "Charts are interactive", [
-        "<strong>Tap any chart</strong> — bars, the net-worth and price lines, allocation and composition bars — to see the exact value for that point or segment.",
-        "On the <strong>Portfolio</strong>, tap a position for a price chart and full detail; on <strong>Income</strong>, tap a projection bar for that period's breakdown; on <strong>Budget → Trends</strong>, compare months and categories over time.",
+      sec("◔", "Retirement, FIRE & debt", "Project your nest egg with market-risk bands and your FIRE number.", [
+        "Drag <strong>return, years, contributions and withdrawal rate</strong> — the lifetime chart updates live, growing then drawing down.",
+        "The shaded band is a <strong>Monte-Carlo</strong> range across 300 random-market runs; the <strong>success rate</strong> is how often the money outlives the plan. Tune <strong>volatility</strong> to stress-test.",
+        "Your <strong>FIRE number</strong> = annual spending ÷ withdrawal rate (spending auto-fills from your budget and is editable). <strong>Coast FIRE</strong> shows when you can stop saving.",
       ]) +
-      card("◍", "Currencies", [
-        "Every account, card, position and income stream has its <strong>own currency</strong> — mix MXN accounts with USD stocks freely.",
-        "Totals, net worth and charts convert everything to your <strong>display currency</strong> (sidebar selector) using daily ECB rates, refreshed automatically when online.",
-        "Entity cards show the native amount with the converted value underneath.",
-        "Net worth history is stored in USD, so switching display currency never distorts the chart.",
+      sec("◍", "Currencies", "Mix currencies freely; everything converts to your display currency.", [
+        "Every account, card, position and income stream has its <strong>own currency</strong> — MXN accounts and USD stocks live together.",
+        "Totals and charts convert to your <strong>display currency</strong> (sidebar selector) at daily ECB rates; net-worth history is stored in USD so switching never distorts the chart.",
       ]) +
-      card("✺", "Learn", [
-        "Four <strong>interactive modules</strong> mix live calculators (drag a slider, watch compounding, minimum-payment traps or the Rule of 72 react), real decisions with a <strong>10-year impact</strong> meter, and quick knowledge checks.",
-        "The <strong>Wealth Builder sandbox</strong> plays 20 years where crashes, scams, emergencies and job offers interrupt you — each demands a decision with real consequences.",
-        "Balance wealth against the <strong>life-satisfaction meter</strong>: finish burned out and the grade drops. Results show your fortune in today's purchasing power, too.",
-        "Scores earn XP and levels, and three achievements are tied to learning.",
-      ]) +
-      card("✶", "Milestones", [
-        "See your estimated <strong>global percentile</strong> for net worth and total annual earnings (all sources combined).",
+      sec("✶", "Milestones & goals", "Your global percentile, savings goals, and habit achievements.", [
+        "Set <strong>savings goals / sinking funds</strong> with a target and date — FinanceOS shows the monthly amount to get there and your progress.",
+        "See your estimated <strong>global percentile</strong> for net worth and annual earnings (rough public-data estimates, for motivation).",
         "Unlock achievements for healthy habits — low utilization, an emergency fund, a diversified portfolio.",
-        "Percentiles are rough estimates from public global wealth data, for motivation only.",
       ]) +
-      card("⛨", "Keep your data safe", [
-        "Everything lives <strong>only in this browser</strong> — nothing is ever sent anywhere.",
-        "Turn on the <strong>PIN lock</strong> (⋯ menu) to encrypt your data with AES-256. No PIN, no data — so don't forget it.",
-        "Use the <strong>eye button</strong> to blur all amounts when someone's looking over your shoulder.",
-        "Export a <strong>.json backup</strong> regularly (⋯ menu) — backups are unencrypted, store them somewhere safe. Clearing browser data erases the app's storage.",
+      sec("✺", "Learn", "Bite-size interactive lessons plus a 20-year life sandbox.", [
+        "Live calculators (compounding, the minimum-payment trap, the Rule of 72) plus real decisions with a <strong>10-year impact</strong> meter.",
+        "The <strong>Wealth Builder sandbox</strong> plays 20 years where crashes, scams and job offers interrupt you — split your savings across cash, savings, index and a hot stock and live with the results.",
+        "Balance wealth against a <strong>life-satisfaction meter</strong>: finish burned out and the grade drops.",
+      ]) +
+      sec("✧", "Charts are interactive", "Tap anything for the exact value.", [
+        "<strong>Tap any chart</strong> — bars, the net-worth and price lines, allocation and composition bars — for the exact figure at that point.",
+        "On <strong>Portfolio</strong> tap a position for its chart; on <strong>Income</strong> tap a projection bar; on <strong>Budget → Trends</strong> compare months and categories.",
+        "Look for the <strong>“?” chips</strong> next to anything with assumptions — they explain (and often let you change) what’s behind the number.",
+      ]) +
+      sec("⛨", "Privacy & backups", "Local-only, optional AES-256 PIN, and .json export.", [
+        "Everything lives <strong>only in this browser</strong> — nothing is ever uploaded. Errors now surface as on-screen alerts so a failed save or price fetch never passes silently.",
+        "Turn on the <strong>PIN lock</strong> (⋯ menu) to encrypt your data with AES-256 — no PIN, no data, so don’t forget it.",
+        "Use the <strong>eye button</strong> to blur amounts, and export a <strong>.json backup</strong> regularly (backups are unencrypted — store them safely).",
       ]) +
       "</div>";
 
     const faq =
-      '<div class="panel section"><div class="panel-head"><div class="panel-title">Good to know</div></div>' +
-      '<p class="method-note"><strong>Where is my data?</strong> In your browser\'s local storage on this device, under the key <code>financeos_v1</code>. ' +
-      "<strong>Can I move it?</strong> Yes — export on one device, import on another. " +
-      "<strong>What does the currency switch do?</strong> It changes display formatting and the USD conversion used for milestones; it doesn't convert your numbers. " +
-      "<strong>Forgot your PIN?</strong> Encrypted data can't be recovered — use the erase option on the lock screen and import your latest backup.</p></div>";
+      '<details class="panel section guide-faq"><summary><span class="panel-title">Good to know</span></summary>' +
+      '<p class="method-note"><strong>Where is my data?</strong> In this browser’s local storage, key <code>financeos_v1</code>. ' +
+      "<strong>Move it?</strong> Export on one device, import on another. " +
+      "<strong>Currency switch?</strong> Changes display formatting and the USD conversion for milestones; it doesn’t convert your numbers. " +
+      "<strong>Forgot your PIN?</strong> Encrypted data can’t be recovered — erase on the lock screen and import your latest backup.</p></details>";
 
-    return steps + cards + faq;
+    return hero + cards + faq;
   },
 
   /* ================= RETIREMENT ================= */
