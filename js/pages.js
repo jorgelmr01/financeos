@@ -1590,7 +1590,8 @@ const Pages = {
       "<li><strong>Monthly contribution</strong> — what you add to that pot each month until you retire.</li>" +
       "<li><strong>Annual spending in retirement</strong> — what you’ll spend per year once retired; it drives the withdrawals and your FIRE number.</li>" +
       "<li><strong>Years to grow</strong> — years until you retire.</li>" +
-      "<li><strong>Inflation</strong> — how fast prices rise; your spending grows with it so it keeps its buying power.</li>";
+      "<li><strong>Inflation</strong> — how fast prices rise; your spending grows with it so it keeps its buying power.</li>" +
+      "<li><strong>Realistic crashes</strong> — the simulations don’t use endless random volatility. Crashes strike at random but are bounded like history: at most a <strong>55% drop</strong>, no more than <strong>3 down years in a row</strong>, and a <strong>recovery within ~6 years</strong>.</li>";
     const basic =
       "<li><strong>Annual return</strong> — the average yearly growth you expect before and during retirement.</li>" +
       "<li><strong>Withdrawal rate</strong> — the share of the pot you draw in year one (the 4% rule); it rises with inflation after.</li>";
@@ -1676,7 +1677,7 @@ const Pages = {
     });
     const succ = Math.round(mc.successRate * 100);
     const succTone = succ >= 85 ? "pos" : succ >= 60 ? "gold" : "neg";
-    const succHint = this._hint("Across " + mc.runs + " simulated lifetimes, each year's return is drawn at random from a bell curve centred on your " + r.ret + "% return with a ±" + Math.round(mc.vol) + "% yearly swing (a typical diversified-portfolio volatility). Withdrawals still rise every year with " + r.inflation + "% inflation. The success rate is the share of those runs where the money isn't exhausted after " + sim.maxDraw + " years. A smaller withdrawal rate or more years raise it.");
+    const succHint = this._hint("Across " + mc.runs + " random lifetimes, markets follow real-world rules: ordinary years drift around your " + r.ret + "% return, but crashes strike at random — capped at a 55% peak-to-trough drop, no more than 3 straight down years, and a recovery within about 6 years (never an endless slide). Withdrawals rise with " + r.inflation + "% inflation. Success is the share of runs the money outlives " + sim.maxDraw + " years; a smaller withdrawal rate or more years raise it.");
     const stat = (label, val, note, cls) =>
       '<div class="stat"><span class="micro-label">' + label + '</span><div class="stat-value ' + (cls || "") +
       '">' + val + '</div><div class="stat-note">' + note + "</div></div>";
@@ -1706,7 +1707,7 @@ const Pages = {
     const succTone = succ >= 85 ? "pos" : succ >= 60 ? "gold" : "neg";
     const lasts = sim.sustainable ? sim.maxDraw + "+ yrs" : sim.depletedYear + " yr" + (sim.depletedYear === 1 ? "" : "s");
     const stat = (l, v, note, cls) => '<div class="stat"><span class="micro-label">' + l + '</span><div class="stat-value ' + (cls || "") + '">' + v + '</div><div class="stat-note">' + note + "</div></div>";
-    const succHint = this._hint("You grow steadily to retirement, then over a " + sim.maxDraw + "-year retirement we run 300 random markets (equities swing ±16%, bonds ±6%, cash ±1%). Spending rises with inflation; you draw cash → bonds → equities and refill the buffers from stocks only after up years — so you never sell stocks low. Success = the share of runs the money lasts the full " + sim.maxDraw + " years.");
+    const succHint = this._hint("You grow steadily to retirement, then over a " + sim.maxDraw + "-year retirement we run 300 realistic markets: equity crashes hit at random but are capped — at most a 55% drop, no more than 3 down years in a row, and a recovery within ~6 years (bonds & cash wobble mildly). Spending rises with inflation; you draw cash → bonds → equities and refill the buffers from stocks only after up years, so you never sell low. Success = the share of runs the money lasts the full " + sim.maxDraw + " years.");
     const stats = '<div class="grid cols-4 section">' +
       stat("Nest egg at retirement", fmtMoney(sim.nest, { compact: true }), "in " + r.years + " yr · " + fmtMoney(sim.nestReal, { compact: true }) + " today’s pesos", "gold") +
       stat("Annual income", fmtMoney(sim.monthlyIncome * 12, { compact: true }), fmtMoney(r.annualSpend, { compact: true }) + " in today’s pesos", "pos") +
@@ -1715,7 +1716,7 @@ const Pages = {
       "</div>";
     const chart = this._retireChart(sim, r, mc, {
       sub: "grow " + r.years + "y in equities, then a " + r.cashYears + "y cash + " + r.bondYears + "y bond buffer · shaded = likely range",
-      hint: "Solid line = base case with steady returns. Shaded = 10th–90th percentile of 300 runs (equities ±16%, bonds ±6%, cash ±1%). The cash/bond buffers let you avoid selling stocks in down years and refill them after good ones — that compounding shelter is the snowball.",
+      hint: "Solid line = steady base case. Shaded = 10th–90th percentile of 300 runs with realistic markets — equity crashes capped at a 55% drop, ≤3 down years in a row, recovery within ~6 years. The cash/bond buffers let you spend safe assets in a crash and refill from stocks only after they rebound — that shelter is the snowball.",
     });
     return stats + chart + this._bucketPanel(r, sim) + this._strategyCompare(P, r) + this._firePanel(r) + this._bucketNote(sim, r);
   },
@@ -1834,7 +1835,7 @@ const Pages = {
         (band[i] ? " · range " + fmtMoney(band[i].p10, { compact: true }) + "–" + fmtMoney(band[i].p90, { compact: true }) : ""),
     })));
     const chartHint = this._hint(opts.hint ||
-      ("The solid line is the base case (a steady " + r.ret + "% return every year). The shaded band is the 10th–90th percentile of " + ((mc && mc.runs) || 300) + " Monte-Carlo runs where each year's return is random (mean " + r.ret + "%, ±" + Math.round((mc && mc.vol) || 13) + "% volatility) — so in roughly 80% of simulated markets you end each year inside the band. Tap a point for its range."));
+      ("The solid line is the steady base case (a flat " + r.ret + "% return). The shaded band is the 10th–90th percentile of " + ((mc && mc.runs) || 300) + " simulations with realistic markets — crashes hit at random but are capped at a 55% drop, at most 3 down years in a row, and a recovery within ~6 years — so in roughly 80% of those markets you end each year inside the band. Tap a point for its range."));
     const sub = opts.sub || ("grow " + r.years + "y at " + r.ret + "%, then draw " + r.withdraw + "%/yr · shaded = likely range");
     return '<div class="panel section"><div class="panel-head">' +
       '<div class="panel-title">Your money over a lifetime' + chartHint + "</div>" +
@@ -1864,7 +1865,7 @@ const Pages = {
       : "A " + r.withdraw + "% withdrawal rising with " + r.inflation + "% inflation outpaces a " + r.ret +
         "% return, so the base case lasts about <strong>" + sim.depletedYear + " years</strong>. Lower the rate, grow longer, or add monthly contributions to extend it.";
     const risk = succ != null
-      ? " Allowing for real market swings (±" + Math.round(mc.vol) + "% a year), the money outlasts " + sim.maxDraw + " years in <strong class=\"" + (succ >= 85 ? "pos" : succ >= 60 ? "gold" : "neg") + "\">" + succ + "%</strong> of simulated runs."
+      ? " Allowing for realistic crashes (random, but capped at a 55% drop and recovering within ~6 years), the money outlasts " + sim.maxDraw + " years in <strong class=\"" + (succ >= 85 ? "pos" : succ >= 60 ? "gold" : "neg") + "\">" + succ + "%</strong> of simulated runs."
       : "";
     return '<div class="panel section"><div class="panel-head"><div class="panel-title">What this means</div></div>' +
       '<p class="method-note">' + body + risk + " Of the " + fmtMoney(sim.nest, { compact: true }) + " nest egg, " +

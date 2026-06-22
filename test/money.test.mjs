@@ -26,7 +26,7 @@ vm.createContext(ctx);
 const bundle = [read("js/utils.js"), read("js/budget.js"), read("js/statements.js"), read("js/store.js")].join("\n;\n") +
   "\n;globalThis.__api = { interestPerPeriod, nextInterestDate, interestScheduleLabel, interestPeriodDays," +
   " accruedInterest, holdingReturnRate, parseAmount, parseExpenseDate, expenseSig, canonicalCategory," +
-  " earningsBreakdown, retirementProjection, retirementMonteCarlo, retirementBuckets, retirementBucketsMC, realInterestEst, monthlyInterestEst," +
+  " earningsBreakdown, retirementProjection, retirementMonteCarlo, retirementBuckets, retirementBucketsMC, makeEquityMarket, mulberry32, MARKET, realInterestEst, monthlyInterestEst," +
   " convBetween, sparkline, categorySeries, debtPayoff, fmtNumInput, parseNum, budgetSpendEstimate," +
   " toISO, parseISO, daysBetween, todayMid, Statements, INTEREST_FREQ, Store };";
 vm.runInContext(bundle, ctx, { filename: "bundle.js" });
@@ -448,6 +448,26 @@ group("advanced retirement — bucket strategy", () => {
   // spending it down to nothing → not sustainable
   const broke = A.retirementBuckets(Object.assign({}, base, { annualSpend: 3000000 }));
   ok(!broke.sustainable && broke.depletedYear > 0, "an unaffordable spend depletes the pot");
+});
+
+group("market regime model — bounded crashes (locks)", () => {
+  const rng = A.mulberry32(0xC0FFEE);
+  const eq = A.makeEquityMarket(rng, 10);
+  const N = 60000;
+  let logVal = 0, logPeak = 0, maxDD = 0, downRun = 0, maxDownRun = 0, worstYear = 1, sumLog = 0;
+  for (let i = 0; i < N; i++) {
+    const r = eq();
+    worstYear = Math.min(worstYear, r); sumLog += Math.log(1 + r);
+    downRun = r < 0 ? downRun + 1 : 0; maxDownRun = Math.max(maxDownRun, downRun);
+    logVal += Math.log(1 + r);
+    if (logVal >= logPeak) logPeak = logVal;
+    maxDD = Math.max(maxDD, 1 - Math.exp(logVal - logPeak));
+  }
+  ok(maxDownRun <= A.MARKET.maxDecline, "never more than maxDecline down years in a row (got " + maxDownRun + ")");
+  ok(maxDD <= A.MARKET.maxLoss + 1e-9, "peak-to-trough loss never exceeds maxLoss (got " + (maxDD * 100).toFixed(1) + "%)");
+  ok(worstYear >= -A.MARKET.maxYearDrop - 1e-9, "no single year falls past maxYearDrop");
+  // mean-preserving: the long-run geometric return tracks the assumed return
+  approx((Math.exp(sumLog / N) - 1) * 100, 10, 0.8, "long-run return ≈ the assumed mean");
 });
 
 /* ---- report ---- */

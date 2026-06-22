@@ -811,15 +811,87 @@ function randNormal(rng) {
   return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
 }
 
+/* ---------- market regime model ----------
+   Real markets don't fall i.i.d. forever. Crashes are random in WHEN they hit
+   and how deep, but bounded by what history actually shows: no long unbroken
+   slide, a capped peak-to-trough loss, and a return to the prior level within
+   roughly half a decade. We model equities as ordinary drift years punctuated
+   by bear episodes that obey those caps and are (near) drift-preserving, so the
+   long-run average still tracks your assumed return. The randomness lives in
+   the triggers, depth and duration; the LOCKS are the maxima below. */
+const MARKET = {
+  pBear: 0.13,          // chance a bear starts in a given year (~1 every 8 yrs)
+  minLoss: 0.20,        // a "bear" is at least a 20% drop
+  maxLoss: 0.55,        // deepest peak-to-trough a crash can reach
+  maxDecline: 3,        // most consecutive down years
+  maxBear: 6,           // most years from the crash's start back to the prior level
+  maxYearDrop: 0.35,    // no single year falls more than this
+  maxYearGain: 0.90,    // and no single rebound year gains more than this
+  normalVol: 0.10,      // ordinary-year wobble (real crashes come from bear episodes)
+  normalFloor: -0.12,   // an ordinary (non-bear) year never falls more than this
+};
+
+/* equities: drift years + capped bear episodes. A stateful generator (call once
+   per year) that tracks its running peak and HARD-enforces the locks: never
+   more than maxDecline straight down years, never a peak-to-trough loss past
+   maxLoss, and a forced climb back if it's been underwater longer than maxBear.
+   Shares the seeded rng so runs stay deterministic. */
+function makeEquityMarket(rng, meanPct) {
+  const mean = (Number(meanPct) || 0) / 100, drift = 1 + mean;
+  const floorLog = Math.log(1 - MARKET.maxLoss);
+  let queue = [], logVal = 0, logPeak = 0, underwater = 0, downRun = 0;
+  function emit(r) {
+    if (downRun >= MARKET.maxDecline && r < 0) r = 0;                 // no long unbroken slide
+    if (r < -MARKET.maxYearDrop) r = -MARKET.maxYearDrop;             // no brutal single year
+    if (r > MARKET.maxYearGain) r = MARKET.maxYearGain;
+    let nl = logVal + Math.log(1 + r);
+    if (nl < logPeak + floorLog) { nl = logPeak + floorLog; r = Math.exp(nl - logVal) - 1; }  // drawdown lock
+    logVal = nl;
+    if (logVal >= logPeak) { logPeak = logVal; underwater = 0; } else underwater++;
+    downRun = r < 0 ? downRun + 1 : 0;
+    return r;
+  }
+  return function () {
+    if (underwater >= MARKET.maxBear) {                              // recover within the window
+      queue = [];
+      return emit(Math.exp(Math.min(logPeak + Math.log(drift) - logVal, Math.log(1 + MARKET.maxYearGain))) - 1);
+    }
+    if (!queue.length && rng() < MARKET.pBear) {
+      const depth = MARKET.minLoss + rng() * (MARKET.maxLoss - MARKET.minLoss);
+      const trough = 1 - depth;
+      let decl = 1 + Math.floor(rng() * MARKET.maxDecline);
+      decl = Math.min(MARKET.maxDecline, Math.max(decl, Math.ceil(Math.log(trough) / Math.log(1 - MARKET.maxYearDrop))));
+      let rec = Math.max(2, Math.min(MARKET.maxBear - decl, 2 + Math.floor(rng() * Math.max(1, MARKET.maxBear - decl - 1))));
+      const declF = Math.pow(trough, 1 / decl);
+      const recF = Math.min(1 + MARKET.maxYearGain, Math.pow(Math.pow(drift, decl + rec) / trough, 1 / rec));
+      for (let i = 0; i < decl; i++) queue.push(declF - 1);
+      for (let i = 0; i < rec; i++) queue.push(recF - 1);
+    }
+    let raw;
+    if (queue.length) raw = queue.shift();
+    else { raw = mean + MARKET.normalVol * randNormal(rng); if (raw < MARKET.normalFloor) raw = MARKET.normalFloor; }
+    return emit(raw);
+  };
+}
+
+/* bonds & cash: bounded mild noise around their mean, no crash regime */
+function makeMildMarket(rng, meanPct, vol) {
+  const m = (Number(meanPct) || 0) / 100, v = Math.max(0.0001, vol);
+  return function () {
+    let r = m + v * randNormal(rng);
+    return Math.max(m - 3 * v, Math.min(m + 3 * v, r));
+  };
+}
+
 /* Monte-Carlo retirement: same two phases as retirementProjection but with
-   random annual returns ~ N(ret, vol). Returns a per-year p10/p50/p90 balance
-   band (the cone of outcomes) and the share of runs whose money outlives the
-   horizon (success rate). Seeded → deterministic and testable. */
+   realistic random markets (the regime model above — random crash triggers and
+   durations, but capped depth/length). Returns a per-year p10/p50/p90 balance
+   band and the share of runs whose money outlives the horizon (success rate).
+   Seeded → deterministic and testable. */
 function retirementMonteCarlo(p) {
   p = p || {};
   const start = Math.max(0, Number(p.start) || 0);
-  const ret = (Number(p.ret) || 0) / 100;
-  const vol = Math.max(0.0001, (p.vol != null ? Number(p.vol) : 12) / 100);
+  const retPct = Number(p.ret) || 0;
   const years = Math.max(0, Math.round(Number(p.years) || 0));
   const contrib = Math.max(0, Number(p.contrib) || 0) * 12;
   const wd = Math.max(0, Number(p.withdraw) || 0) / 100;
@@ -832,14 +904,12 @@ function retirementMonteCarlo(p) {
   for (let y = 0; y <= totalYears; y++) cols.push([]);
   let survived = 0;
   for (let run = 0; run < runs; run++) {
+    const mkt = makeEquityMarket(rng, retPct);
     let bal = start; cols[0].push(bal);
-    for (let y = 1; y <= years; y++) {
-      bal = bal * (1 + ret + vol * randNormal(rng)) + contrib;
-      cols[y].push(Math.max(0, bal));
-    }
+    for (let y = 1; y <= years; y++) { bal = bal * (1 + mkt()) + contrib; cols[y].push(Math.max(0, bal)); }
     let draw = bal * wd, alive = true;
     for (let y = 1; y <= maxDraw; y++) {
-      bal = bal * (1 + ret + vol * randNormal(rng)) - draw;
+      bal = bal * (1 + mkt()) - draw;
       if (bal <= 0) { bal = 0; alive = false; }
       cols[years + y].push(Math.max(0, bal));
       draw = draw * (1 + infl);
@@ -854,7 +924,7 @@ function retirementMonteCarlo(p) {
   return {
     band: cols.map((arr, y) => ({ year: y, p10: quant(arr, 0.1), p50: quant(arr, 0.5), p90: quant(arr, 0.9) })),
     successRate: runs ? survived / runs : 0,
-    runs, vol: vol * 100,
+    runs, model: "regime",
   };
 }
 
@@ -864,16 +934,17 @@ function retirementMonteCarlo(p) {
    retirement year spend from cash → bonds → equities; grow each sleeve at its
    own return; and after an UP equity year, refill the cash/bond buffers from
    equities (the classic "bucket"/snowball that shields stocks from forced
-   selling in downturns). noise(cls) adds a random yearly delta per sleeve (0 for
-   the deterministic base case). */
-function _simBuckets(p, noise) {
-  noise = noise || function () { return 0; };
+   selling in downturns). `market` supplies each retirement year's return per
+   sleeve: { eq(), bond(), cash() }. Default = flat returns (the deterministic
+   base case); the MC passes the regime model so crashes are realistic. */
+function _simBuckets(p, market) {
+  const eqR = (Number(p.eqRet) || 0) / 100, bdR = (Number(p.bondRet) || 0) / 100, csR = (Number(p.cashRet) || 0) / 100;
+  market = market || { eq: function () { return eqR; }, bond: function () { return bdR; }, cash: function () { return csR; } };
   const start = Math.max(0, Number(p.start) || 0);
   const contribA = Math.max(0, Number(p.contrib) || 0) * 12;
   const years = Math.max(0, Math.round(Number(p.years) || 0));
   const infl = (Number(p.inflation) || 0) / 100;
   const spend0 = Math.max(0, Number(p.annualSpend) || 0);
-  const eqR = (Number(p.eqRet) || 0) / 100, bdR = (Number(p.bondRet) || 0) / 100, csR = (Number(p.cashRet) || 0) / 100;
   const cashYears = Math.max(0, Number(p.cashYears) || 0);
   const bondYears = Math.max(0, Number(p.bondYears) || 0);
   const maxDraw = Math.max(1, Math.round(Number(p.maxDraw) || 50));
@@ -896,9 +967,9 @@ function _simBuckets(p, noise) {
     if (need > 0) { t = Math.min(bond, need); bond -= t; need -= t; }
     if (need > 0) { t = Math.min(eq, need); eq -= t; need -= t; }
     const shortfall = need > 0.005;
-    const eqG = eqR + noise("eq");
-    cash = Math.max(0, cash * (1 + csR + noise("cash")));
-    bond = Math.max(0, bond * (1 + bdR + noise("bond")));
+    const eqG = market.eq();
+    cash = Math.max(0, cash * (1 + market.cash()));
+    bond = Math.max(0, bond * (1 + market.bond()));
     eq = Math.max(0, eq * (1 + eqG));
     // refill: top cash from bonds first (safe→safe); only tap equities after an
     // up year, so stocks are never sold low — the buffer's whole point.
@@ -939,14 +1010,15 @@ function retirementBucketsMC(p) {
   const runs = Math.max(50, Math.round(Number(p.runs) || 300));
   const years = Math.max(0, Math.round(Number(p.years) || 0));
   const maxDraw = Math.max(1, Math.round(Number(p.maxDraw) || 50));
-  const vol = { eq: (p.eqVol != null ? p.eqVol : 16) / 100, bond: (p.bondVol != null ? p.bondVol : 6) / 100, cash: (p.cashVol != null ? p.cashVol : 1) / 100 };
+  const bondVol = (p.bondVol != null ? p.bondVol : 6) / 100, cashVol = (p.cashVol != null ? p.cashVol : 1) / 100;
   const rng = mulberry32(0x5bd1e995);
-  const noise = cls => vol[cls] * randNormal(rng);
   const totalYears = years + maxDraw;
   const cols = []; for (let y = 0; y <= totalYears; y++) cols.push([]);
   let survived = 0;
   for (let run = 0; run < runs; run++) {
-    const r = _simBuckets(p, noise);
+    // equities follow the regime model (capped crashes); bonds & cash are mild
+    const market = { eq: makeEquityMarket(rng, p.eqRet), bond: makeMildMarket(rng, p.bondRet, bondVol), cash: makeMildMarket(rng, p.cashRet, cashVol) };
+    const r = _simBuckets(p, market);
     for (let y = 0; y <= totalYears; y++) { const pt = r.pts[y]; cols[y].push(pt ? pt.bal : 0); }
     if (r.depleted == null) survived++;
   }
