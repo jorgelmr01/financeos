@@ -27,7 +27,7 @@ const bundle = [read("js/utils.js"), read("js/budget.js"), read("js/statements.j
   "\n;globalThis.__api = { interestPerPeriod, nextInterestDate, interestScheduleLabel, interestPeriodDays," +
   " accruedInterest, holdingReturnRate, parseAmount, parseExpenseDate, expenseSig, canonicalCategory," +
   " earningsBreakdown, retirementProjection, retirementMonteCarlo, retirementBuckets, retirementBucketsMC, makeEquityMarket, mulberry32, MARKET, realInterestEst, monthlyInterestEst," +
-  " convBetween, sparkline, categorySeries, debtPayoff, detectRecurring, cashflowForecast, buroScore, fmtNumInput, parseNum, budgetSpendEstimate," +
+  " convBetween, sparkline, categorySeries, debtPayoff, detectRecurring, cashflowForecast, buroScore, investReadiness, fmtNumInput, parseNum, budgetSpendEstimate," +
   " toISO, parseISO, daysBetween, todayMid, Statements, INTEREST_FREQ, Store };";
 vm.runInContext(bundle, ctx, { filename: "bundle.js" });
 const A = ctx.__api;
@@ -583,6 +583,49 @@ group("credit-score simulator — Buró proxy", () => {
   const clean = A.buroScore({ util: 0.2, onTimeMonths: 24, lates: 0, ageYears: 4, products: 2, inquiries: 0 });
   const late = A.buroScore({ util: 0.2, onTimeMonths: 24, lates: 1, ageYears: 4, products: 2, inquiries: 0 });
   ok(clean.score - late.score >= 25, "one late payment costs real points");
+});
+
+group("invest readiness — the beginner order of operations", () => {
+  const mk = (mm) => "2026-" + String(mm).padStart(2, "0") + "-05";
+  const months = [1, 2, 3, 4].map((m, i) => ({ id: "e" + i, date: mk(m), amount: 15000, category: "Rent", currency: "MXN" }));
+  // not ready: thin cushion + costly card debt
+  resetStore({
+    settings: { currency: "MXN", fx: null, tax: {} },
+    accounts: [{ id: "s", type: "savings", balance: 5000, currency: "MXN" }],
+    cards: [{ id: "k", name: "Card", balance: 18000, apr: 42, limit: 30000, currency: "MXN" }],
+    holdings: [], incomes: [], budgets: {}, snapshots: [], expenses: months,
+  });
+  const a = A.investReadiness();
+  approx(a.monthlySpend, 15000, 1, "monthly spend comes from the budget");
+  ok(!a.fundOk, "0.3 months of savings fails the 3-month cushion");
+  ok(!a.debtOk && a.highDebt === 18000, "flags the 42% card as high-interest debt");
+  ok(!a.ready, "not ready while either gate is open");
+  ok(a.suggest >= 500, "still suggests a sensible first contribution");
+
+  // ready: a real cushion and no costly debt
+  resetStore({
+    settings: { currency: "MXN", fx: null, tax: {} },
+    accounts: [{ id: "s", type: "savings", balance: 60000, currency: "MXN" }],
+    cards: [{ id: "k", name: "Card", balance: 0, apr: 42, limit: 30000, currency: "MXN" }],
+    holdings: [], incomes: [], budgets: {}, snapshots: [], expenses: months,
+  });
+  const b = A.investReadiness();
+  ok(b.fundOk && b.debtOk && b.ready, "4 months saved + no costly debt → ready");
+  approx(b.monthsCovered, 4, 0.01, "reports months of cushion");
+
+  // a low-APR card is not a blocker
+  resetStore({
+    settings: { currency: "MXN", fx: null, tax: {} },
+    accounts: [{ id: "s", type: "savings", balance: 60000, currency: "MXN" }],
+    cards: [{ id: "k", name: "Card", balance: 9000, apr: 9, limit: 30000, currency: "MXN" }],
+    holdings: [], incomes: [], budgets: {}, snapshots: [], expenses: months,
+  });
+  ok(A.investReadiness().debtOk, "sub-15% APR debt doesn't block investing");
+
+  // no data → graceful, never ready
+  resetStore();
+  const c = A.investReadiness();
+  ok(!c.ready && c.monthsCovered == null && c.suggest > 0, "no data degrades gracefully");
 });
 
 /* ---- report ---- */

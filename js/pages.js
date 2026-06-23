@@ -507,11 +507,59 @@ const Pages = {
   },
 
   /* ================= PORTFOLIO ================= */
+
+  /* Guided "start investing" flow for beginners — checks the order of operations
+     (emergency fund → kill high-interest debt → invest) against the person's
+     real numbers, then lays out a simple, Mexico-specific starter plan. */
+  _startInvestingPanel() {
+    if (typeof investReadiness !== "function") return "";
+    const r = investReadiness();
+    const cur = displayCurrency();
+    // ---- readiness gates ----
+    const gate = (ok, title, body, cls) =>
+      '<div class="si-gate ' + (ok ? "ok" : (cls || "todo")) + '">' +
+      '<span class="si-check">' + (ok ? "✓" : "•") + "</span>" +
+      '<div><div class="si-gate-title">' + title + '</div><div class="si-gate-body">' + body + "</div></div></div>";
+    const fundBody = r.monthsCovered != null
+      ? "You have " + fmtMoney(r.fund, { compact: true }) + " in savings — about <strong>" + r.monthsCovered.toFixed(1) + " month" + (Math.abs(r.monthsCovered - 1) < 0.05 ? "" : "s") + "</strong> of spending. " +
+        (r.fundOk ? "That covers the 3-month cushion." : "Aim for " + fmtMoney(r.fundTarget, { compact: true }) + " (3 months) before investing.")
+      : (r.hasBudget ? "Log a savings account so we can size your cushion." : "Add a few budget months and a savings account so we can size your cushion.");
+    const debtBody = r.debtOk
+      ? "No high-interest card debt — nothing eating your returns."
+      : "You owe " + fmtMoney(r.highDebt, { compact: true }) + " on cards above 15% APR. Paying that off is a <strong>guaranteed</strong> return no investment reliably beats — clear it first.";
+    const gates = '<div class="si-gates">' +
+      gate(r.fundOk, "Emergency fund first", fundBody) +
+      gate(r.debtOk, "Clear high-interest debt", debtBody, "warn") +
+      "</div>";
+    // ---- the plan ----
+    const step = (n, title, body) =>
+      '<div class="si-step"><span class="si-num">' + n + '</span><div><div class="si-step-title">' + title + "</div>" +
+      '<div class="si-step-body">' + body + "</div></div></div>";
+    const plan =
+      '<div class="si-plan section">' +
+      step(1, "Open a low-cost brokerage", "In Mexico you can start with little: <strong>CetesDirecto</strong> (government CETES, no commissions) for safe yield, or a broker like GBM+, Kuspit or Bursanet for funds and ETFs.") +
+      step(2, "Buy one broad index fund", "Don’t pick individual stocks to start. A single fund that tracks a wide market (an S&P 500 or global index instrument) gives you instant diversification for one low fee.") +
+      step(3, "Automate " + fmtMoney(r.suggest, { compact: true }) + "/mo", "Set an automatic monthly contribution — even " + fmtMoney(r.suggest, { compact: true }) + " (~10% of your spending). Investing the same amount every month means you buy more when prices are low, less when high.") +
+      step(4, "Use a PPR for retirement", "A <strong>Plan Personal de Retiro</strong> (PPR) is deductible from your ISR up to the legal cap — the government effectively co-funds your retirement savings. Worth it once the basics above are covered.") +
+      step(5, "Then leave it alone", "The market wobbles; that’s normal. Buying and holding a diversified fund for years is what builds wealth — not trading. Don’t sell in a crash.") +
+      "</div>";
+    const verdict = r.ready
+      ? '<div class="si-verdict pos">You’re ready. Your cushion is set and no costly debt is in the way — start with step 1 below.</div>'
+      : '<div class="si-verdict gold">Build the foundation first (the unchecked steps above), then come back — the plan below is waiting.</div>';
+    return '<div class="panel section"><div class="panel-head"><div class="panel-title">New to investing? Start here</div>' +
+      '<span class="panel-sub">a beginner’s order of operations · ' + cur + "</span></div>" +
+      verdict + gates + plan +
+      '<div class="si-foot"><button class="btn small ghost" data-action="nav" data-page="learn">Learn the basics →</button>' +
+      '<button class="btn small ghost" data-action="nav" data-page="budget">Check my budget →</button></div>' +
+      '<p class="method-note" style="margin-top:12px">Educational guidance, not personalized investment advice. Names are common Mexican options, not endorsements.</p></div>';
+  },
+
   portfolio() {
     const s = Store.state;
     if (!s.holdings.length) {
-      return '<div class="section"><div class="empty"><div class="empty-glyph">' + icon("growth") + '</div>' +
-        "<h3>No positions yet</h3><p>Add the stocks and ETFs you own with the price you paid. FinanceOS computes your returns as you update prices.</p>" +
+      return this._startInvestingPanel() +
+        '<div class="section"><div class="empty"><div class="empty-glyph">' + icon("growth") + '</div>' +
+        "<h3>Already investing?</h3><p>Add the stocks and ETFs you own with the price you paid, and FinanceOS computes your returns as you update prices.</p>" +
         '<button class="btn primary" data-action="add-holding">+ Add your first position</button></div></div>';
     }
     // per-stock detail view

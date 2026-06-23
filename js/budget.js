@@ -487,6 +487,36 @@ function buroScore(inp) {
   return { score: score, band: band, tone: tone, factors: factors, topAction: topAction, min: 400, max: 850 };
 }
 
+/* Are you ready to start investing? The beginner order of operations: first a
+   cash emergency fund, then clear high-interest (card) debt — a guaranteed
+   return no investment beats — and only then invest. Reads the real accounts,
+   cards and budget so the advice is grounded in this person's numbers. */
+function investReadiness() {
+  const t = computeTotals();
+  const est = (typeof budgetSpendEstimate === "function") ? budgetSpendEstimate() : { annual: 0, months: 0 };
+  const monthlySpend = est.annual > 0 ? est.annual / 12 : 0;
+  const fund = t.savings;                                   // liquid emergency savings
+  const monthsCovered = monthlySpend > 0 ? fund / monthlySpend : null;
+  const targetMonths = 3;
+  const fundTarget = monthlySpend * targetMonths;
+  const fundOk = monthsCovered != null ? monthsCovered >= targetMonths : fund > 0;
+  // high-interest debt (cards) is a guaranteed "return" — pay it before investing
+  const HIGH = 15;
+  let highDebt = 0;
+  (Store.state.cards || []).forEach(c => {
+    if ((Number(c.apr) || 0) >= HIGH && (Number(c.balance) || 0) > 0) highDebt += conv(Number(c.balance) || 0, c.currency);
+  });
+  const debtOk = highDebt <= 0.005;
+  const ready = fundOk && debtOk;
+  // a sensible first monthly contribution: ~10% of monthly spend, with a floor
+  const suggest = monthlySpend > 0 ? Math.max(500, Math.round(monthlySpend * 0.1 / 100) * 100) : 1000;
+  return {
+    monthlySpend: monthlySpend, fund: fund, monthsCovered: monthsCovered,
+    fundTarget: fundTarget, fundOk: fundOk, highDebt: highDebt, debtOk: debtOk,
+    ready: ready, suggest: suggest, hasBudget: est.months > 0, targetMonths: targetMonths,
+  };
+}
+
 /* Consistency streaks, counting back from the most recent month with data. */
 function budgetStreaks() {
   const s = budgetSeries(null).filter(m => m.hasData && m.complete);
