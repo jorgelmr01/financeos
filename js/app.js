@@ -13,6 +13,7 @@ const App = {
   debtMethod: "avalanche", // debt-payoff strategy: "avalanche" | "snowball"
   debtBudget: null,    // monthly payment budget for the payoff calculator
   buro: null,          // self-reported inputs for the credit-score simulator
+  irreg: null,         // inputs for the irregular-income planner
 
   PAGE_META: {
     overview:   { title: "Today",        actions: "" },
@@ -50,6 +51,22 @@ const App = {
       lates:        { label: "Late payments (last 2 years)", hint: "Any payment 30+ days late that got reported." },
       ageYears:     { label: "Oldest account age (years)", hint: "Age of your longest-held credit line." },
       inquiries:    { label: "Hard inquiries (last 12 months)", hint: "New-credit applications that pulled your report." },
+    };
+  },
+
+  /* metadata + sensible defaults for the irregular-income planner, seeded from
+     the user's scheduled income and budget spend where available */
+  irregDefaults() {
+    if (!this.irreg) {
+      const eb = (typeof earningsBreakdown === "function") ? earningsBreakdown() : { monthlyNet: 0 };
+      const spend = (typeof budgetSpendEstimate === "function") ? Math.round(budgetSpendEstimate().annual / 12) : 0;
+      const high = Math.round(eb.monthlyNet) || (spend ? Math.round(spend * 1.5) : 0);
+      this.irreg = { low: Math.round(high * 0.6), high: high, essentials: spend };
+    }
+    return {
+      low:        { label: "A lean month (net)", hint: "What you bring home in a slow month." },
+      high:       { label: "A good month (net)", hint: "What you bring home in a strong month." },
+      essentials: { label: "Essential spending / mo", hint: "Rent, food, transport, minimums — the must-pays." },
     };
   },
 
@@ -571,6 +588,15 @@ const App = {
         this.buro[bi.dataset.bk] = parseNum(bi.value);
         const out = document.getElementById("buro-out");
         if (out) out.innerHTML = Pages.buroOutput();
+      }
+
+      /* irregular-income planner: live recompute on any input */
+      const ii = e.target.closest(".irreg-input");
+      if (ii) {
+        this.irregDefaults();
+        this.irreg[ii.dataset.ik] = parseNum(ii.value);
+        const out = document.getElementById("irreg-out");
+        if (out) out.innerHTML = Pages.irregularOutput();
       }
     });
 

@@ -27,7 +27,7 @@ const bundle = [read("js/utils.js"), read("js/budget.js"), read("js/statements.j
   "\n;globalThis.__api = { interestPerPeriod, nextInterestDate, interestScheduleLabel, interestPeriodDays," +
   " accruedInterest, holdingReturnRate, parseAmount, parseExpenseDate, expenseSig, canonicalCategory," +
   " earningsBreakdown, retirementProjection, retirementMonteCarlo, retirementBuckets, retirementBucketsMC, makeEquityMarket, mulberry32, MARKET, realInterestEst, monthlyInterestEst," +
-  " convBetween, sparkline, categorySeries, debtPayoff, detectRecurring, cashflowForecast, buroScore, investReadiness, fmtNumInput, parseNum, budgetSpendEstimate," +
+  " convBetween, sparkline, categorySeries, debtPayoff, detectRecurring, cashflowForecast, buroScore, investReadiness, irregularIncomePlan, fmtNumInput, parseNum, budgetSpendEstimate," +
   " toISO, parseISO, daysBetween, todayMid, Statements, INTEREST_FREQ, Store };";
 vm.runInContext(bundle, ctx, { filename: "bundle.js" });
 const A = ctx.__api;
@@ -626,6 +626,30 @@ group("invest readiness — the beginner order of operations", () => {
   resetStore();
   const c = A.investReadiness();
   ok(!c.ready && c.monthsCovered == null && c.suggest > 0, "no data degrades gracefully");
+});
+
+group("irregular-income planner — budget the lean month", () => {
+  const p = A.irregularIncomePlan({ low: 12000, high: 30000, essentials: 14000 });
+  eq(p.baseline, 12000, "you budget to the lean month, not the average");
+  approx(p.volatility, 0.6, 1e-9, "income swing = (high − low) / high");
+  eq(p.goodMonthSave, 16000, "a good month can stash high − essentials");
+  eq(p.bufferTarget, 42000, "smoothing fund = max(3× essentials, 6× lean gap)");
+  eq(p.monthsToBuffer, 3, "good-month savings build the fund in ceil(target / save)");
+  ok(!p.coversEssentials, "a lean month below essentials is flagged");
+  eq(p.leanGap, 2000, "reports the lean-month shortfall");
+
+  // a steady income → low volatility, lean month covers the basics
+  const steady = A.irregularIncomePlan({ low: 20000, high: 22000, essentials: 15000 });
+  ok(steady.volatility < 0.15 && steady.coversEssentials, "near-steady income is recognised");
+
+  // a good month that can't beat essentials can't build the fund
+  const stuck = A.irregularIncomePlan({ low: 5000, high: 12000, essentials: 14000 });
+  eq(stuck.goodMonthSave, 0, "no surplus when even a good month is below essentials");
+  eq(stuck.monthsToBuffer, null, "can't build a buffer with nothing to stash");
+
+  // garbage in → safe zeros, no NaN
+  const z = A.irregularIncomePlan({});
+  ok(z.baseline === 0 && z.bufferTarget === 0 && isFinite(z.volatility), "empty input degrades to zeros");
 });
 
 /* ---- report ---- */

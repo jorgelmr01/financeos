@@ -517,6 +517,32 @@ function investReadiness() {
   };
 }
 
+/* Budgeting on an irregular income (freelancers, students, commission work).
+   The rule: budget to your LEAN month, sweep the surplus from good months into a
+   smoothing fund, and draw from it when income dips — so a slow month never
+   wrecks you. Pure & testable. low/high = a lean and a good month's net income;
+   essentials = the minimum you must spend each month. */
+function irregularIncomePlan(p) {
+  const low = Math.max(0, Number(p.low) || 0);
+  const high = Math.max(0, Number(p.high) || 0);
+  const essentials = Math.max(0, Number(p.essentials) || 0);
+  const avg = (low + high) / 2;
+  const volatility = high > 0 ? Math.max(0, (high - low) / high) : 0;   // 0 = steady, →1 = wild
+  const baseline = low;                                                  // budget to the lean month
+  const leanGap = Math.max(0, essentials - low);                        // shortfall in a lean month
+  // target smoothing fund: 3 months of essentials, or 6 lean-month shortfalls,
+  // whichever is larger — bumpier income needs a deeper buffer
+  const bufferTarget = Math.max(essentials * 3, leanGap * 6);
+  const goodMonthSave = Math.max(0, high - essentials);                 // stashable in a good month
+  const monthsToBuffer = goodMonthSave > 0 ? Math.ceil(bufferTarget / goodMonthSave) : null;
+  const coversEssentials = low >= essentials;                           // does even a lean month cover the basics?
+  return {
+    low: low, high: high, essentials: essentials, avg: avg, volatility: volatility,
+    baseline: baseline, leanGap: leanGap, bufferTarget: bufferTarget,
+    goodMonthSave: goodMonthSave, monthsToBuffer: monthsToBuffer, coversEssentials: coversEssentials,
+  };
+}
+
 /* Consistency streaks, counting back from the most recent month with data. */
 function budgetStreaks() {
   const s = budgetSeries(null).filter(m => m.hasData && m.complete);

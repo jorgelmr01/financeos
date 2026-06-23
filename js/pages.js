@@ -1248,7 +1248,43 @@ const Pages = {
 
     return controls + hero + stats +
       '<div class="grid cols-2 stack-wide section" style="align-items:start">' + catPanel + insightPanel + "</div>" +
-      this._recurringPanel() + bucketPanel + listPanel;
+      this._recurringPanel() + this._irregularPanel() + bucketPanel + listPanel;
+  },
+
+  /* irregular-income planner — budget to the lean month, smooth the rest */
+  _irregularPanel() {
+    if (typeof irregularIncomePlan !== "function") return "";
+    const d = App.irregDefaults ? App.irregDefaults() : {};
+    const cur = displayCurrency();
+    const f = (k) => '<div class="field"><label>' + d[k].label + "</label>" +
+      '<input class="irreg-input fmt-num" type="text" inputmode="decimal" data-ik="' + k + '" value="' + fmtNumInput(App.irreg[k]) + '">' +
+      '<div class="hint">' + d[k].hint + "</div></div>";
+    return '<div class="panel section"><div class="panel-head"><div class="panel-title">Irregular income planner</div>' +
+      '<span class="panel-sub">variable pay? budget the lean month · ' + cur + "</span></div>" +
+      '<p class="method-note" style="margin-bottom:12px">If your income jumps around — freelance, commission, side gigs, an allowance — the trick is to budget to a <strong>lean</strong> month and stash the surplus from good months into a smoothing fund you draw on when things slow down.</p>' +
+      '<div class="grid cols-3">' + f("low") + f("high") + f("essentials") + "</div>" +
+      '<div id="irreg-out">' + this.irregularOutput() + "</div></div>";
+  },
+
+  irregularOutput() {
+    const r = irregularIncomePlan(App.irreg);
+    const stat = (l, v, note, cls) => '<div class="stat"><span class="micro-label">' + l + '</span><div class="stat-value ' + (cls || "") + '">' + v + '</div><div class="stat-note">' + note + "</div></div>";
+    const volTone = r.volatility >= 0.5 ? "neg" : r.volatility >= 0.25 ? "gold" : "pos";
+    const volLabel = r.volatility >= 0.5 ? "very bumpy" : r.volatility >= 0.25 ? "bumpy" : "fairly steady";
+    const stats = '<div class="grid cols-4 section" style="margin-top:4px">' +
+      stat("Budget to (lean month)", fmtMoney(r.baseline, { compact: true }),
+        "spend as if this is all you’ll get", "pos") +
+      stat("Stash in a good month", fmtMoney(r.goodMonthSave, { compact: true }),
+        "surplus over essentials → buffer", "gold") +
+      stat("Smoothing-fund target", fmtMoney(r.bufferTarget, { compact: true }),
+        r.monthsToBuffer != null ? "~" + r.monthsToBuffer + " good month" + (r.monthsToBuffer === 1 ? "" : "s") + " to build" : "raise your good-month income", "gold") +
+      stat("Income swing", Math.round(r.volatility * 100) + "%",
+        volLabel, volTone) +
+      "</div>";
+    const verdict = r.coversEssentials
+      ? '<p class="method-note" style="margin-top:4px">Even a lean month (' + fmtMoney(r.low, { compact: true }) + ") covers your " + fmtMoney(r.essentials, { compact: true }) + " of essentials — good. Budget your everyday spending to " + fmtMoney(r.baseline, { compact: true }) + " and sweep the rest of every good month into a fund of about " + fmtMoney(r.bufferTarget, { compact: true }) + ", so a slow stretch never forces debt.</p>"
+      : '<p class="method-note" style="margin-top:4px"><span class="neg">A lean month (' + fmtMoney(r.low, { compact: true }) + ") falls " + fmtMoney(r.leanGap, { compact: true }) + " short of your " + fmtMoney(r.essentials, { compact: true }) + " essentials.</span> Until your floor rises, your smoothing fund is what bridges the gap — build it to about " + fmtMoney(r.bufferTarget, { compact: true }) + " during good months, and trim essentials where you can.</p>";
+    return stats + verdict;
   },
 
   /* recurring charges / subscriptions found in the expense history */
