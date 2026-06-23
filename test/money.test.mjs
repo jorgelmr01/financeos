@@ -27,7 +27,7 @@ const bundle = [read("js/utils.js"), read("js/budget.js"), read("js/statements.j
   "\n;globalThis.__api = { interestPerPeriod, nextInterestDate, interestScheduleLabel, interestPeriodDays," +
   " accruedInterest, holdingReturnRate, parseAmount, parseExpenseDate, expenseSig, canonicalCategory," +
   " earningsBreakdown, retirementProjection, retirementMonteCarlo, retirementBuckets, retirementBucketsMC, makeEquityMarket, mulberry32, MARKET, realInterestEst, monthlyInterestEst," +
-  " convBetween, sparkline, categorySeries, debtPayoff, fmtNumInput, parseNum, budgetSpendEstimate," +
+  " convBetween, sparkline, categorySeries, debtPayoff, detectRecurring, cashflowForecast, buroScore, fmtNumInput, parseNum, budgetSpendEstimate," +
   " toISO, parseISO, daysBetween, todayMid, Statements, INTEREST_FREQ, Store };";
 vm.runInContext(bundle, ctx, { filename: "bundle.js" });
 const A = ctx.__api;
@@ -474,6 +474,95 @@ group("market regime model — bounded crashes (locks)", () => {
   ok(worstYear >= -A.MARKET.maxYearDrop - 1e-9, "no single year falls past maxYearDrop");
   // mean-preserving: the long-run geometric return tracks the assumed return
   approx((Math.exp(sumLog / N) - 1) * 100, 10, 0.8, "long-run return ≈ the assumed mean");
+});
+
+group("recurring detection — steady monthly charges", () => {
+  const mk = (mm, dd) => "2026-" + String(mm).padStart(2, "0") + "-" + String(dd).padStart(2, "0");
+  resetStore({
+    settings: { currency: "MXN", fx: null, tax: {} }, incomes: [], holdings: [], cards: [],
+    expenses: [
+      // Netflix: 4 months, steady amount → recurring
+      { id: "n1", date: mk(3, 17), amount: 219, description: "Netflix", category: "Subscriptions", currency: "MXN" },
+      { id: "n2", date: mk(4, 17), amount: 219, description: "Netflix", category: "Subscriptions", currency: "MXN" },
+      { id: "n3", date: mk(5, 17), amount: 219, description: "Netflix", category: "Subscriptions", currency: "MXN" },
+      { id: "n4", date: mk(6, 17), amount: 219, description: "Netflix", category: "Subscriptions", currency: "MXN" },
+      // Rent: 3 months, steady → recurring (fixed cost, not a "subscription")
+      { id: "r1", date: mk(4, 1), amount: 12000, description: "Renta depa", category: "Rent", currency: "MXN" },
+      { id: "r2", date: mk(5, 1), amount: 12000, description: "Renta depa", category: "Rent", currency: "MXN" },
+      { id: "r3", date: mk(6, 1), amount: 12000, description: "Renta depa", category: "Rent", currency: "MXN" },
+      // Groceries: every month but wildly varying amount → NOT recurring (high CV)
+      { id: "g1", date: mk(4, 8), amount: 800, description: "Super", category: "Groceries", currency: "MXN" },
+      { id: "g2", date: mk(5, 12), amount: 2400, description: "Super", category: "Groceries", currency: "MXN" },
+      { id: "g3", date: mk(6, 3), amount: 1500, description: "Super", category: "Groceries", currency: "MXN" },
+      // one-off → never recurring (single occurrence)
+      { id: "o1", date: mk(5, 9), amount: 5000, description: "Vuelo Cancun", category: "Travel", currency: "MXN" },
+    ],
+  });
+  const rec = A.detectRecurring(6);
+  const names = rec.map(r => r.name);
+  ok(names.includes("Netflix"), "catches a steady monthly subscription");
+  ok(names.includes("Renta depa"), "catches rent as a recurring fixed cost");
+  ok(!names.includes("Super"), "ignores groceries — same label but volatile amount");
+  ok(!names.includes("Vuelo Cancun"), "ignores a one-off charge");
+  ok(rec[0].monthly >= rec[rec.length - 1].monthly, "sorted by monthly cost, biggest first");
+  const nf = rec.find(r => r.name === "Netflix");
+  eq(nf.dayOfMonth, 17, "remembers the day of month it lands on");
+  approx(nf.monthly, 219, 0.01, "monthly = the steady amount");
+});
+
+group("cashflow forecast — will I make it to payday?", () => {
+  const mk = (mm, dd) => "2026-" + String(mm).padStart(2, "0") + "-" + String(dd).padStart(2, "0");
+  resetStore({
+    settings: { currency: "MXN", fx: null, tax: {} },
+    accounts: [{ id: "c", type: "checking", balance: 15000, currency: "MXN" }],
+    cards: [], holdings: [],
+    incomes: [{ id: "i", name: "Salario", amount: 20000, currency: "MXN", frequency: "monthly", payDay: 30 }],
+    expenses: [
+      { id: "r1", date: mk(4, 5), amount: 9000, description: "Renta", category: "Rent", currency: "MXN" },
+      { id: "r2", date: mk(5, 5), amount: 9000, description: "Renta", category: "Rent", currency: "MXN" },
+      { id: "r3", date: mk(6, 5), amount: 9000, description: "Renta", category: "Rent", currency: "MXN" },
+    ],
+  });
+  const f = A.cashflowForecast(60);
+  ok(f.hasData, "produces a forecast when there's a balance and events");
+  approx(f.start, 15000, 1, "starts from the liquid balance");
+  ok(f.points.length >= 2, "walks at least start → end");
+  ok(f.min <= f.start + 1e-6, "the low point is never above where we started");
+  ok(f.minDate instanceof Date || typeof f.minDate === "object", "reports when the trough lands");
+  // every projected balance point is a finite number (no NaN leaking into the chart)
+  ok(f.points.every(p => isFinite(p.bal)), "no NaN balances in the projection");
+});
+
+group("credit-score simulator — Buró proxy", () => {
+  // a model citizen: clean record, low utilization, long history
+  const great = A.buroScore({ util: 0.05, onTimeMonths: 36, lates: 0, ageYears: 8, products: 3, inquiries: 0 });
+  ok(great.score >= 700 && great.score <= 850, "excellent profile lands high (" + great.score + ")");
+  eq(great.band, "Excellent", "labels it excellent");
+
+  // a beginner: maxed card, one late mark, thin history
+  const rough = A.buroScore({ util: 0.95, onTimeMonths: 3, lates: 1, ageYears: 1, products: 1, inquiries: 3 });
+  ok(rough.score < great.score, "a worse profile always scores lower");
+  ok(rough.score >= 400, "never drops below the floor");
+
+  // score stays inside the band for extreme inputs
+  const floor = A.buroScore({ util: 1, onTimeMonths: 0, lates: 9, ageYears: 0, products: 0, inquiries: 20 });
+  ok(floor.score >= 400 && floor.score <= 850, "clamps to the 400–850 range");
+
+  // utilization is monotonic: paying down a card never lowers the score
+  const hi = A.buroScore({ util: 0.9, onTimeMonths: 24, lates: 0, ageYears: 5, products: 2, inquiries: 0 });
+  const lo = A.buroScore({ util: 0.1, onTimeMonths: 24, lates: 0, ageYears: 5, products: 2, inquiries: 0 });
+  ok(lo.score > hi.score, "lower utilization scores higher, all else equal");
+
+  // the weights sum to 1 and each factor carries an improvement headroom
+  const sumW = great.factors.reduce((a, f) => a + f.weight, 0);
+  approx(sumW, 1, 1e-9, "factor weights sum to 100%");
+  rough.factors.forEach(f => ok(f.impact >= 0, "no factor reports a negative possible gain"));
+  ok(rough.topAction && rough.topAction.impact > 0, "flags a biggest-win action when there's room");
+
+  // a missed payment is heavily penalised vs an otherwise identical record
+  const clean = A.buroScore({ util: 0.2, onTimeMonths: 24, lates: 0, ageYears: 4, products: 2, inquiries: 0 });
+  const late = A.buroScore({ util: 0.2, onTimeMonths: 24, lates: 1, ageYears: 4, products: 2, inquiries: 0 });
+  ok(clean.score - late.score >= 25, "one late payment costs real points");
 });
 
 /* ---- report ---- */

@@ -12,6 +12,7 @@ const App = {
   retire: null,        // retirement-calculator assumptions (lazy-init from net worth)
   debtMethod: "avalanche", // debt-payoff strategy: "avalanche" | "snowball"
   debtBudget: null,    // monthly payment budget for the payoff calculator
+  buro: null,          // self-reported inputs for the credit-score simulator
 
   PAGE_META: {
     overview:   { title: "Today",        actions: "" },
@@ -37,6 +38,17 @@ const App = {
       start: Math.max(0, Math.round(t.netWorth)), contrib: 0, ret: 8, years: 20, withdraw: 4, inflation: infl, annualSpend: spend,
       // advanced (bucket-strategy) inputs
       eqRet: 10, bondRet: 7, cashRet: 4.5, cashYears: 1, bondYears: 2, accEquity: 100,
+    };
+  },
+
+  /* metadata for the credit-score simulator inputs (labels, hints, defaults) */
+  buroDefaults() {
+    if (!this.buro) this.buro = { onTimeMonths: 12, lates: 0, ageYears: 2, inquiries: 1 };
+    return {
+      onTimeMonths: { label: "On-time payment streak (months)", hint: "How many months running you’ve paid every bill on time." },
+      lates:        { label: "Late payments (last 2 years)", hint: "Any payment 30+ days late that got reported." },
+      ageYears:     { label: "Oldest account age (years)", hint: "Age of your longest-held credit line." },
+      inquiries:    { label: "Hard inquiries (last 12 months)", hint: "New-credit applications that pulled your report." },
     };
   },
 
@@ -536,6 +548,15 @@ const App = {
         this.debtBudget = parseNum(di.value);
         const out = document.getElementById("debt-out");
         if (out) out.innerHTML = Pages.debtPayoffOutput();
+      }
+
+      /* credit-score simulator: live recompute on any self-reported input */
+      const bi = e.target.closest(".buro-input");
+      if (bi) {
+        this.buroDefaults();
+        this.buro[bi.dataset.bk] = parseNum(bi.value);
+        const out = document.getElementById("buro-out");
+        if (out) out.innerHTML = Pages.buroOutput();
       }
     });
 

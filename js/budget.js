@@ -351,6 +351,142 @@ function budgetSpendEstimate() {
   return { annual: avg * 12, window: win, months: spends.length, cov: cov, basis: basis };
 }
 
+/* Find recurring expenses / subscriptions: same merchant (normalized
+   description) with a steady amount showing up across multiple recent months.
+   Returns one row per subscription with its monthly cost. */
+function detectRecurring(maxMonths) {
+  const all = (Store.state.expenses || []).filter(e => Number(e.amount) > 0);
+  if (!all.length) return [];
+  const cutoff = monthAdd(monthKeyOf(toISO(todayMid())), -(maxMonths || 6));
+  const recent = all.filter(e => monthKeyOf(e.date) >= cutoff);
+  const norm = s => String(s || "").toLowerCase().replace(/[0-9]+/g, " ").replace(/[^a-záéíóúñü ]/gi, "").replace(/\s+/g, " ").trim();
+  const groups = {};
+  recent.forEach(e => {
+    const key = norm(e.description) || ("cat:" + String(e.category || "other").toLowerCase());
+    (groups[key] = groups[key] || []).push(e);
+  });
+  const out = [];
+  Object.keys(groups).forEach(key => {
+    const g = groups[key];
+    const months = {}; g.forEach(e => { months[monthKeyOf(e.date)] = true; });
+    const nMonths = Object.keys(months).length;
+    if (nMonths < 2 || g.length < 2) return;                       // must recur across months
+    const amts = g.map(e => Math.abs(Number(e.amount) || 0));
+    const mean = amts.reduce((a, b) => a + b, 0) / amts.length;
+    if (mean <= 0) return;
+    const cv = Math.sqrt(amts.reduce((a, b) => a + (b - mean) * (b - mean), 0) / amts.length) / mean;
+    if (cv > 0.25) return;                                         // steady amount → subscription-like
+    const last = g.slice().sort((a, b) => (a.date < b.date ? 1 : -1))[0];
+    out.push({
+      name: (last.description || categoryMeta(last.category).name || "Recurring").trim(),
+      category: last.category || "Other", meta: categoryMeta(last.category),
+      monthly: mean, count: g.length, months: nMonths,
+      currency: last.currency || displayCurrency(), lastDate: last.date,
+      dayOfMonth: parseInt(String(last.date).slice(8, 10), 10) || 1,
+    });
+  });
+  return out.sort((a, b) => b.monthly - a.monthly);
+}
+
+/* Project the liquid (checking + savings) balance day-by-day over the next
+   `days`, applying scheduled income (+), detected recurring bills (−) and any
+   card payment due (−). Answers "will I make it to payday?" — flags the lowest
+   point and whether it dips below zero. Everything in the display currency. */
+function cashflowForecast(days) {
+  const horizon = Math.max(7, Math.round(days || 60));
+  const today = todayMid();
+  const end = new Date(today.getFullYear(), today.getMonth(), today.getDate() + horizon);
+  const s = Store.state;
+  let bal = 0;
+  (s.accounts || []).forEach(a => { if (a.type === "checking" || a.type === "savings") bal += conv(Number(a.balance) || 0, a.currency); });
+  const events = [];
+  (s.incomes || []).forEach(inc => {
+    incomeOccurrences(inc, today, end).forEach(d => events.push({ d: d, amt: conv(netPerDeposit(inc), inc.currency), kind: "income", name: inc.name || "Income" }));
+  });
+  detectRecurring(6).forEach(rec => {
+    let d = nextMonthlyOccurrence(rec.dayOfMonth, today);
+    while (d <= end) {
+      events.push({ d: new Date(d), amt: -conv(rec.monthly, rec.currency), kind: "bill", name: rec.name });
+      d = clampedDate(d.getFullYear(), d.getMonth() + 1, rec.dayOfMonth);
+    }
+  });
+  (s.cards || []).forEach(c => {
+    const due = Number(c.balance) || 0;
+    if (due <= 0) return;
+    const d = nextCardDate(c.payDay, today);
+    if (d <= end) events.push({ d: d, amt: -conv(due, c.currency), kind: "card", name: (c.name || "Card") + " payment" });
+  });
+  events.sort((a, b) => a.d - b.d);
+  // everyday spending beyond the recurring bills, as a daily drain — so the line
+  // doesn't pretend you only ever pay scheduled bills
+  const months = budgetSeries(null).filter(m => m.hasData && m.complete).slice(-3);
+  const avgSpend = months.length ? months.reduce((a, m) => a + (Number(m.spend) || 0), 0) / months.length : 0;
+  const recurMo = detectRecurring(6).reduce((a, r) => a + conv(r.monthly, r.currency), 0);
+  const dailyBurn = Math.max(0, avgSpend - recurMo) / 30;
+  const points = [{ d: today, bal: bal }];
+  let min = bal, minDate = today, lastD = today;
+  events.forEach(ev => {
+    bal -= dailyBurn * Math.max(0, daysBetween(lastD, ev.d));
+    if (bal < min) { min = bal; minDate = ev.d; }
+    bal += ev.amt; lastD = ev.d;
+    points.push({ d: ev.d, bal: bal, ev: ev });
+  });
+  bal -= dailyBurn * Math.max(0, daysBetween(lastD, end));
+  if (bal < min) { min = bal; minDate = end; }
+  points.push({ d: end, bal: bal });
+  return { points: points, events: events, start: points[0].bal, end: bal, min: min, minDate: minDate, horizon: horizon, dailyBurn: dailyBurn, hasData: events.length > 0 || dailyBurn > 0 };
+}
+
+/* Estimate a Buró de Crédito–style score (400–850) from the factors that move
+   real credit scores, so a beginner can see what helps and what hurts. This is
+   an educational PROXY — the official Buró model is private and uses more data.
+   Inputs: util (0..1, from cards), onTimeMonths, lates (last 24mo), ageYears
+   (oldest account), products (open credit lines), inquiries (hard, last 12mo). */
+function buroScore(inp) {
+  const i = inp || {};
+  const util = Math.max(0, Math.min(1, Number(i.util) || 0));
+  const onTime = Math.max(0, Number(i.onTimeMonths) || 0);
+  const lates = Math.max(0, Math.round(Number(i.lates) || 0));
+  const ageYears = Math.max(0, Number(i.ageYears) || 0);
+  const products = Math.max(0, Math.round(Number(i.products) || 0));
+  const inquiries = Math.max(0, Math.round(Number(i.inquiries) || 0));
+
+  // payment history — built slowly by a clean streak, wrecked fast by a late mark
+  let pay = Math.min(1, onTime / 24);
+  pay = Math.max(0, pay - 0.28 * lates);
+  // utilization — lower is better, with a real cliff once you pass ~30%
+  const utilSub = util <= 0.10 ? 1 : util <= 0.30 ? 0.85 : util <= 0.50 ? 0.6 : util <= 0.70 ? 0.4 : util <= 0.90 ? 0.2 : 0.05;
+  // credit age — matures toward ~7 years of history
+  const ageSub = Math.min(1, ageYears / 7);
+  // credit mix — some open credit helps; a sweet spot around 2–3 products
+  const mixSub = products <= 0 ? 0.2 : products <= 3 ? Math.min(1, 0.5 + products * 0.17) : Math.max(0.6, 1 - (products - 3) * 0.1);
+  // new credit — each fresh hard pull dings you, fading over the year
+  const inqSub = Math.max(0, 1 - 0.18 * inquiries);
+
+  const tips = {
+    pay: lates > 0 ? "One missed payment hurts for years — never miss again; set autopay for the minimum." : onTime < 24 ? "Keep paying on time; the streak keeps building for ~2 years." : "Spotless record — keep it that way.",
+    util: util > 0.30 ? "Pay your balance below 30% of your limit before the statement cuts." : util > 0.10 ? "Good — pushing under 10% squeezes out the last points." : "Excellent — barely using your limit.",
+    age: ageYears < 7 ? "Time does this one. Keep your oldest card open even if you barely use it." : "Long history — a strong, stable asset.",
+    mix: products <= 0 ? "You need at least one credit line reporting to start a history." : products <= 3 ? "A healthy number of products. Don't open more just for points." : "You have a lot of open lines — avoid adding more.",
+    inq: inquiries > 0 ? "Avoid new credit applications for a while; each hard pull fades after ~12 months." : "No recent applications — clean.",
+  };
+
+  const factors = [
+    { key: "pay", label: "Payment history", weight: 0.35, sub: pay, tip: tips.pay },
+    { key: "util", label: "Credit utilization", weight: 0.30, sub: utilSub, tip: tips.util },
+    { key: "age", label: "Credit age", weight: 0.15, sub: ageSub, tip: tips.age },
+    { key: "mix", label: "Credit mix", weight: 0.10, sub: mixSub, tip: tips.mix },
+    { key: "inq", label: "Recent inquiries", weight: 0.10, sub: inqSub, tip: tips.inq },
+  ];
+  factors.forEach(f => { f.impact = Math.round(450 * f.weight * (1 - f.sub)); });
+  const weighted = factors.reduce((a, f) => a + f.weight * f.sub, 0);
+  const score = Math.round(400 + 450 * weighted);
+  const band = score >= 700 ? "Excellent" : score >= 650 ? "Good" : score >= 600 ? "Fair" : "Needs work";
+  const tone = score >= 700 ? "pos" : score >= 650 ? "gold" : score >= 600 ? "gold" : "neg";
+  const topAction = factors.slice().sort((a, b) => b.impact - a.impact)[0];
+  return { score: score, band: band, tone: tone, factors: factors, topAction: topAction, min: 400, max: 850 };
+}
+
 /* Consistency streaks, counting back from the most recent month with data. */
 function budgetStreaks() {
   const s = budgetSeries(null).filter(m => m.hasData && m.complete);

@@ -944,6 +944,21 @@ body.light .score-ring { box-shadow: 0 10px 26px -14px rgba(40, 52, 43, 0.22); }
 .cf-out { background: var(--rose); opacity: 0.92; }
 .cf-x { font-family: var(--font-mono); font-size: 9.5px; color: var(--text-mute); margin-top: 5px; white-space: nowrap; }
 
+/* recurring / subscriptions */
+.sub-list { display: flex; flex-direction: column; gap: 2px; }
+.sub-row { display: flex; align-items: center; gap: 12px; padding: 9px 4px; border-bottom: 1px solid var(--hairline); }
+.sub-row:last-child { border-bottom: none; }
+.sub-name { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sub-meta { font-size: 11px; font-family: var(--font-mono); color: var(--text-mute); white-space: nowrap; }
+.sub-amt { font-family: var(--font-mono); font-size: 13.5px; font-weight: 600; white-space: nowrap; }
+
+/* cash-flow forecast */
+.cf-fc-plot { position: relative; height: 170px; }
+.cf-fc-chart { width: 100%; height: 100%; display: block; }
+.cf-fc-scale { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-top: 8px; font-size: 12px; color: var(--text-mute); }
+.cf-fc-scale > span:nth-child(1), .cf-fc-scale > span:nth-child(3) { font-family: var(--font-mono); font-size: 10px; flex: none; white-space: nowrap; }
+.cf-fc-scale > span:nth-child(2) { text-align: center; flex: 1; }
+
 /* compact stat value (e.g. Best/Worst two-line) */
 .stat-value.stat-sm { font-size: 17px; line-height: 1.5; }
 
@@ -2057,3 +2072,30 @@ body.light .sb-log-row { background: rgba(28, 38, 30, 0.04); }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 100px; }
 ::-webkit-scrollbar-track { background: transparent; }
+
+/* ---------- credit-score builder (Buró simulator) ---------- */
+.buro-head { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; margin: 4px 0 6px; }
+.buro-score { font-size: 44px; font-weight: 700; line-height: 1; display: flex; align-items: baseline; gap: 12px; }
+.buro-score.pos { color: var(--mint); }
+.buro-score.gold { color: var(--gold); }
+.buro-score.neg { color: var(--rose); }
+.buro-band { font-size: 14px; font-weight: 600; color: var(--text-mute); }
+.buro-gauge { flex: 1; min-width: 200px; }
+.buro-gauge-track { position: relative; height: 10px; border-radius: 100px;
+  background: linear-gradient(90deg, var(--rose) 0%, var(--gold) 45%, var(--mint) 100%); }
+.buro-gauge-marker { position: absolute; top: 50%; width: 4px; height: 20px; border-radius: 3px;
+  background: var(--text); transform: translate(-50%, -50%); box-shadow: 0 0 0 3px var(--surface-1); }
+.buro-gauge-scale { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-mute); margin-top: 6px; }
+.buro-factors { display: flex; flex-direction: column; gap: 14px; }
+.buro-factor-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 5px; }
+.buro-factor-name { font-size: 13px; font-weight: 600; }
+.buro-weight { font-size: 11px; color: var(--text-mute); font-weight: 500; margin-left: 4px; }
+.buro-factor-impact { font-size: 12px; font-weight: 600; }
+.buro-factor-impact.pos { color: var(--mint); }
+.buro-factor-impact.neg { color: var(--text-mute); }
+.buro-factor-track { height: 7px; border-radius: 100px; background: var(--surface-3); overflow: hidden; }
+.buro-factor-track span { display: block; height: 100%; border-radius: 100px; }
+.buro-factor-tip { font-size: 12px; color: var(--text-mute); margin-top: 5px; line-height: 1.4; }
+.buro-action { margin-top: 16px; padding: 12px 14px; border-radius: 12px;
+  background: var(--surface-2); border: 1px solid var(--border); }
+.buro-action-body { font-size: 13px; line-height: 1.45; margin-top: 3px; }

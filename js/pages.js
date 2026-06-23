@@ -137,6 +137,7 @@ const Pages = {
         '<div class="stat"><span class="micro-label">Monthly income (net)</span><div class="stat-value gold">' + fmtMoney(eb.monthlyNet) + '</div><div class="stat-note">after tax · incl. interest &amp; dividends</div></div>' +
       "</div>" +
 
+      this._cashflowPanel() +
       this._savingsRatePanel() +
       this._nwChartPanel() +
       this._nwCompositionPanel() +
@@ -406,7 +407,51 @@ const Pages = {
       "</div>";
     }).join("");
 
-    return stats + this.debtPayoffPanel() + '<div class="grid cols-2 section">' + cardsHtml + "</div>";
+    return stats + this.debtPayoffPanel() + this.buroPanel() + '<div class="grid cols-2 section">' + cardsHtml + "</div>";
+  },
+
+  /* Credit-score builder — an educational Buró de Crédito simulator. Pulls
+     utilization and product count from the real cards, takes a few self-reported
+     facts, and shows what each habit is worth so a beginner can build credit. */
+  buroPanel() {
+    if (typeof buroScore !== "function") return "";
+    const b = App.buroDefaults ? App.buroDefaults() : {};
+    const f = (k) => '<div class="field"><label>' + b[k].label + "</label>" +
+      '<input class="buro-input fmt-num" type="text" inputmode="numeric" data-bk="' + k + '" value="' + fmtNumInput(App.buro[k]) + '">' +
+      '<div class="hint">' + b[k].hint + "</div></div>";
+    return '<div class="panel section"><div class="panel-head"><div class="panel-title">Credit score builder</div>' +
+      '<span class="panel-sub">Buró de Crédito simulator · estimate</span></div>' +
+      '<p class="method-note" style="margin-bottom:12px">Your real Buró score is private and uses more data — this is an educational estimate to show which habits build credit fastest. Utilization and number of cards come from your cards above; fill in the rest.</p>' +
+      '<div class="grid cols-2">' + f("onTimeMonths") + f("lates") + f("ageYears") + f("inquiries") + "</div>" +
+      '<div id="buro-out">' + this.buroOutput() + "</div></div>";
+  },
+
+  buroOutput() {
+    const t = computeTotals();
+    const util = t.creditLimit ? t.debt / t.creditLimit : 0;
+    const products = (Store.state.cards || []).length;
+    const inp = Object.assign({}, App.buro, { util: util, products: products });
+    const r = buroScore(inp);
+    const pos = ((r.score - r.min) / (r.max - r.min)) * 100;
+    const gauge = '<div class="buro-gauge"><div class="buro-gauge-track">' +
+      '<div class="buro-gauge-marker" style="left:' + Math.max(0, Math.min(100, pos)).toFixed(1) + '%"></div></div>' +
+      '<div class="buro-gauge-scale"><span>' + r.min + "</span><span>" + r.max + "</span></div></div>";
+    const head = '<div class="buro-head"><div class="buro-score ' + r.tone + '">' + fmtNum(r.score) +
+      '<span class="buro-band">' + r.band + "</span></div>" + gauge + "</div>";
+    const rows = r.factors.map(fa => {
+      const cls = fa.sub >= 0.75 ? "pos" : fa.sub >= 0.45 ? "gold" : "neg";
+      const col = fa.sub >= 0.75 ? "var(--mint)" : fa.sub >= 0.45 ? "var(--gold)" : "var(--rose)";
+      return '<div class="buro-factor"><div class="buro-factor-top">' +
+        '<span class="buro-factor-name">' + fa.label + ' <span class="buro-weight">' + Math.round(fa.weight * 100) + "%</span></span>" +
+        '<span class="buro-factor-impact ' + (fa.impact > 0 ? "neg" : "pos") + '">' + (fa.impact > 0 ? "+" + fa.impact + " possible" : "maxed") + "</span></div>" +
+        '<div class="buro-factor-track"><span style="width:' + (fa.sub * 100).toFixed(0) + "%;background:" + col + '"></span></div>' +
+        '<div class="buro-factor-tip">' + esc(fa.tip) + "</div></div>";
+    }).join("");
+    const top = r.topAction && r.topAction.impact > 0
+      ? '<div class="buro-action"><span class="micro-label">Biggest win right now</span><div class="buro-action-body">' +
+        esc(r.topAction.label) + " — " + esc(r.topAction.tip) + ' <strong class="pos">(up to +' + r.topAction.impact + " pts)</strong></div></div>"
+      : '<div class="buro-action"><div class="buro-action-body pos">You’re close to maxed out — keep these habits and your score holds strong.</div></div>';
+    return head + '<div class="buro-factors section">' + rows + "</div>" + top;
   },
 
   /* debt-payoff calculator — snowball vs avalanche, live */
@@ -1155,7 +1200,57 @@ const Pages = {
 
     return controls + hero + stats +
       '<div class="grid cols-2 stack-wide section" style="align-items:start">' + catPanel + insightPanel + "</div>" +
-      bucketPanel + listPanel;
+      this._recurringPanel() + bucketPanel + listPanel;
+  },
+
+  /* recurring charges / subscriptions found in the expense history */
+  _recurringPanel() {
+    const subs = (typeof detectRecurring === "function") ? detectRecurring(6) : [];
+    if (!subs.length) return "";
+    const total = subs.reduce((a, x) => a + conv(x.monthly, x.currency), 0);
+    const rows = subs.map(x =>
+      '<div class="sub-row"><span class="sub-name">' + icon(x.meta.icon, "ic-cat") + esc(x.name) + "</span>" +
+      '<span class="sub-meta">seen ' + x.months + " mo · " + esc(x.category) + "</span>" +
+      '<span class="sub-amt">' + fmtMoneyIn(x.monthly, x.currency, { compact: true }) + "/mo</span></div>").join("");
+    return '<div class="panel section"><div class="panel-head"><div class="panel-title">Recurring expenses</div>' +
+      '<span class="panel-sub">' + subs.length + " found · " + fmtMoney(total, { compact: true }) + "/mo · " + fmtMoney(total * 12, { compact: true }) + "/yr</span></div>" +
+      '<div class="sub-list">' + rows + "</div>" +
+      '<p class="method-note" style="margin-top:10px">Charges that repeat each month at a steady amount — subscriptions, rent, utilities, loan payments. Together they’re your fixed monthly base; cancel any subscription you don’t use, since small recurring leaks add up over a year.</p></div>';
+  },
+
+  /* cash-flow forecast: projected liquid balance over the next 60 days */
+  _cashflowPanel() {
+    const f = (typeof cashflowForecast === "function") ? cashflowForecast(60) : null;
+    if (!f || !f.hasData) return "";
+    const pts = f.points;
+    const vals = pts.map(p => p.bal);
+    const lo = Math.min(0, Math.min.apply(null, vals)), hi = Math.max(Math.max.apply(null, vals), 1);
+    const span = (hi - lo) || 1;
+    const W = 1000, H = 170, PAD = 8;
+    const X = d => PAD + Math.min(1, daysBetween(pts[0].d, d) / f.horizon) * (W - 2 * PAD);
+    const Y = v => H - PAD - (v - lo) / span * (H - 2 * PAD);
+    const line = pts.map(p => X(p.d).toFixed(1) + "," + Y(p.bal).toFixed(1)).join(" ");
+    const area = line + " " + X(pts[pts.length - 1].d).toFixed(1) + "," + (H - PAD) + " " + PAD + "," + (H - PAD);
+    const col = f.min < 0 ? "#e8836f" : "#8fe3a6";
+    const zY = Y(0).toFixed(1);
+    const hits = this._chartHits(pts.map(p => ({
+      tip: fmtDateShort(p.d) + (p.ev ? " · " + esc(p.ev.name) + " " + fmtMoney(p.ev.amt, { sign: true, compact: true }) : "") + " · balance <strong>" + fmtMoney(p.bal, { compact: true }) + "</strong>",
+    })));
+    const verdict = f.min < 0
+      ? '<span class="neg">You dip to <strong>' + fmtMoney(f.min, { compact: true }) + "</strong> around " + fmtDateShort(f.minDate) + " — line up " + fmtMoney(-f.min, { compact: true }) + " before then.</span>"
+      : '<span class="pos">You stay in the black — lowest is <strong>' + fmtMoney(f.min, { compact: true }) + "</strong> around " + fmtDateShort(f.minDate) + ".</span>";
+    return '<div class="panel section"><div class="panel-head"><div class="panel-title">Will you make it to payday?</div>' +
+      '<span class="panel-sub">liquid balance · income, bills &amp; everyday spending · next ' + f.horizon + " days</span></div>" +
+      '<div class="chart-wrap"><div class="cf-fc-plot">' +
+        '<svg class="cf-fc-chart" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none">' +
+          '<defs><linearGradient id="cffill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="' + col + '" stop-opacity="0.22"/><stop offset="100%" stop-color="' + col + '" stop-opacity="0"/></linearGradient></defs>' +
+          (lo < 0 ? '<line x1="0" y1="' + zY + '" x2="' + W + '" y2="' + zY + '" stroke="var(--rose)" stroke-width="1" stroke-dasharray="4 4" opacity="0.7"/>' : "") +
+          '<polygon points="' + area + '" fill="url(#cffill)"/>' +
+          '<polyline points="' + line + '" fill="none" stroke="' + col + '" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>' +
+        "</svg>" + hits + "</div></div>" +
+      '<div class="cf-fc-scale"><span>today · ' + fmtMoney(f.start, { compact: true }) + "</span><span>" + verdict + "</span><span>+" + f.horizon + "d · " + fmtMoney(f.end, { compact: true }) + "</span></div>" +
+      (f.dailyBurn > 0 ? '<p class="method-note" style="margin-top:8px">Assumes about ' + fmtMoney(f.dailyBurn * 30, { compact: true }) + "/mo of everyday spending on top of your scheduled bills, based on your recent budget months.</p>" : "") +
+      "</div>";
   },
 
   // a labelled mini progress bar for the score hero
