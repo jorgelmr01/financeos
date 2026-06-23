@@ -119,33 +119,72 @@ function _normWeights(map) {
   return out;
 }
 
+/* ---- Finnhub free-tier enrichment helpers ----
+   With an (optional, free) Finnhub key the app auto-classifies single stocks
+   from /stock/profile2 (its `finnhubIndustry` + ISO `country`). Finnhub uses its
+   own ~130 industry labels, so map them to our GICS-style sectors by keyword;
+   fall back to the closest bucket. Pure string → string. */
+function finnhubSectorToGICS(industry) {
+  const s = String(industry || "").toLowerCase();
+  if (!s) return null;
+  const has = (...ks) => ks.some(k => s.indexOf(k) >= 0);
+  if (has("semiconduct", "software", "technology", "hardware", "electronic", "it services", "internet")) return "Technology";
+  if (has("bank", "insurance", "financial", "capital markets", "asset manage", "credit")) return "Financials";
+  if (has("pharma", "biotech", "health", "medical", "life sciences", "drug")) return "Health Care";
+  if (has("retail", "apparel", "automobil", "auto ", "leisure", "hotel", "restaurant", "consumer discretionary", "e-commerce", "homebuild", "luxury")) return "Consumer Discretionary";
+  if (has("media", "telecom", "communication", "entertainment", "publishing", "advertis")) return "Communication";
+  if (has("food", "beverage", "tobacco", "household", "personal product", "consumer staples", "grocery")) return "Consumer Staples";
+  if (has("oil", "gas", "energy", "coal", "petroleum")) return "Energy";
+  if (has("utilit", "electric", "water", "power")) return "Utilities";
+  if (has("chemical", "metal", "mining", "material", "steel", "paper", "forest")) return "Materials";
+  if (has("real estate", "reit", "property")) return "Real Estate";
+  if (has("aerospace", "defense", "machinery", "industrial", "transport", "logistic", "airline", "construction", "engineering", "manufactur")) return "Industrials";
+  return null;
+}
+
+/* a few small ISO-3166 alpha-2 → region buckets; everything else → Developed/EM
+   by a short list, defaulting to Developed ex-US. */
+const _EMERGING = { MX: 1, BR: 1, AR: 1, CL: 1, CO: 1, PE: 1, CN: 1, IN: 1, ID: 1, TH: 1, MY: 1, PH: 1, VN: 1, ZA: 1, TR: 1, RU: 1, EG: 1, SA: 1, AE: 1, QA: 1, PL: 1, HU: 1, GR: 1, TW: 1 };
+function countryToRegion(code) {
+  const cc = String(code || "").toUpperCase();
+  if (!cc) return null;
+  if (cc === "US") return "United States";
+  if (cc === "MX") return "Mexico";
+  if (_EMERGING[cc]) return "Emerging Markets";
+  return "Developed ex-US";
+}
+
 /* Resolve one holding to { assetClass, sectors{w}, regions{w}, source } where
    the weight maps sum to 1. Order of truth: the user's per-holding overrides
-   (h.cls) → the curated dataset → a sane default by type. Non-equity classes
-   that have no sector data bucket into their own asset class so the sector view
-   still adds up to 100%. */
+   (h.cls) → the curated dataset (ETF look-through lives here) → Finnhub auto-
+   classification (h.autoCls, single sector/region for stocks) → a sane default
+   by type. Non-equity classes with no sector data bucket into their own asset
+   class so the sector view still adds up to 100%. */
 function classifyHolding(h) {
   const sym = String((h && h.symbol) || "").toUpperCase();
   const info = INSTRUMENTS[sym] || null;
   const ov = (h && h.cls) || {};
-  const assetClass = ov.assetClass || (info && info.assetClass) || "Equity";
+  const auto = (h && h.autoCls) || {};
+  const assetClass = ov.assetClass || (info && info.assetClass) || auto.assetClass || "Equity";
 
-  let sectors = null;
-  if (ov.sector) sectors = { [ov.sector]: 1 };
-  else if (info && info.sectors) sectors = _normWeights(info.sectors);
-  else if (info && info.sector) sectors = { [info.sector]: 1 };
+  let sectors = null, secSource = null;
+  if (ov.sector) { sectors = { [ov.sector]: 1 }; secSource = "you"; }
+  else if (info && info.sectors) { sectors = _normWeights(info.sectors); secSource = "dataset"; }
+  else if (info && info.sector) { sectors = { [info.sector]: 1 }; secSource = "dataset"; }
+  else if (auto.sector) { sectors = { [auto.sector]: 1 }; secSource = "finnhub"; }
   if (!sectors) sectors = assetClass === "Equity" ? { "Unclassified": 1 } : { [assetClass]: 1 };
 
   let regions = null;
   if (ov.region) regions = { [ov.region]: 1 };
   else if (info && info.regions) regions = _normWeights(info.regions);
   else if (info && info.region) regions = { [info.region]: 1 };
+  else if (auto.region) regions = { [auto.region]: 1 };
   if (!regions) regions = { "Unclassified": 1 };
 
   return {
-    assetClass: assetClass, sectors: sectors, regions: regions,
+    assetClass: assetClass, sectors: sectors, regions: regions, source: secSource,
     name: (info && info.name) || (h && h.name) || sym,
-    known: !!info || !!ov.assetClass || !!ov.sector || !!ov.region,
+    known: !!info || !!ov.assetClass || !!ov.sector || !!ov.region || !!auto.sector || !!auto.region,
   };
 }
 

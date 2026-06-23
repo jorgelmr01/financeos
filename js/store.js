@@ -360,7 +360,26 @@ const Store = {
               if (yld > 0 && Number(h.currentPrice) > 0) dps = Number(h.currentPrice) * yld / 100;
             }
             if (dps > 0) { h.divPerShare = Math.round(dps * 10000) / 10000; gotDiv = true; }
+            // real market beta comes free with the metrics call we already make
+            const beta = Number(met.beta);
+            if (isFinite(beta) && beta !== 0) h.beta = Math.round(beta * 1000) / 1000;
           } catch (e) { /* fall through to Yahoo */ }
+        }
+        // auto-classify a single stock from its company profile (sector + country).
+        // ETFs aren't single-sector, so we leave those to the curated look-through.
+        if (!keyBad && h.kind !== "etf" && !h.autoCls && typeof finnhubSectorToGICS === "function") {
+          try {
+            const rp = await fetch("https://finnhub.io/api/v1/stock/profile2?symbol=" + sym + "&token=" + key);
+            const prof = rp.ok ? await rp.json() : null;
+            if (prof) {
+              const ac = {};
+              const gsec = finnhubSectorToGICS(prof.finnhubIndustry);
+              const reg = countryToRegion(prof.country);
+              if (gsec) ac.sector = gsec;
+              if (reg) ac.region = reg;
+              if (ac.sector || ac.region) { ac.source = "finnhub"; h.autoCls = ac; }
+            }
+          } catch (e) { /* classification is best-effort */ }
         }
       }
       // also call Yahoo when we still need the long-run return for this holding

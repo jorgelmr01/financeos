@@ -2140,3 +2140,4 @@ body.light .sb-log-row { background: rgba(28, 38, 30, 0.04); }
 .chg-lab { display: block; font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-mute); }
 .chg-val { display: block; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 1px; }
 @media (max-width: 720px) { .adv-perf-now { font-size: 22px; } .chg-chip { min-width: 46px; padding: 5px 8px; } }
+.beta-src { color: var(--mint-bright); font-weight: 700; margin-left: 2px; }

@@ -360,8 +360,8 @@ const UI = {
     const opts = (arr, sel) => '<option value="">Auto</option>' +
       arr.map(o => '<option value="' + esc(o) + '"' + (sel === o ? " selected" : "") + ">" + esc(o) + "</option>").join("");
     const detNote = det && det.known
-      ? "We detect: " + esc(det.assetClass) + (Object.keys(det.sectors).length === 1 ? " · " + esc(Object.keys(det.sectors)[0]) : " · multi-sector ETF") + " · " + esc(Object.keys(det.regions)[0] || "—")
-      : "Unknown ticker — set these so it shows up in your exposure breakdown.";
+      ? "We detect: " + esc(det.assetClass) + (Object.keys(det.sectors).length === 1 ? " · " + esc(Object.keys(det.sectors)[0]) : " · multi-sector ETF") + " · " + esc(Object.keys(det.regions)[0] || "—") + (det.source === "finnhub" ? " (auto via Finnhub)" : "")
+      : "Unknown ticker — set these here, or add a free Finnhub key to auto-classify it on the next price update.";
     return '<div class="field full"><label style="margin-bottom:2px">Classification <span class="beta-pill">advanced · optional</span></label>' +
       '<div class="hint" style="margin-top:0">' + detNote + "</div></div>" +
       this.field("Asset class", '<select name="clsAsset">' + opts(ASSET_CLASSES, cls.assetClass) + "</select>", null, true) +
@@ -450,7 +450,7 @@ const UI = {
       '<div class="f-grid">' +
       this.field("Finnhub API key (optional)",
         '<input name="finnhubKey" value="' + esc(st.finnhubKey || "") + '" placeholder="works without one — Yahoo fallback" autocomplete="off">',
-        "“Update prices” works with no key via Yahoo (through a public CORS proxy, which sees only the ticker symbols). A free finnhub.io key adds a direct, faster source for stock quotes. Stored only in this browser.", true) +
+        "“Update prices” works with no key via Yahoo (through a public CORS proxy, which sees only the ticker symbols). A free finnhub.io key adds a direct, faster source for stock quotes — and powers the Advanced portfolio view: it auto-classifies single stocks by sector &amp; country and pulls each one's market beta. Stored only in this browser.", true) +
       this.field("Annual ISR on interest %", '<input name="taxInterest" type="number" step="0.1" min="0" max="99" value="' + (tax.interest || "") + '" placeholder="0">', "In Mexico interest is paid gross and you settle this in your April return — and only on the real interest (above inflation), never withheld at source") +
       this.field("Provisional ISR on capital %", '<input name="taxIntProvisional" type="number" step="0.01" min="0" max="20" value="' + (tax.interestProvisional || "") + '" placeholder="0.5">', "Small advance (≈0.5%, set yearly by the Ley de Ingresos) the bank withholds on your capital; it's a credit against the annual ISR above") +
       this.field("Inflation assumption %", '<input name="inflation" type="number" step="0.1" min="0" max="50" value="' + (tax.inflation != null ? tax.inflation : "") + '" placeholder="4.5">', "Used for taxable real interest (nominal − inflation) and the Retirement calculator's today's-pesos values. A rational long-run Mexico figure is ≈4–4.5%") +

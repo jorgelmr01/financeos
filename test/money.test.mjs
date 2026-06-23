@@ -28,7 +28,7 @@ const bundle = [read("js/utils.js"), read("js/instruments.js"), read("js/budget.
   " accruedInterest, holdingReturnRate, parseAmount, parseExpenseDate, expenseSig, canonicalCategory," +
   " earningsBreakdown, retirementProjection, retirementMonteCarlo, retirementBuckets, retirementBucketsMC, makeEquityMarket, mulberry32, MARKET, realInterestEst, monthlyInterestEst," +
   " convBetween, sparkline, categorySeries, debtPayoff, detectRecurring, cashflowForecast, buroScore, investReadiness, irregularIncomePlan," +
-  " classifyHolding, portfolioExposure, seriesReturns, annualizedVol, alignReturns, betaOf, correlationOf, periodsPerYear, weightedValueSeries, seriesReturnOver, fmtNumInput, parseNum, budgetSpendEstimate," +
+  " classifyHolding, portfolioExposure, seriesReturns, annualizedVol, alignReturns, betaOf, correlationOf, periodsPerYear, weightedValueSeries, seriesReturnOver, finnhubSectorToGICS, countryToRegion, fmtNumInput, parseNum, budgetSpendEstimate," +
   " toISO, parseISO, daysBetween, todayMid, Statements, INTEREST_FREQ, Store };";
 vm.runInContext(bundle, ctx, { filename: "bundle.js" });
 const A = ctx.__api;
@@ -705,6 +705,32 @@ group("instrument classification + ETF look-through", () => {
   // a user override wins over the dataset
   const ov = A.classifyHolding({ symbol: "AAPL", cls: { sector: "Health Care", region: "Mexico" } });
   ok(ov.sectors["Health Care"] === 1 && ov.regions["Mexico"] === 1, "per-holding override beats the dataset");
+});
+
+group("Finnhub free-key enrichment — auto-classify stocks", () => {
+  // map Finnhub's industry labels → our GICS-style sectors by keyword
+  eq(A.finnhubSectorToGICS("Semiconductors"), "Technology", "semis → Technology");
+  eq(A.finnhubSectorToGICS("Banking"), "Financials", "banking → Financials");
+  eq(A.finnhubSectorToGICS("Pharmaceuticals"), "Health Care", "pharma → Health Care");
+  eq(A.finnhubSectorToGICS("Oil & Gas"), "Energy", "oil & gas → Energy");
+  eq(A.finnhubSectorToGICS("Aerospace & Defense"), "Industrials", "aero/defense → Industrials");
+  ok(A.finnhubSectorToGICS("") == null && A.finnhubSectorToGICS("Blockchain Unicorns") == null, "unknown/empty → null, never a wrong guess");
+
+  // ISO country → region buckets
+  eq(A.countryToRegion("US"), "United States", "US");
+  eq(A.countryToRegion("MX"), "Mexico", "MX");
+  eq(A.countryToRegion("DE"), "Developed ex-US", "Germany is developed");
+  eq(A.countryToRegion("BR"), "Emerging Markets", "Brazil is emerging");
+  ok(A.countryToRegion("") == null, "no country → null");
+
+  // autoCls feeds classifyHolding when the dataset doesn't know the ticker, but
+  // a user override still wins and the curated dataset still wins for ETFs
+  const auto = A.classifyHolding({ symbol: "ZZZZ", kind: "stock", autoCls: { sector: "Energy", region: "Mexico", source: "finnhub" } });
+  ok(auto.sectors["Energy"] === 1 && auto.regions["Mexico"] === 1 && auto.source === "finnhub", "unknown stock uses Finnhub auto-classification");
+  const overridden = A.classifyHolding({ symbol: "ZZZZ", cls: { sector: "Technology" }, autoCls: { sector: "Energy" } });
+  eq(overridden.source, "you", "a manual override beats Finnhub");
+  const etf = A.classifyHolding({ symbol: "VOO", kind: "etf", autoCls: { sector: "Financials" } });
+  ok(etf.source === "dataset" && Object.keys(etf.sectors).length > 5, "curated ETF look-through beats a single-sector auto guess");
 });
 
 group("portfolio exposure — weighted, with look-through", () => {

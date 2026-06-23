@@ -688,7 +688,7 @@ const Pages = {
         this._exposureBlock("By geography", e.byRegion) +
       "</div>" +
       (e.unclassifiedPct > 0.5
-        ? '<p class="method-note" style="margin-top:12px"><span class="gold">' + e.unclassifiedPct.toFixed(0) + "% of the book is unclassified.</span> Open those positions and set their asset class, sector &amp; region for a complete picture — we only ship classifications for common instruments.</p>"
+        ? '<p class="method-note" style="margin-top:12px"><span class="gold">' + e.unclassifiedPct.toFixed(0) + "% of the book is unclassified.</span> Add a <strong>free Finnhub key</strong> (Settings → it also speeds up price updates) to auto-classify individual stocks by sector &amp; country, or open any position and set it manually. Broad ETFs ship with full look-through built in.</p>"
         : "") +
       "</div>";
     return head;
@@ -732,7 +732,7 @@ const Pages = {
 
   _advItems(data) {
     return (data.holdings || []).filter(h => h.points && h.points.length > 1)
-      .map(h => ({ id: h.id, symbol: h.symbol, name: h.name, shares: h.shares, fx: h.fx, points: h.points }));
+      .map(h => ({ id: h.id, symbol: h.symbol, name: h.name, shares: h.shares, fx: h.fx, beta: h.beta, points: h.points }));
   },
 
   _advWindowDays(range) { return range === "1mo" ? 30 : range === "6mo" ? 182 : range === "5y" ? 1825 : 365; },
@@ -774,12 +774,22 @@ const Pages = {
     const pSeries = series.map(p => ({ t: p.t, c: p.v }));
     const ppy = periodsPerYear(pSeries);
     const pVol = annualizedVol(seriesReturns(pSeries), ppy);
-    const pBeta = bench ? betaOf(pSeries, bench) : null;
     const totalMv = computeTotals().marketValue || 1;
+    // per-holding weight (current shares × today's FX × latest close ÷ book)
+    const weightOf = it => it.shares * it.fx * it.points[it.points.length - 1].c / totalMv * 100;
+    // portfolio beta: from the value series vs the S&P; if that's unavailable,
+    // fall back to the weight-weighted average of holdings' (Finnhub) betas
+    let pBeta = bench ? betaOf(pSeries, bench) : null, pBetaSrc = pBeta != null ? "history" : null;
+    if (pBeta == null) {
+      let bw = 0, ws = 0;
+      items.forEach(it => { if (it.beta != null) { const w = weightOf(it); bw += it.beta * w; ws += w; } });
+      if (ws > 0) { pBeta = bw / ws; pBetaSrc = "finnhub"; }
+    }
     const stat = (l, v, n, tone) => '<div class="stat"><span class="micro-label">' + l + '</span><div class="stat-value ' + (tone || "") + '" style="font-size:21px">' + v + "</div>" + (n ? '<div class="stat-note">' + n + "</div>" : "") + "</div>";
     const volTone = pVol >= 0.25 ? "neg" : pVol >= 0.15 ? "gold" : "pos";
     const betaTxt = pBeta == null ? "—" : pBeta.toFixed(2);
-    const betaNote = pBeta == null ? "needs S&P history" : pBeta > 1.05 ? "swings harder than the market" : pBeta < 0.95 ? "steadier than the market" : "moves with the market";
+    const betaNote = pBeta == null ? "add a free Finnhub key or more history"
+      : (pBeta > 1.05 ? "swings harder than the market" : pBeta < 0.95 ? "steadier than the market" : "moves with the market") + (pBetaSrc === "finnhub" ? " · Finnhub" : "");
     const summary = '<div class="grid cols-3 section" style="margin-top:0">' +
       stat("Portfolio volatility", (pVol * 100).toFixed(1) + "%", "annualized · " + (ppy === 252 ? "daily" : ppy === 52 ? "weekly" : "monthly") + " data", volTone) +
       stat("Beta vs S&P 500", betaTxt, betaNote, pBeta == null ? "" : pBeta > 1.05 ? "gold" : "pos") +
@@ -787,20 +797,23 @@ const Pages = {
       "</div>";
     const rows = items.map(it => {
       const vol = annualizedVol(seriesReturns(it.points), periodsPerYear(it.points));
-      const beta = bench ? betaOf(it.points, bench) : null;
+      // prefer the real Finnhub beta; fall back to one computed from history
+      const histBeta = bench ? betaOf(it.points, bench) : null;
+      const beta = it.beta != null ? it.beta : histBeta;
+      const betaMark = (it.beta != null) ? '<span class="beta-src" title="Finnhub market beta">•</span>' : "";
       const corr = bench ? correlationOf(it.points, bench) : null;
       const ret = seriesReturnOver(it.points, winDays);
-      const w = it.shares * it.fx * it.points[it.points.length - 1].c / totalMv * 100;
+      const w = weightOf(it);
       return "<tr><td><span class=\"sym-badge\">" + esc(String(it.symbol).slice(0, 5)) + "</span> " + esc(it.symbol) + "</td>" +
         '<td class="num">' + w.toFixed(1) + "%</td>" +
         '<td class="num ' + (ret == null ? "" : ret >= 0 ? "pos" : "neg") + '">' + (ret == null ? "—" : fmtPct(ret * 100, 1)) + "</td>" +
         '<td class="num">' + (vol * 100).toFixed(1) + "%</td>" +
-        '<td class="num">' + (beta == null ? "—" : beta.toFixed(2)) + "</td>" +
+        '<td class="num">' + (beta == null ? "—" : beta.toFixed(2)) + betaMark + "</td>" +
         '<td class="num">' + (corr == null ? "—" : corr.toFixed(2)) + "</td></tr>";
     }).join("");
     const table = '<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Position</th><th class="num">Weight</th>' +
       '<th class="num">Return</th><th class="num">Vol</th><th class="num">Beta</th><th class="num">Corr</th></tr></thead><tbody>' + rows + "</tbody></table></div>";
-    const note = '<p class="method-note" style="margin-top:10px"><strong>Volatility</strong> is the annualized standard deviation of returns — how much the value swings. <strong>Beta</strong> and <strong>correlation</strong> are measured against the S&amp;P 500: beta ~1 moves with the market, &gt;1 amplifies it; correlation near 1 means they move together (low correlation is what real diversification looks like).</p>';
+    const note = '<p class="method-note" style="margin-top:10px"><strong>Volatility</strong> is the annualized standard deviation of returns — how much the value swings. <strong>Beta</strong> and <strong>correlation</strong> are measured against the S&amp;P 500: beta ~1 moves with the market, &gt;1 amplifies it; correlation near 1 means they move together (low correlation is what real diversification looks like). A <span class="beta-src">•</span> marks a beta from Finnhub (needs a free key); others are computed from price history.</p>';
     return summary + table + note;
   },
 
@@ -812,9 +825,10 @@ const Pages = {
     const holdings = Store.state.holdings || [];
     if (!holdings.length) return;
     App._advLoading = range;
+    const mapH = (h, points) => ({ id: h.id, symbol: h.symbol, name: h.name || h.symbol, shares: Number(h.shares) || 0, currency: h.currency, fx: conv(1, h.currency), beta: isFinite(Number(h.beta)) ? Number(h.beta) : null, points: points });
     const jobs = holdings.map(h => Store.fetchHistory(h.symbol, range, interval)
-      .then(d => ({ id: h.id, symbol: h.symbol, name: h.name || h.symbol, shares: Number(h.shares) || 0, currency: h.currency, fx: conv(1, h.currency), points: (d && d.points) || null }))
-      .catch(() => ({ id: h.id, symbol: h.symbol, name: h.name || h.symbol, shares: Number(h.shares) || 0, currency: h.currency, fx: conv(1, h.currency), points: null })));
+      .then(d => mapH(h, (d && d.points) || null))
+      .catch(() => mapH(h, null)));
     const benchJob = Store.fetchHistory("^GSPC", range, interval).then(d => (d && d.points) || null).catch(() => null);
     Promise.all([Promise.all(jobs), benchJob]).then(([hs, bench]) => {
       App._advLoading = null;
