@@ -930,13 +930,17 @@ function retirementMonteCarlo(p) {
 
 /* ---------- advanced retirement: the bucket strategy ----------
    One run: accumulate at the equities return, then at retirement keep cashYears
-   + bondYears of annual spending in cash & bonds and the rest in equities. Each
-   retirement year spend from cash → bonds → equities; grow each sleeve at its
-   own return; and after an UP equity year, refill the cash/bond buffers from
-   equities (the classic "bucket"/snowball that shields stocks from forced
-   selling in downturns). `market` supplies each retirement year's return per
-   sleeve: { eq(), bond(), cash() }. Default = flat returns (the deterministic
-   base case); the MC passes the regime model so crashes are realistic. */
+   + bondYears of annual spending in cash & bonds and the rest in equities.
+   Drawdown-aware discipline each retirement year: while the equity MARKET sits
+   below its prior peak (a genuine drawdown) spend defensively from cash → bonds
+   and leave stocks alone; once equities recover to a new high, harvest from
+   equities first and refill the buffers. This is what lets a modest buffer beat
+   BOTH no buffer (it shields stocks from forced selling in a slump — sequence-
+   of-returns protection) AND an over-large buffer (which just drags on growth).
+   `market` supplies each retirement year's return per sleeve: { eq(), bond(),
+   cash() }. Default = flat returns (the deterministic base case, always "above
+   peak" so it simply harvests equities); the MC passes the regime model so
+   crashes — and the drawdowns the buffer defends against — are realistic. */
 function _simBuckets(p, market) {
   const eqR = (Number(p.eqRet) || 0) / 100, bdR = (Number(p.bondRet) || 0) / 100, csR = (Number(p.cashRet) || 0) / 100;
   market = market || { eq: function () { return eqR; }, bond: function () { return bdR; }, cash: function () { return csR; } };
@@ -963,27 +967,37 @@ function _simBuckets(p, market) {
   let cash = Math.min(nest, cashYears * spendRet1);
   let bond = Math.min(Math.max(0, nest - cash), bondYears * spendRet1);
   let eq = Math.max(0, nest - cash - bond);
-  let depleted = null;
+  // `idx` is a hypothetical equity-market index (starts at 1) whose running
+  // peak tells us whether stocks are in a drawdown — the signal that flips the
+  // strategy between "defend" (spend safe assets) and "harvest" (spend stocks).
+  let depleted = null, idx = 1, idxPeak = 1;
   for (let y = 1; y <= maxDraw; y++) {
+    const inDrawdown = idx < idxPeak * 0.999;
     let need = spend0 * Math.pow(1 + infl, years + y - 1);
-    let t = Math.min(cash, need); cash -= t; need -= t;
-    if (need > 0) { t = Math.min(bond, need); bond -= t; need -= t; }
-    if (need > 0) { t = Math.min(eq, need); eq -= t; need -= t; }
+    if (inDrawdown) {                                   // defend: live off cash → bonds, shield stocks
+      let t = Math.min(cash, need); cash -= t; need -= t;
+      if (need > 0) { t = Math.min(bond, need); bond -= t; need -= t; }
+      if (need > 0) { t = Math.min(eq, need); eq -= t; need -= t; }   // only if buffers are exhausted
+    } else {                                            // harvest: spend stocks first while they're high
+      let t = Math.min(eq, need); eq -= t; need -= t;
+      if (need > 0) { t = Math.min(bond, need); bond -= t; need -= t; }
+      if (need > 0) { t = Math.min(cash, need); cash -= t; need -= t; }
+    }
     const shortfall = need > 0.005;
     const eqG = market.eq();
     cash = Math.max(0, cash * (1 + market.cash()));
     bond = Math.max(0, bond * (1 + market.bond()));
     eq = Math.max(0, eq * (1 + eqG));
-    // refill: top cash from bonds first (safe→safe); only tap equities after an
-    // up year, so stocks are never sold low — the buffer's whole point.
+    idx *= (1 + eqG); if (idx > idxPeak) idxPeak = idx;
     const spendNext = spend0 * Math.pow(1 + infl, years + y);
-    let nc = Math.max(0, cashYears * spendNext - cash);
-    if (nc > 0 && bond > 0) { const mv = Math.min(nc, bond); cash += mv; bond -= mv; }
-    if (eqG >= 0 && eq > 0) {
+    if (eqG >= 0 && idx >= idxPeak * 0.999 && eq > 0) { // refill from stocks only once the market has recovered
       let nb = Math.max(0, bondYears * spendNext - bond);
       if (nb > 0) { const mv = Math.min(nb, eq); bond += mv; eq -= mv; }
-      let nc2 = Math.max(0, cashYears * spendNext - cash);
-      if (nc2 > 0 && eq > 0) { const mv = Math.min(nc2, eq); cash += mv; eq -= mv; }
+      let nc = Math.max(0, cashYears * spendNext - cash);
+      if (nc > 0 && eq > 0) { const mv = Math.min(nc, eq); cash += mv; eq -= mv; }
+    } else {                                            // in a drawdown, only top cash from bonds (safe→safe)
+      let nc = Math.max(0, cashYears * spendNext - cash);
+      if (nc > 0 && bond > 0) { const mv = Math.min(nc, bond); cash += mv; bond -= mv; }
     }
     const total = cash + bond + eq;
     pts.push({ year: years + y, bal: Math.max(0, total), phase: "draw" });

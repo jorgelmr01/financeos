@@ -2005,7 +2005,7 @@ const Pages = {
   _strategyCompare(P, r) {
     const profiles = [["Aggressive", 0, 0], ["Balanced", 1, 2], ["Buffered 1+3", 1, 3], ["Conservative", 2, 6]];
     const rows = profiles.map(p => {
-      const mc = retirementBucketsMC(Object.assign({}, P, { cashYears: p[1], bondYears: p[2], runs: 200 }));
+      const mc = retirementBucketsMC(Object.assign({}, P, { cashYears: p[1], bondYears: p[2], runs: 600 }));
       const succ = Math.round(mc.successRate * 100);
       const cur = p[1] === r.cashYears && p[2] === r.bondYears;
       const last = mc.band[mc.band.length - 1];
@@ -2019,7 +2019,7 @@ const Pages = {
     return '<div class="panel section"><div class="panel-head"><div class="panel-title">Compare risk profiles</div>' +
       '<span class="panel-sub">same returns &amp; spending · different buffers · 30-yr retirement</span></div>' +
       '<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Profile</th><th class="num">Cash / Bonds</th><th class="num">Success</th><th class="num">Worst case</th><th class="num">Median left</th><th></th></tr></thead><tbody>' + rows + "</tbody></table></div>" +
-      '<p class="method-note" style="margin-top:10px"><strong>Worst case</strong> is the 10th-percentile ending balance — bigger buffers lift this floor (you avoid selling stocks in a crash) and raise the success rate, at the cost of a lower <strong>median</strong>. But push spending high enough and growth wins, so aggressive pulls ahead. There’s no single right answer — that’s the point.</p></div>';
+      '<p class="method-note" style="margin-top:10px"><strong>Worst case</strong> is the 10th-percentile ending balance. A <em>modest</em> buffer (1–3 years) usually wins: it lets you spend cash &amp; bonds through a slump instead of selling stocks low, which lifts both the worst case and the success rate. But too big a buffer (e.g. 2y/6y) parks too much in low-return assets — that drag drops the median and, at higher spending, the success rate too. The sweet spot is a few years of cushion, not a fortress.</p></div>';
   },
 
   _bucketNote(sim, r) {

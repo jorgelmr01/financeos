@@ -476,6 +476,29 @@ group("withdrawal-rate explorer — same nest, different draw", () => {
   ok(sOf(3) >= sOf(6) - 1e-9 && sOf(6) >= sOf(9) - 1e-9, "spending more never raises the success rate");
 });
 
+group("bucket strategy — the buffer earns its keep (sweet spot)", () => {
+  // fix the nest egg (years:0 → nest = start) so the withdrawal rate is exactly
+  // annualSpend / nest, then stress it where sequence risk actually bites.
+  const NEST = 10000000;
+  const base = { start: NEST, contrib: 0, years: 0, inflation: 4.5, eqRet: 10, bondRet: 7, cashRet: 4.5, accEquity: 100, maxDraw: 30 };
+  const succ = (rate, cy, by) => A.retirementBucketsMC(Object.assign({}, base, { annualSpend: rate / 100 * NEST, cashYears: cy, bondYears: by, runs: 3000 })).successRate;
+
+  // at a stressed 5% draw, a modest 1y-cash / 3y-bond buffer must beat going
+  // all-equity — that's the whole sequence-of-returns case the buffer defends.
+  const none = succ(5, 0, 0), modest = succ(5, 1, 3);
+  ok(modest > none + 0.03, "a modest buffer clearly beats no buffer at a stressed 5% draw (" +
+    (modest * 100).toFixed(1) + "% vs " + (none * 100).toFixed(1) + "%)");
+
+  // but an over-large 2y/6y (=8 years parked in low-return assets) drags so much
+  // it gives back the edge — the sweet spot is a few years, not a fortress.
+  const tooMuch = succ(5, 2, 6);
+  ok(modest > tooMuch, "an over-large buffer underperforms the modest one (drag wins)");
+
+  // and the all-equity baseline is unchanged by the new logic (no buffer = no
+  // defend/harvest distinction), so its success only depends on the draw
+  ok(succ(3.5, 0, 0) > succ(5.5, 0, 0), "all-equity still just tracks the withdrawal rate");
+});
+
 group("market regime model — bounded crashes (locks)", () => {
   const rng = A.mulberry32(0xC0FFEE);
   const eq = A.makeEquityMarket(rng, 10);
