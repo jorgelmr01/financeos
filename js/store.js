@@ -298,11 +298,11 @@ const Store = {
   /* Historical close prices for a symbol (Yahoo chart via CORS proxy). Returns
      { symbol, range, currency, points:[{t,c}] } or null. Cached per symbol+range. */
   _histCache: {},
-  async fetchHistory(symbol, range) {
+  async fetchHistory(symbol, range, interval) {
     range = range || "6mo";
-    const key = String(symbol).toUpperCase() + "|" + range;
+    interval = interval || (range === "1mo" ? "1d" : range === "6mo" ? "1d" : range === "1y" ? "1wk" : "1mo");
+    const key = String(symbol).toUpperCase() + "|" + range + "|" + interval;
     if (this._histCache[key]) return this._histCache[key];
-    const interval = range === "1mo" ? "1d" : range === "6mo" ? "1d" : range === "1y" ? "1wk" : "1mo";
     const url = "https://query1.finance.yahoo.com/v8/finance/chart/" +
       encodeURIComponent(symbol) + "?range=" + range + "&interval=" + interval;
     const proxies = [

@@ -243,6 +243,51 @@ function correlationOf(assetPts, marketPts) {
   return cov / (sa * sb);
 }
 
+/* Build a weighted portfolio value series from several holdings' price series,
+   each valued at CURRENT shares × historical local close × (current) FX factor.
+   Calendars rarely line up across listings, so we forward-fill each holding onto
+   the union timeline (its last known close as of each date). Returns [{t,v}].
+   items: [{ shares, fx, points:[{t,c}] }] — pure, testable. */
+function weightedValueSeries(items) {
+  const list = (items || []).filter(it => it && it.points && it.points.length);
+  if (!list.length) return [];
+  const tset = {};
+  list.forEach(it => it.points.forEach(p => { if (p && p.c > 0) tset[p.t] = true; }));
+  const times = Object.keys(tset).map(Number).sort((a, b) => a - b);
+  if (times.length < 2) return [];
+  // pre-sort each holding's points and walk a pointer per holding (forward-fill)
+  const cursors = list.map(it => ({
+    shares: Number(it.shares) || 0, fx: it.fx != null ? Number(it.fx) : 1,
+    pts: it.points.slice().filter(p => p && p.c > 0).sort((a, b) => a.t - b.t),
+    i: 0, last: null,
+  }));
+  const out = [];
+  times.forEach(t => {
+    let v = 0;
+    cursors.forEach(c => {
+      while (c.i < c.pts.length && c.pts[c.i].t <= t) { c.last = c.pts[c.i].c; c.i++; }
+      if (c.last == null && c.pts.length) c.last = c.pts[0].c;   // before first close → use first
+      if (c.last != null) v += c.shares * c.last * c.fx;
+    });
+    out.push({ t: t, v: v });
+  });
+  return out;
+}
+
+/* return of a {t,v} (or {t,c}) series over the last `days`, measured from the
+   first point on/after the lookback date to the final point. null if too short. */
+function seriesReturnOver(series, days) {
+  const s = series || [];
+  if (s.length < 2) return null;
+  const val = p => (p.v != null ? p.v : p.c);
+  const lastT = s[s.length - 1].t, cutoff = lastT - days * 86400000;
+  if (s[0].t > cutoff) return null;                  // series doesn't reach back that far
+  let base = null;
+  for (let i = 0; i < s.length; i++) { if (s[i].t >= cutoff) { base = val(s[i]); break; } }
+  const end = val(s[s.length - 1]);
+  return base > 0 ? end / base - 1 : null;
+}
+
 /* periods/year implied by a series' median spacing (for annualizing vol) */
 function periodsPerYear(points) {
   const p = points || [];

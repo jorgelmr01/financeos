@@ -6,6 +6,10 @@ const App = {
   budgetMonth: null,   // selected month on the Budget page (YYYY-MM)
   budgetView: "month", // "month" | "trends"
   holdingDetail: null, // open position id on the Portfolio page
+  portfolioMode: "basic", // investments tab: "basic" | "advanced"
+  advRange: "1y",      // advanced-view history range
+  advData: null,       // cached fetched history dataset for the advanced view
+  _advLoading: null,   // range currently being fetched (guards against re-fetch loops)
   priceRange: "6mo",   // price-history range for the detail chart
   earnHorizon: 1,      // income projection horizon in years (1|3|5)
   earnSel: 0,          // selected projection bucket
@@ -327,6 +331,8 @@ const App = {
       case "view-holding": this.holdingDetail = id; this.render(); window.scrollTo({ top: 0 }); break;
       case "back-portfolio": this.holdingDetail = null; this.render(); window.scrollTo({ top: 0 }); break;
       case "price-range": this.priceRange = el.dataset.range; this.render(); break;
+      case "portfolio-mode": this.portfolioMode = el.dataset.mode; this.render(); break;
+      case "adv-range": this.advRange = el.dataset.range; this.render(); break;
 
       case "add-holding": UI.holdingForm(); break;
       case "edit-holding": UI.holdingForm(Store.find("holdings", id)); break;

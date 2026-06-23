@@ -321,6 +321,7 @@ const UI = {
       this.field("Dividend / share / year", '<input name="divPerShare" type="text" inputmode="decimal" class="fmt-num" value="' + (h.divPerShare != null && h.divPerShare !== 0 ? fmtNumInput(h.divPerShare) : "") + '">', "Optional — auto-fills when refreshing prices") +
       this.field("Purchase date", '<input name="purchaseDate" type="date" value="' + esc(h.purchaseDate || toISO(todayMid())) + '">') +
       this.field("Held in account", '<select name="accountId">' + acctOpts + "</select>", invAccounts.length ? null : "Tip: add an Investment account to link", true) +
+      this._holdingClassFields(h) +
       "</div>";
     this.openModal(isEdit ? "Edit position" : "New position", body, {
       submitLabel: isEdit ? "Save changes" : "Add position",
@@ -337,12 +338,35 @@ const UI = {
           purchaseDate: fd.get("purchaseDate") || toISO(todayMid()),
           accountId: fd.get("accountId") || "",
         };
+        const cls = {};
+        if (fd.get("clsAsset")) cls.assetClass = fd.get("clsAsset");
+        if (fd.get("clsSector")) cls.sector = fd.get("clsSector");
+        if (fd.get("clsRegion")) cls.region = fd.get("clsRegion");
+        patch.cls = Object.keys(cls).length ? cls : null;
         if (isEdit) { Store.update("holdings", h.id, patch); UI.toast("Position updated"); }
         else { Store.add("holdings", patch); UI.toast("Position added"); }
         UI.closeModal();
         App.render();
       },
     });
+  },
+
+  /* optional classification overrides for the advanced portfolio view. Blank =
+     "Auto" (use the built-in dataset for known tickers). Shows what we detect. */
+  _holdingClassFields(h) {
+    if (typeof SECTORS === "undefined") return "";
+    const cls = (h && h.cls) || {};
+    const det = (typeof classifyHolding === "function") ? classifyHolding(h || {}) : null;
+    const opts = (arr, sel) => '<option value="">Auto</option>' +
+      arr.map(o => '<option value="' + esc(o) + '"' + (sel === o ? " selected" : "") + ">" + esc(o) + "</option>").join("");
+    const detNote = det && det.known
+      ? "We detect: " + esc(det.assetClass) + (Object.keys(det.sectors).length === 1 ? " · " + esc(Object.keys(det.sectors)[0]) : " · multi-sector ETF") + " · " + esc(Object.keys(det.regions)[0] || "—")
+      : "Unknown ticker — set these so it shows up in your exposure breakdown.";
+    return '<div class="field full"><label style="margin-bottom:2px">Classification <span class="beta-pill">advanced · optional</span></label>' +
+      '<div class="hint" style="margin-top:0">' + detNote + "</div></div>" +
+      this.field("Asset class", '<select name="clsAsset">' + opts(ASSET_CLASSES, cls.assetClass) + "</select>", null, true) +
+      this.field("Sector / industry", '<select name="clsSector">' + opts(SECTORS, cls.sector) + "</select>", null, true) +
+      this.field("Geography", '<select name="clsRegion">' + opts(REGIONS, cls.region) + "</select>", null, true);
   },
 
   incomeForm(inc) {

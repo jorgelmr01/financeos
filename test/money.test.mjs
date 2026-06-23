@@ -28,7 +28,7 @@ const bundle = [read("js/utils.js"), read("js/instruments.js"), read("js/budget.
   " accruedInterest, holdingReturnRate, parseAmount, parseExpenseDate, expenseSig, canonicalCategory," +
   " earningsBreakdown, retirementProjection, retirementMonteCarlo, retirementBuckets, retirementBucketsMC, makeEquityMarket, mulberry32, MARKET, realInterestEst, monthlyInterestEst," +
   " convBetween, sparkline, categorySeries, debtPayoff, detectRecurring, cashflowForecast, buroScore, investReadiness, irregularIncomePlan," +
-  " classifyHolding, portfolioExposure, seriesReturns, annualizedVol, alignReturns, betaOf, correlationOf, periodsPerYear, fmtNumInput, parseNum, budgetSpendEstimate," +
+  " classifyHolding, portfolioExposure, seriesReturns, annualizedVol, alignReturns, betaOf, correlationOf, periodsPerYear, weightedValueSeries, seriesReturnOver, fmtNumInput, parseNum, budgetSpendEstimate," +
   " toISO, parseISO, daysBetween, todayMid, Statements, INTEREST_FREQ, Store };";
 vm.runInContext(bundle, ctx, { filename: "bundle.js" });
 const A = ctx.__api;
@@ -730,6 +730,41 @@ group("portfolio exposure — weighted, with look-through", () => {
   ok(tech && tech.value > 3000 && tech.value < 4000, "look-through aggregates ETF + single-stock tech");
   ok(e.hhi > 0 && e.hhi <= 1, "concentration index is a valid Herfindahl");
   eq(e.unclassifiedPct, 0, "a fully-known book has nothing unclassified");
+});
+
+group("weighted value series — current shares × historical price", () => {
+  const pts = (arr) => arr.map((c, i) => ({ t: i * 86400000, c: c }));
+  // two holdings, same calendar: portfolio value = Σ shares×price×fx
+  const s = A.weightedValueSeries([
+    { shares: 2, fx: 1, points: pts([100, 110, 120]) },   // 200 → 220 → 240
+    { shares: 1, fx: 1, points: pts([50, 50, 60]) },      //  50 →  50 →  60
+  ]);
+  eq(s.length, 3, "one value point per shared date");
+  approx(s[0].v, 250, 1e-9, "start = 2×100 + 1×50");
+  approx(s[2].v, 300, 1e-9, "end = 2×120 + 1×60");
+
+  // mismatched calendars: the missing holding is forward-filled, not dropped
+  const m = A.weightedValueSeries([
+    { shares: 1, fx: 1, points: [{ t: 0, c: 100 }, { t: 2 * 86400000, c: 130 }] },
+    { shares: 1, fx: 1, points: [{ t: 1 * 86400000, c: 40 }, { t: 2 * 86400000, c: 50 }] },
+  ]);
+  eq(m.length, 3, "union timeline covers every date");
+  approx(m[2].v, 180, 1e-9, "last point sums both holdings (130 + 50)");
+
+  // fx factor scales a foreign listing into the display currency
+  const fx = A.weightedValueSeries([{ shares: 10, fx: 20, points: pts([5, 6]) }]);
+  approx(fx[1].v, 1200, 1e-9, "10 sh × 6 × 20 fx = 1,200");
+
+  eq(A.weightedValueSeries([]).length, 0, "no holdings → empty series");
+});
+
+group("series return over a window", () => {
+  const days = 86400000;
+  const s = [{ t: 0, v: 100 }, { t: 30 * days, v: 110 }, { t: 60 * days, v: 132 }];
+  approx(A.seriesReturnOver(s, 60), 0.32, 1e-9, "60-day return spans the whole series");
+  approx(A.seriesReturnOver(s, 30), 0.20, 1e-9, "30-day window starts at the 30-day point");
+  ok(A.seriesReturnOver(s, 365) == null, "a window longer than the history → null");
+  ok(A.seriesReturnOver([{ t: 0, v: 1 }], 30) == null, "a single point → null");
 });
 
 group("risk math — returns, volatility, beta", () => {

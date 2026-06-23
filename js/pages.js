@@ -650,7 +650,177 @@ const Pages = {
         "<th>Position</th><th class=\"num\">Shares</th><th class=\"num\">Paid</th><th class=\"num\">Price now</th><th class=\"num\">Value</th><th class=\"num\">Return</th><th></th>" +
       "</tr></thead><tbody>" + rows + "</tbody></table></div></div>";
 
-    return stats + alloc + table;
+    const toggle = this._portfolioModeToggle();
+    if (App.portfolioMode === "advanced") {
+      return toggle + stats +
+        this._advExposure() +
+        this._advPerformanceMount() +
+        this._advRiskMount() +
+        alloc + table +
+        '<p class="method-note section">Advanced analytics are for information only — FinanceOS never tells you what to buy, sell or hold. Sector &amp; geography use a built-in classification of common instruments (with ETF look-through); edit any position to correct or fill it in. Risk &amp; performance use Yahoo Finance price history.</p>';
+    }
+    return toggle + stats + alloc + table;
+  },
+
+  /* basic ⇄ advanced switch for the investments tab */
+  _portfolioModeToggle() {
+    const adv = App.portfolioMode === "advanced";
+    return '<div class="section portfolio-mode-row">' +
+      '<div class="seg-toggle">' +
+        '<button class="seg-btn' + (!adv ? " on" : "") + '" data-action="portfolio-mode" data-mode="basic">Overview</button>' +
+        '<button class="seg-btn' + (adv ? " on" : "") + '" data-action="portfolio-mode" data-mode="advanced">Advanced</button>' +
+      "</div>" +
+      (adv ? '<span class="portfolio-mode-hint">Full breakdown — exposure, risk &amp; performance</span>' : "") +
+      "</div>";
+  },
+
+  /* ---- WS2: exposure — asset class, industry & geography (ETF look-through) ---- */
+  _advExposure() {
+    const e = (typeof portfolioExposure === "function") ? portfolioExposure() : null;
+    if (!e || !(e.total > 0)) return "";
+    const concTone = e.concentration === "high" ? "neg" : e.concentration === "moderate" ? "gold" : "pos";
+    const head = '<div class="panel section"><div class="panel-head"><div class="panel-title">Exposure breakdown</div>' +
+      '<span class="panel-sub ' + concTone + '">' + e.concentration + " · top sector " +
+      (e.topSector ? esc(e.topSector.name) + " " + e.topSector.pct.toFixed(0) + "%" : "—") + "</span></div>" +
+      '<div class="grid cols-3 stack-wide">' +
+        this._exposureBlock("By asset class", e.byAssetClass) +
+        this._exposureBlock("By industry", e.bySector) +
+        this._exposureBlock("By geography", e.byRegion) +
+      "</div>" +
+      (e.unclassifiedPct > 0.5
+        ? '<p class="method-note" style="margin-top:12px"><span class="gold">' + e.unclassifiedPct.toFixed(0) + "% of the book is unclassified.</span> Open those positions and set their asset class, sector &amp; region for a complete picture — we only ship classifications for common instruments.</p>"
+        : "") +
+      "</div>";
+    return head;
+  },
+
+  _exposureBlock(title, list) {
+    if (!list || !list.length) return "";
+    const bar = '<div class="comp-bar">' + list.map((x, i) =>
+      '<span style="width:' + x.pct.toFixed(2) + '%;background:' + CHART_COLORS[i % CHART_COLORS.length] + '" data-tip="' +
+      esc(x.name) + " · <strong>" + fmtMoney(x.value, { compact: true }) + "</strong> · " + x.pct.toFixed(1) + '%"></span>').join("") + "</div>";
+    const legend = '<div class="exp-legend">' + list.slice(0, 8).map((x, i) =>
+      '<div class="exp-row"><span class="exp-name"><span class="dot" style="background:' + CHART_COLORS[i % CHART_COLORS.length] + '"></span>' +
+      esc(x.name) + '</span><span class="exp-pct">' + x.pct.toFixed(1) + "%</span></div>").join("") + "</div>";
+    return '<div class="exp-block"><div class="micro-label" style="margin-bottom:8px">' + title + "</div>" + bar + legend + "</div>";
+  },
+
+  /* ---- WS4: performance (async mount) ---- */
+  _advPerformanceMount() {
+    const range = App.advRange || "1y";
+    const labels = { "1mo": "1M", "6mo": "6M", "1y": "1Y", "5y": "5Y" };
+    const btns = ["1mo", "6mo", "1y", "5y"].map(r =>
+      '<button class="range-btn' + (r === range ? " on" : "") + '" data-action="adv-range" data-range="' + r + '">' + labels[r] + "</button>").join("");
+    const body = (App.advData && App.advData.range === range)
+      ? this._advPerformanceRender(App.advData)
+      : '<div class="adv-loading">Loading price history from Yahoo Finance…</div>';
+    return '<div class="panel section"><div class="panel-head"><div class="panel-title">Portfolio performance</div>' +
+      '<span class="panel-sub">value of your current holdings over time</span></div>' +
+      '<div class="price-range-bar" style="margin-bottom:12px">' + btns + "</div>" +
+      '<div id="adv-perf">' + body + "</div></div>";
+  },
+
+  _advRiskMount() {
+    const range = App.advRange || "1y";
+    const body = (App.advData && App.advData.range === range)
+      ? this._advRiskRender(App.advData)
+      : '<div class="adv-loading">Loading…</div>';
+    return '<div class="panel section"><div class="panel-head"><div class="panel-title">Risk &amp; volatility</div>' +
+      '<span class="panel-sub">vs the S&amp;P 500 · annualized</span></div>' +
+      '<div id="adv-risk">' + body + "</div></div>";
+  },
+
+  _advItems(data) {
+    return (data.holdings || []).filter(h => h.points && h.points.length > 1)
+      .map(h => ({ id: h.id, symbol: h.symbol, name: h.name, shares: h.shares, fx: h.fx, points: h.points }));
+  },
+
+  _advWindowDays(range) { return range === "1mo" ? 30 : range === "6mo" ? 182 : range === "5y" ? 1825 : 365; },
+
+  _advPerformanceRender(data) {
+    const items = this._advItems(data);
+    if (items.length < 1) return '<div class="adv-loading">Couldn’t load live price history (offline or blocked). Try again in a moment.</div>';
+    const series = weightedValueSeries(items);
+    if (series.length < 2) return '<div class="adv-loading">Not enough overlapping history to chart yet.</div>';
+    const cur = displayCurrency();
+    const cs = series.map(p => ({ t: p.t, c: p.v }));
+    const now = series[series.length - 1].v, start = series[0].v;
+    const chg = now - start, chgPct = start > 0 ? chg / start * 100 : 0;
+    // day / month / year style change chips (only those the window reaches)
+    const windows = [["1D", 1], ["1W", 7], ["1M", 30], ["3M", 91], ["6M", 182], ["1Y", 365]];
+    const chips = windows.map(w => {
+      const r = seriesReturnOver(series, w[1]);
+      if (r == null) return "";
+      const tone = r >= 0 ? "pos" : "neg";
+      return '<div class="chg-chip"><span class="chg-lab">' + w[0] + '</span><span class="chg-val ' + tone + '">' + fmtPct(r * 100, 1) + "</span></div>";
+    }).join("");
+    const missing = items.length < (data.holdings || []).length
+      ? '<p class="method-note" style="margin-top:10px">' + (data.holdings.length - items.length) + " of " + data.holdings.length + " positions had no live history and are excluded from this chart.</p>"
+      : "";
+    return '<div class="adv-perf-head"><div><div class="adv-perf-now">' + fmtMoney(now) + "</div>" +
+        '<div class="adv-perf-chg ' + (chg >= 0 ? "pos" : "neg") + '">' + fmtMoney(chg, { sign: true, compact: true }) + " (" + fmtPct(chgPct, 1) + ") this window</div></div>" +
+        '<div class="chg-chips">' + chips + "</div></div>" +
+      this._priceLineChart(cs, { cur: cur }) +
+      '<div class="price-source">current holdings × historical price · ' + series.length + " pts · Yahoo Finance · FX at today’s rate</div>" +
+      missing;
+  },
+
+  _advRiskRender(data) {
+    const items = this._advItems(data);
+    if (items.length < 1) return '<div class="adv-loading">Couldn’t load live price history (offline or blocked). Try again in a moment.</div>';
+    const bench = (data.bench && data.bench.length > 1) ? data.bench : null;
+    const winDays = this._advWindowDays(data.range);
+    const series = weightedValueSeries(items);
+    const pSeries = series.map(p => ({ t: p.t, c: p.v }));
+    const ppy = periodsPerYear(pSeries);
+    const pVol = annualizedVol(seriesReturns(pSeries), ppy);
+    const pBeta = bench ? betaOf(pSeries, bench) : null;
+    const totalMv = computeTotals().marketValue || 1;
+    const stat = (l, v, n, tone) => '<div class="stat"><span class="micro-label">' + l + '</span><div class="stat-value ' + (tone || "") + '" style="font-size:21px">' + v + "</div>" + (n ? '<div class="stat-note">' + n + "</div>" : "") + "</div>";
+    const volTone = pVol >= 0.25 ? "neg" : pVol >= 0.15 ? "gold" : "pos";
+    const betaTxt = pBeta == null ? "—" : pBeta.toFixed(2);
+    const betaNote = pBeta == null ? "needs S&P history" : pBeta > 1.05 ? "swings harder than the market" : pBeta < 0.95 ? "steadier than the market" : "moves with the market";
+    const summary = '<div class="grid cols-3 section" style="margin-top:0">' +
+      stat("Portfolio volatility", (pVol * 100).toFixed(1) + "%", "annualized · " + (ppy === 252 ? "daily" : ppy === 52 ? "weekly" : "monthly") + " data", volTone) +
+      stat("Beta vs S&P 500", betaTxt, betaNote, pBeta == null ? "" : pBeta > 1.05 ? "gold" : "pos") +
+      stat("Positions analyzed", items.length + " of " + (data.holdings || []).length, "with live history") +
+      "</div>";
+    const rows = items.map(it => {
+      const vol = annualizedVol(seriesReturns(it.points), periodsPerYear(it.points));
+      const beta = bench ? betaOf(it.points, bench) : null;
+      const corr = bench ? correlationOf(it.points, bench) : null;
+      const ret = seriesReturnOver(it.points, winDays);
+      const w = it.shares * it.fx * it.points[it.points.length - 1].c / totalMv * 100;
+      return "<tr><td><span class=\"sym-badge\">" + esc(String(it.symbol).slice(0, 5)) + "</span> " + esc(it.symbol) + "</td>" +
+        '<td class="num">' + w.toFixed(1) + "%</td>" +
+        '<td class="num ' + (ret == null ? "" : ret >= 0 ? "pos" : "neg") + '">' + (ret == null ? "—" : fmtPct(ret * 100, 1)) + "</td>" +
+        '<td class="num">' + (vol * 100).toFixed(1) + "%</td>" +
+        '<td class="num">' + (beta == null ? "—" : beta.toFixed(2)) + "</td>" +
+        '<td class="num">' + (corr == null ? "—" : corr.toFixed(2)) + "</td></tr>";
+    }).join("");
+    const table = '<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Position</th><th class="num">Weight</th>' +
+      '<th class="num">Return</th><th class="num">Vol</th><th class="num">Beta</th><th class="num">Corr</th></tr></thead><tbody>' + rows + "</tbody></table></div>";
+    const note = '<p class="method-note" style="margin-top:10px"><strong>Volatility</strong> is the annualized standard deviation of returns — how much the value swings. <strong>Beta</strong> and <strong>correlation</strong> are measured against the S&amp;P 500: beta ~1 moves with the market, &gt;1 amplifies it; correlation near 1 means they move together (low correlation is what real diversification looks like).</p>';
+    return summary + table + note;
+  },
+
+  /* async: pull each holding's price history (+ the S&P benchmark) for the
+     selected range, cache on App.advData, then re-render the advanced view. */
+  loadAdvancedData(range) {
+    range = range || "1y";
+    const interval = range === "5y" ? "1wk" : "1d";
+    const holdings = Store.state.holdings || [];
+    if (!holdings.length) return;
+    App._advLoading = range;
+    const jobs = holdings.map(h => Store.fetchHistory(h.symbol, range, interval)
+      .then(d => ({ id: h.id, symbol: h.symbol, name: h.name || h.symbol, shares: Number(h.shares) || 0, currency: h.currency, fx: conv(1, h.currency), points: (d && d.points) || null }))
+      .catch(() => ({ id: h.id, symbol: h.symbol, name: h.name || h.symbol, shares: Number(h.shares) || 0, currency: h.currency, fx: conv(1, h.currency), points: null })));
+    const benchJob = Store.fetchHistory("^GSPC", range, interval).then(d => (d && d.points) || null).catch(() => null);
+    Promise.all([Promise.all(jobs), benchJob]).then(([hs, bench]) => {
+      App._advLoading = null;
+      App.advData = { range: range, holdings: hs, bench: bench, ts: Date.now() };
+      if (App.page === "portfolio" && App.portfolioMode === "advanced") App.render();
+    }).catch(() => { App._advLoading = null; });
   },
 
   /* ---------- single-stock detail ---------- */
@@ -778,6 +948,12 @@ const Pages = {
     if (page !== "portfolio") return;
     const mount = document.getElementById("price-chart");
     if (mount && mount.dataset.symbol) this.loadPriceChart(mount);
+    // advanced mode: fetch the history dataset for the selected range once
+    if (App.portfolioMode === "advanced" && (Store.state.holdings || []).length) {
+      const range = App.advRange || "1y";
+      const have = App.advData && App.advData.range === range;
+      if (!have && App._advLoading !== range) this.loadAdvancedData(range);
+    }
   },
 
   loadPriceChart(mount) {
