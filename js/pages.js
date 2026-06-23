@@ -655,6 +655,7 @@ const Pages = {
       return toggle + stats +
         this._advExposure() +
         this._advPerformanceMount() +
+        this._advDividends() +
         this._advRiskMount() +
         alloc + table +
         '<p class="method-note section">Advanced analytics are for information only — FinanceOS never tells you what to buy, sell or hold. Sector &amp; geography use a built-in classification of common instruments (with ETF look-through); edit any position to correct or fill it in. Risk &amp; performance use Yahoo Finance price history.</p>';
@@ -730,6 +731,60 @@ const Pages = {
       '<div id="adv-risk">' + body + "</div></div>";
   },
 
+  /* ---- dividend / passive-income panel (local, instant) ---- */
+  _advDividends() {
+    if (typeof dividendSummary !== "function") return "";
+    const d = dividendSummary();
+    if (!(d.annual > 0)) {
+      return '<div class="panel section"><div class="panel-head"><div class="panel-title">Dividend income</div>' +
+        '<span class="panel-sub">projected passive income</span></div>' +
+        '<p class="method-note">No dividends recorded yet. Press <strong>↻ Update prices</strong> to auto-fill trailing dividends, or set "Dividend / share / year" when you edit a position.</p></div>';
+    }
+    const divTax = (Store.state.settings.tax && Number(Store.state.settings.tax.dividend)) || 0;
+    const afterTax = d.annual * (1 - divTax / 100);
+    const stat = (l, v, n, tone) => '<div class="stat"><span class="micro-label">' + l + '</span><div class="stat-value ' + (tone || "") + '" style="font-size:21px">' + v + "</div>" + (n ? '<div class="stat-note">' + n + "</div>" : "") + "</div>";
+    const stats = '<div class="grid cols-4 section" style="margin-top:0">' +
+      stat("Annual income", fmtMoney(d.annual, { compact: true }), "≈ " + fmtMoney(d.monthly, { compact: true }) + "/mo", "pos") +
+      stat("Portfolio yield", d.portfolioYield.toFixed(2) + "%", "income ÷ value", "") +
+      stat("Yield on cost", d.yieldOnCost.toFixed(2) + "%", "income ÷ what you paid", d.yieldOnCost > d.portfolioYield ? "pos" : "") +
+      stat(divTax > 0 ? "After " + divTax + "% tax" : "Paying positions", divTax > 0 ? fmtMoney(afterTax, { compact: true }) + "/yr" : d.payers + " of " + d.positions, divTax > 0 ? "≈ " + fmtMoney(afterTax / 12, { compact: true }) + "/mo net" : "hold a dividend", "") +
+      "</div>";
+    const rows = d.rows.map(r =>
+      "<tr><td><span class=\"sym-badge\">" + esc(String(r.symbol).slice(0, 5)) + "</span> " + esc(r.name) + "</td>" +
+      '<td class="num">' + fmtMoney(r.annual, { compact: true }) + "</td>" +
+      '<td class="num">' + fmtMoney(r.annual / 12, { compact: true }) + "</td>" +
+      '<td class="num">' + r.yield.toFixed(2) + "%</td>" +
+      '<td class="num">' + r.yieldOnCost.toFixed(2) + "%</td></tr>").join("");
+    const table = '<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Position</th>' +
+      '<th class="num">Per year</th><th class="num">Per month</th><th class="num">Yield</th><th class="num">On cost</th></tr></thead><tbody>' + rows + "</tbody></table></div>";
+    return '<div class="panel section"><div class="panel-head"><div class="panel-title">Dividend income</div>' +
+      '<span class="panel-sub">' + d.payers + " payer" + (d.payers === 1 ? "" : "s") + " · projected at current rates</span></div>" +
+      stats + table +
+      '<p class="method-note" style="margin-top:10px"><strong>Yield on cost</strong> is your dividend income against what you originally paid — it climbs over the years as companies raise payouts, which is the quiet engine of long-run income. Figures are trailing-twelve-month estimates, not guarantees.</p></div>';
+  },
+
+  /* underwater (drawdown) block, appended under the performance chart */
+  _advDrawdownBlock(series) {
+    const dd = (typeof drawdownInfo === "function") ? drawdownInfo(series) : null;
+    if (!dd || !dd.series.length) return "";
+    const pts = dd.series;
+    const minDD = Math.min.apply(null, pts.map(p => p.dd));
+    const W = 1000, H = 90, PAD = 6;
+    const lo = Math.min(minDD, -0.0001);
+    const X = (i) => PAD + (pts.length <= 1 ? 0 : i * (W - 2 * PAD) / (pts.length - 1));
+    const Y = (v) => PAD + (v / lo) * (H - 2 * PAD);     // 0 at top, lo at bottom
+    const line = pts.map((p, i) => X(i).toFixed(1) + "," + Y(p.dd).toFixed(1)).join(" ");
+    const area = X(0).toFixed(1) + "," + PAD + " " + line + " " + X(pts.length - 1).toFixed(1) + "," + PAD;
+    const ddTone = dd.maxDD <= -0.3 ? "neg" : dd.maxDD <= -0.15 ? "gold" : "pos";
+    const curTxt = dd.recovered ? '<span class="pos">at a new high</span>' : '<span class="neg">' + fmtPct(dd.currentDD * 100, 1) + " below peak</span>";
+    return '<div class="adv-dd"><div class="adv-dd-head"><span class="micro-label">Drawdown (value vs running peak)</span>' +
+      '<span class="adv-dd-stats">max <strong class="' + ddTone + '">' + fmtPct(dd.maxDD * 100, 1) + "</strong> · now " + curTxt + "</span></div>" +
+      '<div class="chart-wrap"><svg class="adv-dd-chart" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none">' +
+        '<polygon points="' + area + '" fill="rgba(232,131,111,0.18)"/>' +
+        '<polyline points="' + line + '" fill="none" stroke="#e8836f" stroke-width="1.8" stroke-linejoin="round"/>' +
+      "</svg></div></div>";
+  },
+
   _advItems(data) {
     return (data.holdings || []).filter(h => h.points && h.points.length > 1)
       .map(h => ({ id: h.id, symbol: h.symbol, name: h.name, shares: h.shares, fx: h.fx, beta: h.beta, points: h.points }));
@@ -762,6 +817,7 @@ const Pages = {
         '<div class="chg-chips">' + chips + "</div></div>" +
       this._priceLineChart(cs, { cur: cur }) +
       '<div class="price-source">current holdings × historical price · ' + series.length + " pts · Yahoo Finance · FX at today’s rate</div>" +
+      this._advDrawdownBlock(series) +
       missing;
   },
 

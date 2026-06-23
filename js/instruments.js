@@ -107,6 +107,29 @@ const INSTRUMENTS = {
   "GMEXICO": { name: "Grupo México", assetClass: "Equity", sector: "Materials", region: "Mexico" },
   "CEMEX": { name: "Cemex", assetClass: "Equity", sector: "Materials", region: "Mexico" },
   "BIMBO": { name: "Grupo Bimbo", assetClass: "Equity", sector: "Consumer Staples", region: "Mexico" },
+  "KOF": { name: "Coca-Cola FEMSA", assetClass: "Equity", sector: "Consumer Staples", region: "Mexico" },
+  "TLEVISA": { name: "Grupo Televisa", assetClass: "Equity", sector: "Communication", region: "Mexico" },
+  "ELEKTRA": { name: "Grupo Elektra", assetClass: "Equity", sector: "Consumer Discretionary", region: "Mexico" },
+  "ALSEA": { name: "Alsea", assetClass: "Equity", sector: "Consumer Discretionary", region: "Mexico" },
+  "GAP": { name: "Grupo Aeroportuario del Pacífico", assetClass: "Equity", sector: "Industrials", region: "Mexico" },
+  "ASUR": { name: "Grupo Aeroportuario del Sureste", assetClass: "Equity", sector: "Industrials", region: "Mexico" },
+  "OMA": { name: "Grupo Aeroportuario Centro Norte", assetClass: "Equity", sector: "Industrials", region: "Mexico" },
+  "PINFRA": { name: "Pinfra", assetClass: "Equity", sector: "Industrials", region: "Mexico" },
+  "ORBIA": { name: "Orbia", assetClass: "Equity", sector: "Materials", region: "Mexico" },
+  "PEÑOLES": { name: "Industrias Peñoles", assetClass: "Equity", sector: "Materials", region: "Mexico" },
+  "KIMBER": { name: "Kimberly-Clark de México", assetClass: "Equity", sector: "Consumer Staples", region: "Mexico" },
+  "LIVEPOL": { name: "Liverpool", assetClass: "Equity", sector: "Consumer Discretionary", region: "Mexico" },
+  "GCARSO": { name: "Grupo Carso", assetClass: "Equity", sector: "Industrials", region: "Mexico" },
+  "BBAJIO": { name: "Banco del Bajío", assetClass: "Equity", sector: "Financials", region: "Mexico" },
+  "GENTERA": { name: "Gentera", assetClass: "Equity", sector: "Financials", region: "Mexico" },
+  "Q": { name: "Quálitas", assetClass: "Equity", sector: "Financials", region: "Mexico" },
+  // FIBRAs (Mexican REITs) — real estate, Mexico
+  "FUNO": { name: "Fibra Uno", assetClass: "Real Estate", region: "Mexico" },
+  "FIBRAPL": { name: "Fibra Prologis", assetClass: "Real Estate", region: "Mexico" },
+  "FIBRAMQ": { name: "Fibra Macquarie", assetClass: "Real Estate", region: "Mexico" },
+  "FUNO11": { name: "Fibra Uno", assetClass: "Real Estate", region: "Mexico" },
+  "FMTY": { name: "Fibra Mty", assetClass: "Real Estate", region: "Mexico" },
+  "TERRA": { name: "Terrafina", assetClass: "Real Estate", region: "Mexico" },
 };
 
 /* normalize a weight map to fractions summing to 1 */
@@ -217,6 +240,57 @@ function portfolioExposure() {
     hhi: hhi, concentration: hhi >= 0.25 ? "high" : hhi >= 0.15 ? "moderate" : "diversified",
     topSector: sectors[0] || null,
     unclassifiedPct: total > 0 ? (sec["Unclassified"] || 0) / total * 100 : 0,
+  };
+}
+
+/* Projected dividend income from the holdings as they stand (shares × dividend
+   per share, in the display currency). Yield is income ÷ market value; yield on
+   cost is income ÷ what you paid — the number that quietly grows as a position
+   appreciates. Pure-ish: reads Store + conv at call time. */
+function dividendSummary() {
+  const hs = (Store.state.holdings || []);
+  let annual = 0, mv = 0, cost = 0;
+  const rows = [];
+  hs.forEach(h => {
+    const shares = Number(h.shares) || 0, dps = Number(h.divPerShare) || 0;
+    const inc = conv(shares * dps, h.currency);
+    const m = conv(shares * (Number(h.currentPrice) || 0), h.currency);
+    const c = conv(shares * (Number(h.costBasis) || 0), h.currency);
+    mv += m; cost += c;
+    if (inc > 0) { annual += inc; rows.push({ symbol: h.symbol, name: h.name || h.symbol, annual: inc, yield: m > 0 ? inc / m * 100 : 0, yieldOnCost: c > 0 ? inc / c * 100 : 0, mv: m }); }
+  });
+  rows.sort((a, b) => b.annual - a.annual);
+  return {
+    annual: annual, monthly: annual / 12,
+    portfolioYield: mv > 0 ? annual / mv * 100 : 0,
+    yieldOnCost: cost > 0 ? annual / cost * 100 : 0,
+    rows: rows, payers: rows.length, positions: hs.length, marketValue: mv,
+  };
+}
+
+/* Drawdown analysis from a value (or close) series: the "underwater" curve
+   (value ÷ running peak − 1, always ≤ 0), the worst peak-to-trough fall, and
+   how far below the all-time high you sit right now. This is the risk that
+   volatility hides — the gut-punch of watching the pile shrink. Pure. */
+function drawdownInfo(series) {
+  const s = series || [];
+  const val = p => (p.v != null ? p.v : p.c);
+  if (s.length < 2) return null;
+  let peak = val(s[0]), peakT = s[0].t, maxDD = 0, troughT = s[0].t, ddPeakT = s[0].t;
+  const under = [];
+  for (let i = 0; i < s.length; i++) {
+    const v = val(s[i]);
+    if (v > peak) { peak = v; peakT = s[i].t; }
+    const dd = peak > 0 ? v / peak - 1 : 0;
+    under.push({ t: s[i].t, dd: dd });
+    if (dd < maxDD) { maxDD = dd; troughT = s[i].t; ddPeakT = peakT; }
+  }
+  const last = val(s[s.length - 1]);
+  const currentDD = peak > 0 ? last / peak - 1 : 0;
+  return {
+    series: under, maxDD: maxDD, maxDDPeakT: ddPeakT, maxDDTroughT: troughT,
+    currentDD: currentDD, recovered: currentDD >= -0.001,
+    fellFrom: peak,
   };
 }
 

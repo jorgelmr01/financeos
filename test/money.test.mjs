@@ -28,7 +28,7 @@ const bundle = [read("js/utils.js"), read("js/instruments.js"), read("js/budget.
   " accruedInterest, holdingReturnRate, parseAmount, parseExpenseDate, expenseSig, canonicalCategory," +
   " earningsBreakdown, retirementProjection, retirementMonteCarlo, retirementBuckets, retirementBucketsMC, makeEquityMarket, mulberry32, MARKET, realInterestEst, monthlyInterestEst," +
   " convBetween, sparkline, categorySeries, debtPayoff, detectRecurring, cashflowForecast, buroScore, investReadiness, irregularIncomePlan," +
-  " classifyHolding, portfolioExposure, seriesReturns, annualizedVol, alignReturns, betaOf, correlationOf, periodsPerYear, weightedValueSeries, seriesReturnOver, finnhubSectorToGICS, countryToRegion, fmtNumInput, parseNum, budgetSpendEstimate," +
+  " classifyHolding, portfolioExposure, seriesReturns, annualizedVol, alignReturns, betaOf, correlationOf, periodsPerYear, weightedValueSeries, seriesReturnOver, finnhubSectorToGICS, countryToRegion, dividendSummary, drawdownInfo, fmtNumInput, parseNum, budgetSpendEstimate," +
   " toISO, parseISO, daysBetween, todayMid, Statements, INTEREST_FREQ, Store };";
 vm.runInContext(bundle, ctx, { filename: "bundle.js" });
 const A = ctx.__api;
@@ -756,6 +756,45 @@ group("portfolio exposure — weighted, with look-through", () => {
   ok(tech && tech.value > 3000 && tech.value < 4000, "look-through aggregates ETF + single-stock tech");
   ok(e.hhi > 0 && e.hhi <= 1, "concentration index is a valid Herfindahl");
   eq(e.unclassifiedPct, 0, "a fully-known book has nothing unclassified");
+});
+
+group("dividend income — yield & yield on cost", () => {
+  resetStore({
+    settings: { currency: "USD", fx: null, tax: { dividend: 10 } }, incomes: [], cards: [], accounts: [], expenses: [], budgets: {}, snapshots: [],
+    holdings: [
+      { id: "a", symbol: "VOO", shares: 10, costBasis: 300, currentPrice: 500, divPerShare: 6, currency: "USD" }, // 60/yr
+      { id: "b", symbol: "AAPL", shares: 100, costBasis: 100, currentPrice: 200, divPerShare: 1, currency: "USD" }, // 100/yr
+      { id: "c", symbol: "NVDA", shares: 5, costBasis: 50, currentPrice: 120, divPerShare: 0, currency: "USD" }, // none
+    ],
+  });
+  const d = A.dividendSummary();
+  approx(d.annual, 160, 1e-6, "annual income sums shares × dividend");
+  approx(d.monthly, 160 / 12, 1e-6, "monthly = annual ÷ 12");
+  // market value = 10×500 + 100×200 + 5×120 = 25,600 → yield = 160/25,600
+  approx(d.portfolioYield, 160 / 25600 * 100, 1e-6, "portfolio yield = income ÷ market value");
+  // cost = 10×300 + 100×100 + 5×50 = 13,250 → yield on cost is higher than current yield
+  approx(d.yieldOnCost, 160 / 13250 * 100, 1e-6, "yield on cost = income ÷ cost");
+  ok(d.yieldOnCost > d.portfolioYield, "appreciated positions → yield on cost beats current yield");
+  eq(d.payers, 2, "counts only positions that actually pay");
+  eq(d.rows[0].symbol, "AAPL", "sorted by income, biggest payer first");
+});
+
+group("drawdown — the underwater curve", () => {
+  const series = [100, 120, 90, 110, 150, 135].map((v, i) => ({ t: i * 86400000, v: v }));
+  const dd = A.drawdownInfo(series);
+  // peak 120 → trough 90 is −25%; later peak 150 → 135 is −10% (shallower)
+  approx(dd.maxDD, -0.25, 1e-9, "max drawdown is the worst peak-to-trough fall");
+  approx(dd.currentDD, 135 / 150 - 1, 1e-9, "current drawdown is vs the all-time peak");
+  ok(!dd.recovered, "still below the high → not recovered");
+  eq(dd.series.length, series.length, "one underwater point per input point");
+  ok(dd.series.every(p => p.dd <= 1e-9), "the underwater curve never rises above zero");
+
+  // a monotonic climb is never underwater and ends recovered
+  const up = [10, 11, 12, 13].map((v, i) => ({ t: i * 1000, v: v }));
+  const ddUp = A.drawdownInfo(up);
+  approx(ddUp.maxDD, 0, 1e-9, "an only-up series has zero drawdown");
+  ok(ddUp.recovered, "and sits at its high");
+  ok(A.drawdownInfo([{ t: 0, v: 1 }]) == null, "a single point → null");
 });
 
 group("weighted value series — current shares × historical price", () => {
