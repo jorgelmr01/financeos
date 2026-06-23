@@ -23,11 +23,12 @@ const ctx = {
   WebAssembly: undefined, document: undefined,
 };
 vm.createContext(ctx);
-const bundle = [read("js/utils.js"), read("js/budget.js"), read("js/statements.js"), read("js/store.js")].join("\n;\n") +
+const bundle = [read("js/utils.js"), read("js/instruments.js"), read("js/budget.js"), read("js/statements.js"), read("js/store.js")].join("\n;\n") +
   "\n;globalThis.__api = { interestPerPeriod, nextInterestDate, interestScheduleLabel, interestPeriodDays," +
   " accruedInterest, holdingReturnRate, parseAmount, parseExpenseDate, expenseSig, canonicalCategory," +
   " earningsBreakdown, retirementProjection, retirementMonteCarlo, retirementBuckets, retirementBucketsMC, makeEquityMarket, mulberry32, MARKET, realInterestEst, monthlyInterestEst," +
-  " convBetween, sparkline, categorySeries, debtPayoff, detectRecurring, cashflowForecast, buroScore, investReadiness, irregularIncomePlan, fmtNumInput, parseNum, budgetSpendEstimate," +
+  " convBetween, sparkline, categorySeries, debtPayoff, detectRecurring, cashflowForecast, buroScore, investReadiness, irregularIncomePlan," +
+  " classifyHolding, portfolioExposure, seriesReturns, annualizedVol, alignReturns, betaOf, correlationOf, periodsPerYear, fmtNumInput, parseNum, budgetSpendEstimate," +
   " toISO, parseISO, daysBetween, todayMid, Statements, INTEREST_FREQ, Store };";
 vm.runInContext(bundle, ctx, { filename: "bundle.js" });
 const A = ctx.__api;
@@ -673,6 +674,93 @@ group("irregular-income planner — budget the lean month", () => {
   // garbage in → safe zeros, no NaN
   const z = A.irregularIncomePlan({});
   ok(z.baseline === 0 && z.bufferTarget === 0 && isFinite(z.volatility), "empty input degrades to zeros");
+});
+
+group("instrument classification + ETF look-through", () => {
+  // a single stock resolves to one sector / region at 100%
+  const aapl = A.classifyHolding({ symbol: "AAPL", kind: "stock" });
+  eq(aapl.assetClass, "Equity", "AAPL is equity");
+  approx(aapl.sectors["Technology"], 1, 1e-9, "AAPL is 100% Technology");
+  approx(aapl.regions["United States"], 1, 1e-9, "AAPL is 100% US");
+
+  // an S&P 500 ETF spreads across many sectors, all in the US, summing to 1
+  const voo = A.classifyHolding({ symbol: "VOO", kind: "etf" });
+  const sSum = Object.values(voo.sectors).reduce((a, b) => a + b, 0);
+  approx(sSum, 1, 1e-9, "VOO sector weights sum to 1");
+  ok(Object.keys(voo.sectors).length > 5, "VOO looks through to many sectors");
+  ok(voo.sectors["Technology"] > voo.sectors["Utilities"], "tech outweighs utilities in the S&P");
+
+  // an international ETF splits across regions
+  const vxus = A.classifyHolding({ symbol: "VXUS", kind: "etf" });
+  ok(vxus.regions["Developed ex-US"] > 0 && vxus.regions["Emerging Markets"] > 0, "VXUS spans developed + emerging");
+
+  // a bond fund buckets into Bonds, not an equity sector
+  eq(A.classifyHolding({ symbol: "BND" }).assetClass, "Bonds", "BND is a bond fund");
+  ok(A.classifyHolding({ symbol: "BND" }).sectors["Bonds"] === 1, "non-equity buckets into its own class");
+
+  // unknown ticker is honestly flagged, never crashes
+  const wat = A.classifyHolding({ symbol: "ZZZZ", kind: "stock" });
+  ok(!wat.known && wat.sectors["Unclassified"] === 1, "an unknown ticker is Unclassified, not guessed");
+
+  // a user override wins over the dataset
+  const ov = A.classifyHolding({ symbol: "AAPL", cls: { sector: "Health Care", region: "Mexico" } });
+  ok(ov.sectors["Health Care"] === 1 && ov.regions["Mexico"] === 1, "per-holding override beats the dataset");
+});
+
+group("portfolio exposure — weighted, with look-through", () => {
+  resetStore({
+    settings: { currency: "USD", fx: null, tax: {} }, incomes: [], cards: [], accounts: [], expenses: [], budgets: {}, snapshots: [],
+    holdings: [
+      { id: "a", symbol: "VOO", kind: "etf", shares: 10, currentPrice: 500, currency: "USD" },   // 5,000 US blend
+      { id: "b", symbol: "AAPL", kind: "stock", shares: 10, currentPrice: 200, currency: "USD" }, // 2,000 US tech
+      { id: "c", symbol: "BND", kind: "etf", shares: 30, currentPrice: 100, currency: "USD" },    // 3,000 bonds
+    ],
+  });
+  const e = A.portfolioExposure();
+  approx(e.total, 10000, 1, "totals the market value in the display currency");
+  // asset classes: 7,000 equity + 3,000 bonds
+  const eqAC = e.byAssetClass.find(x => x.name === "Equity"), bd = e.byAssetClass.find(x => x.name === "Bonds");
+  approx(eqAC.pct, 70, 0.5, "equity is 70% of the book");
+  approx(bd.pct, 30, 0.5, "bonds are 30%");
+  // sectors must sum to ~100% across the whole book (incl. the Bonds bucket)
+  const secSum = e.bySector.reduce((a, s) => a + s.pct, 0);
+  approx(secSum, 100, 0.5, "every peso lands in some sector bucket");
+  // tech = AAPL (2,000) + VOO's tech slice (~31% of 5,000 ≈ 1,550) → biggest equity sector
+  const tech = e.bySector.find(s => s.name === "Technology");
+  ok(tech && tech.value > 3000 && tech.value < 4000, "look-through aggregates ETF + single-stock tech");
+  ok(e.hhi > 0 && e.hhi <= 1, "concentration index is a valid Herfindahl");
+  eq(e.unclassifiedPct, 0, "a fully-known book has nothing unclassified");
+});
+
+group("risk math — returns, volatility, beta", () => {
+  const pts = (arr) => arr.map((c, i) => ({ t: i * 86400000, c: c }));
+  eq(A.seriesReturns(pts([100, 110, 99])).length, 2, "n closes → n−1 returns");
+  approx(A.seriesReturns(pts([100, 110]))[0], 0.1, 1e-9, "a 10% step is a 0.10 return");
+
+  // a series that swings more has higher annualized vol
+  const calm = A.annualizedVol(A.seriesReturns(pts([100, 101, 100, 101, 100, 101])), 252);
+  const wild = A.annualizedVol(A.seriesReturns(pts([100, 130, 90, 140, 80, 150])), 252);
+  ok(wild > calm, "a choppier series is more volatile");
+
+  // beta: an asset that is exactly 2× the market each step has beta ≈ 2
+  const mkt = pts([100, 110, 99, 108.9, 98.01]);                 // ±10% steps
+  const lev = pts([100, 120, 96, 115.2, 92.16]);                // ±20% steps (2×)
+  const beta = A.betaOf(
+    [...Array(20)].flatMap((_, k) => lev.map((p, i) => ({ t: (k * 5 + i) * 86400000, c: p.c }))),
+    [...Array(20)].flatMap((_, k) => mkt.map((p, i) => ({ t: (k * 5 + i) * 86400000, c: p.c }))));
+  ok(beta != null && Math.abs(beta - 2) < 0.4, "a 2× leveraged proxy has beta near 2 (got " + (beta && beta.toFixed(2)) + ")");
+
+  // correlation of a market with itself is 1
+  const same = A.correlationOf(mkt.map((p, i) => ({ t: i * 86400000, c: p.c })).concat(pts([90, 95, 100, 92, 88]).map((p, i) => ({ t: (5 + i) * 86400000, c: p.c }))),
+                               mkt.map((p, i) => ({ t: i * 86400000, c: p.c })).concat(pts([90, 95, 100, 92, 88]).map((p, i) => ({ t: (5 + i) * 86400000, c: p.c }))));
+  ok(same == null || Math.abs(same - 1) < 1e-6, "a series is perfectly correlated with itself");
+
+  // too little overlap → null, never a bogus number
+  ok(A.betaOf(pts([100, 101]), pts([100, 101])) == null, "not enough data → null beta");
+
+  // periods/year inferred from spacing
+  eq(A.periodsPerYear(pts([1, 2, 3, 4])), 252, "daily spacing → 252");
+  eq(A.periodsPerYear([{ t: 0, c: 1 }, { t: 7 * 86400000, c: 1 }, { t: 14 * 86400000, c: 1 }, { t: 21 * 86400000, c: 1 }]), 52, "weekly spacing → 52");
 });
 
 /* ---- report ---- */
