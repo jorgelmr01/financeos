@@ -1806,7 +1806,7 @@ const Pages = {
       return '<div class="panel section"><div class="panel-head"><div class="panel-title">Set your annual spending</div></div>' +
         '<p class="method-note">The bucket strategy is built around <em>years of spending</em>, so enter your <strong>Annual spending in retirement</strong> above to run it.</p></div>';
     }
-    const P = { start: r.start, contrib: r.contrib, years: r.years, annualSpend: r.annualSpend, inflation: r.inflation, eqRet: r.eqRet, bondRet: r.bondRet, cashRet: r.cashRet, cashYears: r.cashYears, bondYears: r.bondYears, maxDraw: 30 };
+    const P = { start: r.start, contrib: r.contrib, years: r.years, annualSpend: r.annualSpend, inflation: r.inflation, eqRet: r.eqRet, bondRet: r.bondRet, cashRet: r.cashRet, cashYears: r.cashYears, bondYears: r.bondYears, accEquity: r.accEquity, maxDraw: 30 };
     const sim = retirementBuckets(P);
     const mc = retirementBucketsMC(Object.assign({}, P, { runs: 300 }));
     const succ = Math.round(mc.successRate * 100);
@@ -1824,7 +1824,80 @@ const Pages = {
       sub: "grow " + r.years + "y (" + r.accEquity + "% equities), then a " + r.cashYears + "y cash + " + r.bondYears + "y bond buffer · shaded = likely range",
       hint: "Solid line = steady base case. Shaded = 10th–90th percentile of 300 runs with realistic markets — equity crashes capped at a 55% drop, ≤3 down years in a row, recovery within ~6 years. The cash/bond buffers let you spend safe assets in a crash and refill from stocks only after they rebound — that shelter is the snowball.",
     });
-    return stats + chart + this._bucketPanel(r, sim) + this._strategyCompare(P, r) + this._firePanel(r) + this._bucketNote(sim, r);
+    return stats + chart + this._bucketPanel(r, sim) + this._withdrawExplorer(r, P, sim) + this._strategyCompare(P, r) + this._firePanel(r) + this._bucketNote(sim, r);
+  },
+
+  /* Withdrawal-rate explorer — the nest egg above is fixed by how you SAVE, so
+     this box holds that same nest and lets you dial the withdrawal rate up or
+     down to see the trade-off: a higher rate means more income now but a higher
+     chance of running dry. Defaults to the rate your target spending implies. */
+  _withdrawExplorer(r, P, sim) {
+    const nestReal = Number(sim.nestReal) || 0;
+    if (!(nestReal > 0)) return "";
+    const implied = (Number(r.annualSpend) || 0) / nestReal * 100;
+    const RMIN = 2.5, RMAX = 9;
+    const clampR = x => Math.max(RMIN, Math.min(RMAX, x));
+    const rate = App.retire.exploreSWR != null ? clampR(App.retire.exploreSWR) : clampR(implied);
+    const hint = this._hint("Your nest egg is fixed by how much you save (the assumptions above) — spending it faster or slower doesn’t change how big it gets, only how long it lasts. This slider holds that same nest egg and the same bucket strategy, then applies a different first-year withdrawal as a % of the nest (in today’s pesos, rising with inflation each year). " +
+      (implied <= RMAX && implied >= RMIN ? "Your target spending of " + fmtMoney(r.annualSpend, { compact: true }) + " works out to about " + implied.toFixed(1) + "% — the starting point below." : "Your target spending of " + fmtMoney(r.annualSpend, { compact: true }) + " works out to about " + implied.toFixed(1) + "%, outside the slider’s range.") +
+      " The classic 4% rule is a rough guide; lower is safer.");
+    return '<div class="panel section"><div class="panel-head"><div class="panel-title">Explore your withdrawal rate' + hint + "</div>" +
+      '<span class="panel-sub">same nest egg &amp; strategy · how much could you draw?</span></div>' +
+      '<p class="method-note" style="margin-bottom:12px">Your target implies about <strong>' + implied.toFixed(1) + '%</strong>. Slide to see how spending more or less changes your income and how long the money lasts — the chart and figures update live.</p>' +
+      '<div class="r-grid"><div class="r-row r-row-wide"><label>Withdrawal rate' +
+        '<output class="re-val">' + rate.toFixed(1) + '%</output></label>' +
+        '<input class="re-input" type="range" min="' + RMIN + '" max="' + RMAX + '" step="0.1" value="' + rate.toFixed(1) + '"></div></div>' +
+      '<div id="retire-explore-out">' + this._withdrawExploreOut(r, P, sim) + "</div></div>";
+  },
+
+  /* rebuild P + base nest from App.retire and re-render just the explorer box
+     (used by the slider's live handler so the rest of the page stays put) */
+  _withdrawExploreRefresh() {
+    const r = App.retire;
+    const P = { start: r.start, contrib: r.contrib, years: r.years, annualSpend: r.annualSpend, inflation: r.inflation, eqRet: r.eqRet, bondRet: r.bondRet, cashRet: r.cashRet, cashYears: r.cashYears, bondYears: r.bondYears, accEquity: r.accEquity, maxDraw: 30 };
+    const sim = retirementBuckets(P);
+    return this._withdrawExploreOut(r, P, sim);
+  },
+
+  _withdrawExploreOut(r, P, sim) {
+    const nestReal = Number(sim.nestReal) || 0;
+    const RMIN = 2.5, RMAX = 9;
+    const implied = (Number(r.annualSpend) || 0) / nestReal * 100;
+    const clampR = x => Math.max(RMIN, Math.min(RMAX, x));
+    const rate = App.retire.exploreSWR != null ? clampR(App.retire.exploreSWR) : clampR(implied);
+    const spend0 = rate / 100 * nestReal;                       // today's-pesos annual draw
+    const eP = Object.assign({}, P, { annualSpend: spend0 });
+    const eSim = retirementBuckets(eP);
+    const eMc = retirementBucketsMC(Object.assign({}, eP, { runs: 300 }));
+    const succ = Math.round(eMc.successRate * 100);
+    const succTone = succ >= 85 ? "pos" : succ >= 60 ? "gold" : "neg";
+    const lasts = eSim.sustainable ? eSim.maxDraw + "+ yrs" : eSim.depletedYear + " yr" + (eSim.depletedYear === 1 ? "" : "s");
+    const infl = (Number(r.inflation) || 0) / 100, years = Math.max(0, Math.round(Number(r.years) || 0));
+    const nominal1 = spend0 * Math.pow(1 + infl, years);        // first retirement year, nominal
+    const targetSpend = Number(r.annualSpend) || 0;
+    const diff = targetSpend > 0 ? (spend0 - targetSpend) / targetSpend : 0;
+    const stat = (l, v, note, cls) => '<div class="stat"><span class="micro-label">' + l + '</span><div class="stat-value ' + (cls || "") + '">' + v + '</div><div class="stat-note">' + note + "</div></div>";
+    const stats = '<div class="grid cols-4 section">' +
+      stat("Annual income", fmtMoney(spend0, { compact: true }) + "/yr",
+        fmtMoney(spend0 / 12, { compact: true }) + "/mo · today’s pesos", "pos") +
+      stat("First year (nominal)", fmtMoney(nominal1, { compact: true }),
+        "what you’d actually draw in yr " + (years + 1), "gold") +
+      stat("Money lasts (base case)", lasts,
+        eSim.sustainable ? "buffers hold up" : "until the pot runs dry", eSim.sustainable ? "pos" : "neg") +
+      stat("Success rate", succ + "%",
+        "of " + eMc.runs + " realistic-market runs", succTone) +
+      "</div>";
+    const chart = this._retireChart(eSim, r, eMc, {
+      sub: "same nest egg · drawing " + rate.toFixed(1) + "% (" + fmtMoney(spend0, { compact: true }) + "/yr today’s pesos) · shaded = likely range",
+      hint: "Same nest egg and bucket strategy as above — only the withdrawal rate changes. A higher rate lifts the line’s starting income but pulls it down faster; watch the shaded worst-case band to see if it survives the full retirement.",
+    });
+    const cmp = Math.abs(diff) < 0.005
+      ? "This matches your target spending."
+      : "That’s <strong>" + (diff > 0 ? "+" : "−") + Math.round(Math.abs(diff) * 100) + "%</strong> " + (diff > 0 ? "more" : "less") + " than your " + fmtMoney(targetSpend, { compact: true }) + " target.";
+    const verdict = eSim.sustainable
+      ? "At <strong>" + rate.toFixed(1) + "%</strong> you could draw <strong>" + fmtMoney(spend0, { compact: true }) + "/yr</strong> (today’s pesos) and the base case still lasts the full " + eSim.maxDraw + " years, with " + fmtMoney(eSim.endBalance, { compact: true }) + " left. " + cmp
+      : "At <strong>" + rate.toFixed(1) + "%</strong> (" + fmtMoney(spend0, { compact: true }) + "/yr) the base case runs dry in about <strong>" + eSim.depletedYear + " years</strong> — too fast. Ease the rate down for a safer draw. " + cmp;
+    return stats + chart + '<p class="method-note" style="margin-top:4px">' + verdict + "</p>";
   },
 
   _bucketPanel(r, sim) {

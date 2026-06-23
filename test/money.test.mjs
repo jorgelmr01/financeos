@@ -456,6 +456,26 @@ group("advanced retirement — bucket strategy", () => {
   ok(halfEq.nest < allEq.nest, "a lower equity tilt while saving grows a smaller nest");
 });
 
+group("withdrawal-rate explorer — same nest, different draw", () => {
+  // the explorer holds the nest egg fixed (set by saving) and varies only the
+  // withdrawal. accumulation params are identical, so the nest must not move.
+  const base = { start: 2000000, contrib: 5000, years: 20, inflation: 4.5, eqRet: 10, bondRet: 7, cashRet: 4.5, cashYears: 1, bondYears: 2, accEquity: 100, maxDraw: 30 };
+  const nestOf = spend => A.retirementBuckets(Object.assign({}, base, { annualSpend: spend })).nest;
+  approx(nestOf(100000), nestOf(900000), 1, "the nest egg is the same regardless of how fast you spend it");
+
+  // a withdrawal rate of X% means a first-year draw of X% of the (real) nest
+  const sim = A.retirementBuckets(Object.assign({}, base, { annualSpend: 1 }));
+  const nestReal = sim.nestReal;
+  const drawAt = pct => A.retirementBuckets(Object.assign({}, base, { annualSpend: pct / 100 * nestReal }));
+  const low = drawAt(3), mid = drawAt(5), high = drawAt(8);
+  ok(low.endBalance >= mid.endBalance && mid.endBalance >= high.endBalance, "a higher rate always leaves less (or empties sooner)");
+  ok(low.sustainable, "a 3% draw on this nest lasts the full retirement");
+
+  // success rate is monotone non-increasing in the withdrawal rate
+  const sOf = pct => A.retirementBucketsMC(Object.assign({}, base, { annualSpend: pct / 100 * nestReal, runs: 200 })).successRate;
+  ok(sOf(3) >= sOf(6) - 1e-9 && sOf(6) >= sOf(9) - 1e-9, "spending more never raises the success rate");
+});
+
 group("market regime model — bounded crashes (locks)", () => {
   const rng = A.mulberry32(0xC0FFEE);
   const eq = A.makeEquityMarket(rng, 10);

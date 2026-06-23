@@ -38,6 +38,7 @@ const App = {
       start: Math.max(0, Math.round(t.netWorth)), contrib: 0, ret: 8, years: 20, withdraw: 4, inflation: infl, annualSpend: spend,
       // advanced (bucket-strategy) inputs
       eqRet: 10, bondRet: 7, cashRet: 4.5, cashYears: 1, bondYears: 2, accEquity: 100,
+      exploreSWR: null,  // withdrawal-rate explorer slider (null = follow your target)
     };
   },
 
@@ -534,12 +535,25 @@ const App = {
       if (ri && this.retire) {
         const k = ri.dataset.rk;
         this.retire[k] = parseNum(ri.value);
+        // changing an assumption changes the nest egg, so re-sync the withdrawal
+        // explorer to the rate your (new) target spending implies
+        this.retire.exploreSWR = null;
         if (ri.dataset.suffix != null) {
           const lab = document.querySelector('.r-val[data-rv="' + k + '"]');
           if (lab) lab.textContent = ri.value + ri.dataset.suffix;
         }
         const out = document.getElementById("retire-out");
         if (out) out.innerHTML = Pages.retirementOutput();
+      }
+
+      /* withdrawal-rate explorer: recompute just its box (keep the slider drag) */
+      const rei = e.target.closest(".re-input");
+      if (rei && this.retire) {
+        this.retire.exploreSWR = parseNum(rei.value);
+        const lab = rei.closest(".r-row").querySelector(".re-val");
+        if (lab) lab.textContent = Number(rei.value).toFixed(1) + "%";
+        const out = document.getElementById("retire-explore-out");
+        if (out) out.innerHTML = Pages._withdrawExploreRefresh();
       }
 
       /* debt payoff: live recompute on the monthly-budget input */

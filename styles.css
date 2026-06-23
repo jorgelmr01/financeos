@@ -921,7 +921,7 @@ body.light .score-ring { box-shadow: 0 10px 26px -14px rgba(40, 52, 43, 0.22); }
 .tbl tr.cur td { background: var(--mint-dim); }
 .retire-phase { margin-top: 18px; border-top: 1px dashed var(--hairline-strong); padding-top: 12px; }
 .retire-phase-note { font-size: 12.5px; color: var(--text-mute); line-height: 1.55; margin: 2px 0 8px; max-width: 720px; }
-.retire-phase .r-row-wide { grid-column: 1 / -1; }
+.r-row-wide { grid-column: 1 / -1; }
 .retire-eq-note {
   display: flex; align-items: baseline; gap: 8px; margin-top: 12px;
   border: 1px solid var(--hairline); border-radius: 10px; padding: 11px 14px;
