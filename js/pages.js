@@ -2121,8 +2121,8 @@ const Pages = {
     const stats = '<div class="grid cols-4 section">' +
       stat("Nest egg at retirement", fmtMoney(sim.nest, { compact: true }),
         "in " + r.years + " yr · " + fmtMoney(sim.nestReal, { compact: true }) + " in today’s pesos", "gold") +
-      stat("Monthly income", fmtMoney(sim.monthlyIncome, { compact: true }),
-        "at " + r.withdraw + "% · " + fmtMoney(sim.monthlyIncomeReal, { compact: true }) + " today’s pesos", "pos") +
+      stat("Monthly income" + this._hint("Your withdrawal in the <strong>first year</strong> of retirement (" + r.withdraw + "% of the nest egg). It doesn’t stay flat — the simulation raises it by " + r.inflation + "% every year so your buying power holds, and the success rate accounts for that rising spend. The “today’s pesos” figure is the same income expressed in today’s money."), fmtMoney(sim.monthlyIncome, { compact: true }),
+        "first year · rises " + r.inflation + "%/yr · " + fmtMoney(sim.monthlyIncomeReal, { compact: true }) + " today", "pos") +
       stat("Money lasts (base case)", lasts,
         sim.sustainable ? "capital stays intact" : "until the pot runs dry", sim.sustainable ? "pos" : "neg") +
       stat("Success rate" + succHint, succ + "%",
@@ -2144,9 +2144,12 @@ const Pages = {
     const lasts = sim.sustainable ? sim.maxDraw + "+ yrs" : sim.depletedYear + " yr" + (sim.depletedYear === 1 ? "" : "s");
     const stat = (l, v, note, cls) => '<div class="stat"><span class="micro-label">' + l + '</span><div class="stat-value ' + (cls || "") + '">' + v + '</div><div class="stat-note">' + note + "</div></div>";
     const succHint = this._hint("You grow steadily to retirement, then over a " + sim.maxDraw + "-year retirement we run 300 realistic markets: equity crashes hit at random but are capped — at most a 55% drop, no more than 3 down years in a row, and a recovery within ~6 years (bonds & cash wobble mildly). Spending rises with inflation; you draw cash → bonds → equities and refill the buffers from stocks only after up years, so you never sell low. Success = the share of runs the money lasts the full " + sim.maxDraw + " years.");
+    const inflF2 = (Number(r.inflation) || 0) / 100;
+    const incLastYr = (Number(r.annualSpend) || 0) * Math.pow(1 + inflF2, (Number(r.years) || 0) + sim.maxDraw - 1);
+    const incHint = this._hint("This is your spending in the <strong>first year</strong> of retirement — your " + fmtMoney(r.annualSpend, { compact: true }) + " target (today’s pesos) grown by " + r.inflation + "% inflation over the " + r.years + " years until you retire. It does <strong>not</strong> stay flat: the simulation raises your withdrawal by " + r.inflation + "% every year so your buying power holds, so by the final year of a " + sim.maxDraw + "-year retirement you’d draw about " + fmtMoney(incLastYr, { compact: true }) + " (nominal). The success rate, depletion and the chart all account for this rising spend.");
     const stats = '<div class="grid cols-4 section">' +
       stat("Nest egg at retirement", fmtMoney(sim.nest, { compact: true }), "in " + r.years + " yr · " + fmtMoney(sim.nestReal, { compact: true }) + " today’s pesos", "gold") +
-      stat("Annual income", fmtMoney(sim.monthlyIncome * 12, { compact: true }), fmtMoney(r.annualSpend, { compact: true }) + " in today’s pesos", "pos") +
+      stat("Annual income" + incHint, fmtMoney(sim.monthlyIncome * 12, { compact: true }), "first year · rises " + r.inflation + "%/yr · " + fmtMoney(r.annualSpend, { compact: true }) + " today", "pos") +
       stat("Money lasts (base case)", lasts, sim.sustainable ? "buffers hold up" : "until the pot runs dry", sim.sustainable ? "pos" : "neg") +
       stat("Success rate" + succHint, succ + "%", "of " + mc.runs + " bucket simulations", succTone) +
       "</div>";
