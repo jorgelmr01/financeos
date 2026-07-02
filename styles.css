@@ -2223,3 +2223,25 @@ body.light .sb-log-row { background: rgba(28, 38, 30, 0.04); }
 .cat-del { color: var(--text-mute); font-size: 14px; margin-left: 4px; }
 .cat-del:hover { color: var(--rose); }
 .stmt-tag.fee { background: rgba(230, 197, 112, 0.15); color: var(--gold); }
+
+/* ---------- personal balance sheet ---------- */
+.bs-head-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: -6px; }
+.bs-title { font-family: var(--font-display); font-size: 21px; font-weight: 600; }
+.bs-head-actions { display: flex; gap: 8px; }
+.bs-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; }
+.bs-row + .bs-row { border-top: 1px solid var(--hairline); }
+.bs-name { flex: 1; min-width: 0; display: flex; flex-direction: column; font-size: 13.5px; font-weight: 600; }
+.bs-name .ic-cat { float: left; }
+.bs-kind { font-size: 11.5px; color: var(--text-mute); font-weight: 500; }
+.bs-note { font-size: 11.5px; color: var(--text-mute); font-weight: 500; }
+.bs-note.neg { color: var(--rose); }
+.bs-amt { font-family: var(--font-mono); font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.bs-amt.neg { color: var(--rose); }
+.bs-actions { display: flex; gap: 4px; }
+.bs-line { display: flex; justify-content: space-between; padding: 7px 0; font-size: 13.5px; color: var(--text-dim); }
+.bs-line + .bs-line { border-top: 1px solid var(--hairline); }
+.bs-line.strong { font-weight: 700; color: var(--text); border-top: 1px solid var(--hairline-strong); }
+.bs-line span:last-child { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.ta-input { width: 46px; background: transparent; border: 1px solid var(--hairline-strong); border-radius: 6px;
+  color: var(--text); font-family: var(--font-mono); font-size: 12.5px; text-align: right; padding: 2px 5px; }
+.ta-input:focus { border-color: var(--mint); outline: none; }

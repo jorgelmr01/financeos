@@ -26,7 +26,7 @@ vm.createContext(ctx);
 const bundle = [read("js/utils.js"), read("js/instruments.js"), read("js/budget.js"), read("js/statements.js"), read("js/store.js")].join("\n;\n") +
   "\n;globalThis.__api = { interestPerPeriod, nextInterestDate, interestScheduleLabel, interestPeriodDays," +
   " accruedInterest, holdingReturnRate, parseAmount, parseExpenseDate, expenseSig, canonicalCategory," +
-  " earningsBreakdown, sellHolding, realizedSummary, allCategories, categoryMeta, effectiveBudgetForCategory, retirementProjection, retirementMonteCarlo, retirementBuckets, retirementBucketsMC, makeEquityMarket, mulberry32, MARKET, realInterestEst, monthlyInterestEst," +
+  " earningsBreakdown, sellHolding, realizedSummary, amortizeLoan, xirr, portfolioXirrFlows, riskAdjusted, rebalancePlan, currencyExposure, stressTest, computeTotals, allCategories, categoryMeta, effectiveBudgetForCategory, retirementProjection, retirementMonteCarlo, retirementBuckets, retirementBucketsMC, makeEquityMarket, mulberry32, MARKET, realInterestEst, monthlyInterestEst," +
   " convBetween, sparkline, categorySeries, debtPayoff, detectRecurring, cashflowForecast, buroScore, investReadiness, irregularIncomePlan," +
   " classifyHolding, portfolioExposure, seriesReturns, annualizedVol, alignReturns, betaOf, correlationOf, periodsPerYear, weightedValueSeries, seriesReturnOver, finnhubSectorToGICS, countryToRegion, dividendSummary, drawdownInfo, fmtNumInput, parseNum, budgetSpendEstimate," +
   " toISO, parseISO, daysBetween, todayMid, icsForCards, Statements, INTEREST_FREQ, Store };";
@@ -200,6 +200,93 @@ group("Statements.parseSantander (OCR layout)", () => {
   eq(rows[0].amount, 135, "amount");
   eq(rows[0].description, "MERPAGO PERIFERICO", "reference code stripped");
   eq(rows[1].type, "payment", "PAGO POR TRANSFERENCIA → payment");
+});
+
+group("balance sheet — assets, liabilities, amortization", () => {
+  resetStore({
+    settings: { currency: "MXN", fx: null, tax: {} },
+    accounts: [{ id: "a", type: "savings", balance: 100000, currency: "MXN" }],
+    cards: [{ id: "c", name: "V", balance: 20000, limit: 50000, currency: "MXN" }],
+    holdings: [], incomes: [], expenses: [], budgets: {}, snapshots: [], realized: [],
+    assets: [{ id: "p", name: "Depa", kind: "property", value: 2000000, currency: "MXN" }],
+    liabilities: [{ id: "m", name: "Hipoteca", kind: "mortgage", balance: 1500000, apr: 10, payment: 20000, currency: "MXN" }],
+  });
+  const t = A.computeTotals();
+  approx(t.otherAssets, 2000000, 1e-6, "off-platform assets are counted");
+  approx(t.otherDebt, 1500000, 1e-6, "loans are counted");
+  approx(t.netWorth, 100000 + 2000000 - 20000 - 1500000, 1e-6, "net worth = everything, honestly");
+  approx(t.liquidAssets, 100000, 1e-6, "liquid assets exclude property");
+
+  // amortization: 1.5M at 10% with 20k/mo
+  const am = A.amortizeLoan(1500000, 10, 20000);
+  ok(am.feasible && am.months > 100 && am.months < 130, "a real mortgage horizon (got " + am.months + " mo)");
+  ok(am.totalInterest > 500000, "interest over the life is substantial");
+  ok(!A.amortizeLoan(1500000, 10, 12000).feasible, "a payment below interest never finishes");
+  eq(A.amortizeLoan(0, 10, 5000).months, 0, "no balance, no months");
+});
+
+group("XIRR — the return your money actually earned", () => {
+  const YR = 365.25 * 86400000;
+  // invest 1000, worth 1100 a year later → 10%
+  approx(A.xirr([{ t: 0, v: -1000 }, { t: YR, v: 1100 }]), 0.10, 1e-3, "single flow: 10% over a year");
+  // two staggered buys — IRR sits between the two simple returns
+  const r = A.xirr([{ t: 0, v: -1000 }, { t: YR / 2, v: -1000 }, { t: YR, v: 2200 }]);
+  ok(r > 0.10 && r < 0.20, "staggered buys → blended IRR (got " + (r * 100).toFixed(1) + "%)");
+  ok(A.xirr([{ t: 0, v: -1000 }]) == null, "one flow → null");
+  ok(A.xirr([{ t: 0, v: -1000 }, { t: YR, v: -50 }]) == null, "all-negative flows → null");
+  // losing money → negative rate
+  ok(A.xirr([{ t: 0, v: -1000 }, { t: YR, v: 700 }]) < 0, "a loss is a negative IRR");
+});
+
+group("risk-adjusted returns — Sharpe & Sortino", () => {
+  // a perfectly steady climber has ZERO volatility → Sharpe is undefined
+  const flat = []; let fv = 100;
+  for (let i = 0; i < 60; i++) { fv *= 1.01; flat.push({ t: i, c: fv }); }
+  ok(A.riskAdjusted(flat, 52, 7.5).sharpe == null, "zero volatility → Sharpe is null, not Infinity");
+  // a gently-wobbling climber: strong return, small vol → high Sharpe
+  const up = []; let v = 100;
+  for (let i = 0; i < 60; i++) { v *= (i % 2 ? 1.012 : 1.008); up.push({ t: i, c: v }); }
+  const ra = A.riskAdjusted(up, 52, 7.5);
+  ok(ra.annRet > 0.5, "a steady climber has a high annualized return");
+  ok(ra.sharpe > 3, "small wobble on a big climb → high Sharpe");
+  // same endpoints but violent chop in between → much worse risk-adjusted score
+  const choppy = up.map((p, i) => (i === 0 || i === up.length - 1) ? { t: i, c: p.c } : { t: i, c: p.c * (1 + (i % 2 ? 0.05 : -0.05)) });
+  const rc = A.riskAdjusted(choppy, 52, 7.5);
+  ok(rc.sharpe < ra.sharpe, "chop is punished");
+  ok(rc.sortino != null && rc.vol > ra.vol, "and shows up as volatility");
+  ok(A.riskAdjusted(up.slice(0, 4), 52, 7.5) == null, "too little data → null");
+});
+
+group("rebalancing & stress testing the balance sheet", () => {
+  resetStore({
+    settings: { currency: "MXN", fx: { base: "USD", rates: { USD: 1, MXN: 20, EUR: 0.9, GBP: 0.8 }, asOf: "2026-01-01" }, tax: {} },
+    accounts: [{ id: "a", type: "savings", balance: 200000, currency: "MXN" }],
+    cards: [], incomes: [], expenses: [], budgets: {}, snapshots: [], realized: [],
+    holdings: [
+      { id: "h1", symbol: "VOO", kind: "etf", shares: 10, currentPrice: 500, costBasis: 400, currency: "USD" },  // USD equity
+      { id: "h2", symbol: "BND", kind: "etf", shares: 50, currentPrice: 100, costBasis: 100, currency: "USD" },  // USD bonds
+    ],
+    assets: [{ id: "p", name: "Depa", kind: "property", value: 1000000, currency: "MXN" }],
+    liabilities: [],
+  });
+  // rebalance: VOO 100k MXN eq + BND 100k MXN bonds → 50/50; target 80/20
+  const plan = A.rebalancePlan({ "Equity": 80, "Bonds": 20 });
+  const eq = plan.rows.find(r => r.name === "Equity");
+  approx(eq.current, 50, 0.5, "look-through current weight");
+  approx(eq.move, 0.30 * plan.total, plan.total * 0.01, "move = drift × book");
+  ok(!plan.balanced, "30-point drift is not balanced");
+
+  // currency exposure: 200k+1M MXN vs 200k MXN worth of USD positions
+  const fx = A.currencyExposure();
+  approx(fx.byCurrency.MXN, 1200000, 1, "MXN bucket");
+  approx(fx.byCurrency.USD, 200000, 1, "USD bucket (in display terms)");
+
+  // stress: equity −35% hits only the equity slice; devaluation helps USD holders in MXN display
+  const st = A.stressTest({ equityShock: -0.35, mxnMove: 0.2, propertyShock: -0.15 });
+  approx(st.scenarios[0].impact, -35000, 1, "equity shock = −35% of the equity slice");
+  ok(st.scenarios[1].impact > 0, "a devaluation LIFTS a USD-holding balance sheet in MXN terms");
+  approx(st.scenarios[2].impact, -150000, 1, "property shock = −15% of property");
+  approx(st.scenarios[3].impact, st.scenarios[0].impact + st.scenarios[1].impact + st.scenarios[2].impact, 0.02, "the combined scenario stacks");
 });
 
 group("selling positions — realized gains & ISR", () => {

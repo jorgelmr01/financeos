@@ -175,6 +175,16 @@ const I18N = {
     "of net income": "del ingreso neto", "first year": "primer año",
     "aim for under 30%": "mantente bajo 30%", "accounts": "cuentas", "account": "cuenta",
     "Auto (browser)": "Automático (navegador)",
+    // balance sheet & advanced wealth
+    "Balance sheet": "Balance patrimonial", "Net worth statement": "Estado patrimonial",
+    "Other assets": "Otros activos", "Loans & mortgages": "Créditos e hipotecas",
+    "Stress test": "Prueba de estrés", "Rebalancing": "Rebalanceo",
+    "Total assets": "Activos totales", "Total liabilities": "Pasivos totales",
+    "Cash & savings": "Efectivo y ahorro", "Investments (market value)": "Inversiones (valor de mercado)",
+    "Property & other assets": "Inmuebles y otros activos", "Credit cards": "Tarjetas de crédito",
+    "Scenario": "Escenario", "Impact": "Impacto", "+ Asset": "+ Activo", "+ Liability": "+ Pasivo",
+    "Asset class": "Clase de activo", "Current": "Actual", "Target": "Objetivo", "Drift": "Desviación",
+    "To rebalance": "Para rebalancear", "Save targets": "Guardar objetivos",
   },
 };
 

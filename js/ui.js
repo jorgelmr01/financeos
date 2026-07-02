@@ -351,6 +351,49 @@ const UI = {
     });
   },
 
+  /* off-platform assets & liabilities — the rest of the balance sheet */
+  assetForm(a) {
+    a = a || {};
+    const isEdit = !!a.id;
+    const kinds = [["property", "Property / real estate"], ["vehicle", "Vehicle"], ["business", "Business / private equity"], ["crypto", "Crypto (held elsewhere)"], ["other", "Other"]];
+    const body = '<div class="f-grid">' +
+      this.field("Name", '<input name="name" required maxlength="60" value="' + esc(a.name || "") + '" placeholder="Departamento CDMX">', null, true) +
+      this.field("Type", '<select name="kind">' + kinds.map(k => '<option value="' + k[0] + '"' + (a.kind === k[0] ? " selected" : "") + ">" + k[1] + "</option>").join("") + "</select>") +
+      this.field("Current value", '<input name="value" type="text" inputmode="decimal" class="fmt-num" required value="' + (a.value != null ? fmtNumInput(a.value) : "") + '">', "Your best market estimate — update it when it changes") +
+      this.field("Currency", this.currencySelect("currency", a.currency), null, true) +
+      "</div>";
+    this.openModal(isEdit ? "Edit asset" : "New asset", body, {
+      submitLabel: isEdit ? "Save changes" : "Add asset",
+      onSubmit(fd) {
+        const patch = { name: fd.get("name").trim(), kind: fd.get("kind"), value: parseFloat(fd.get("value")) || 0, currency: fd.get("currency") };
+        if (isEdit) Store.update("assets", a.id, patch); else Store.add("assets", patch);
+        UI.toast(isEdit ? "Asset updated" : "Asset added"); UI.closeModal(); App.render();
+      },
+    });
+  },
+
+  liabilityForm(l) {
+    l = l || {};
+    const isEdit = !!l.id;
+    const kinds = [["mortgage", "Mortgage"], ["auto", "Auto loan"], ["personal", "Personal loan"], ["student", "Student loan"], ["other", "Other"]];
+    const body = '<div class="f-grid">' +
+      this.field("Name", '<input name="name" required maxlength="60" value="' + esc(l.name || "") + '" placeholder="Hipoteca depa">', null, true) +
+      this.field("Type", '<select name="kind">' + kinds.map(k => '<option value="' + k[0] + '"' + (l.kind === k[0] ? " selected" : "") + ">" + k[1] + "</option>").join("") + "</select>") +
+      this.field("Balance owed", '<input name="balance" type="text" inputmode="decimal" class="fmt-num" required value="' + (l.balance != null ? fmtNumInput(l.balance) : "") + '">') +
+      this.field("Annual rate % (APR)", '<input name="apr" type="number" inputmode="decimal" step="0.01" min="0" max="120" value="' + (l.apr != null && l.apr !== 0 ? l.apr : "") + '" placeholder="10.4">') +
+      this.field("Monthly payment", '<input name="payment" type="text" inputmode="decimal" class="fmt-num" value="' + (l.payment != null && l.payment !== 0 ? fmtNumInput(l.payment) : "") + '">', "With APR + payment, FinanceOS computes your payoff horizon and remaining interest") +
+      this.field("Currency", this.currencySelect("currency", l.currency)) +
+      "</div>";
+    this.openModal(isEdit ? "Edit liability" : "New liability", body, {
+      submitLabel: isEdit ? "Save changes" : "Add liability",
+      onSubmit(fd) {
+        const patch = { name: fd.get("name").trim(), kind: fd.get("kind"), balance: parseFloat(fd.get("balance")) || 0, apr: parseFloat(fd.get("apr")) || 0, payment: parseFloat(fd.get("payment")) || 0, currency: fd.get("currency") };
+        if (isEdit) Store.update("liabilities", l.id, patch); else Store.add("liabilities", patch);
+        UI.toast(isEdit ? "Liability updated" : "Liability added"); UI.closeModal(); App.render();
+      },
+    });
+  },
+
   /* record a (partial) sale of a position → realized gain + smaller holding */
   sellForm(h) {
     if (!h) return;
@@ -487,7 +530,8 @@ const UI = {
       this.field("Provisional ISR on capital %", '<input name="taxIntProvisional" type="number" step="0.01" min="0" max="20" value="' + (tax.interestProvisional || "") + '" placeholder="0.5">', "Small advance (≈0.5%, set yearly by the Ley de Ingresos) the bank withholds on your capital; it's a credit against the annual ISR above") +
       this.field("Inflation assumption %", '<input name="inflation" type="number" step="0.1" min="0" max="50" value="' + (tax.inflation != null ? tax.inflation : "") + '" placeholder="4.5">', "Used for taxable real interest (nominal − inflation) and the Retirement calculator's today's-pesos values. A rational long-run Mexico figure is ≈4–4.5%") +
       this.field("Tax on dividends %", '<input name="taxDividends" type="number" step="0.1" min="0" max="99" value="' + (tax.dividends || "") + '" placeholder="0">', "withholding rate — withheld at source (definitive 10% in Mexico)") +
-      this.field("Tax on capital gains %", '<input name="taxCapGains" type="number" step="0.1" min="0" max="99" value="' + (tax.capGains || "") + '" placeholder="0">', "applied to projected gains", true) +
+      this.field("Tax on capital gains %", '<input name="taxCapGains" type="number" step="0.1" min="0" max="99" value="' + (tax.capGains || "") + '" placeholder="0">', "applied to projected gains") +
+      this.field("Risk-free rate %", '<input name="riskFree" type="number" step="0.1" min="0" max="30" value="' + (st.riskFreePct != null ? st.riskFreePct : "") + '" placeholder="7.5">', "For Sharpe/Sortino — think CETES 28d") +
       this.field("Auto-credit interest",
         '<label class="switch-row"><input type="checkbox" name="autoInterest"' + (st.autoInterest !== false ? " checked" : "") + '> ' +
         "Add interest to balances on its schedule</label>",
@@ -507,6 +551,8 @@ const UI = {
         };
         Store.state.settings.autoInterest = fd.get("autoInterest") != null;
         Store.state.settings.lang = fd.get("lang") || "auto";
+        const rfv = parseFloat(fd.get("riskFree"));
+        Store.state.settings.riskFreePct = isFinite(rfv) ? rfv : null;
         I18N.refresh();
         Store.save();
         Store.settleInterest();          // apply immediately if just turned on

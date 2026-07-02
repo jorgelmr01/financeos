@@ -20,6 +20,8 @@ const Store = {
       budgets: {},    // { [category]: { amount, currency } }  — monthly limit per category
       goals: [],      // {id, name, target, saved, targetDate, currency} — savings goals / sinking funds
       realized: [],   // {id, symbol, name, date, shares, sellPrice, costBasis, proceeds, gain, currency} — closed sales
+      assets: [],     // {id, name, kind: property|vehicle|business|crypto|other, value, currency} — off-platform assets
+      liabilities: [],// {id, name, kind: mortgage|auto|personal|student|other, balance, apr, payment, currency} — non-card debt
       snapshots: [],  // [{d: ISO date, usd, liq, inv, debt} — net worth + composition in USD]
       learn: { scenarios: {}, sandbox: { best: 0, runs: 0 }, lessons: {} },
       settings: {
@@ -40,6 +42,8 @@ const Store = {
     if (!Array.isArray(this.state.snapshots)) this.state.snapshots = [];
     if (!Array.isArray(this.state.goals)) this.state.goals = [];
     if (!Array.isArray(this.state.realized)) this.state.realized = [];
+    if (!Array.isArray(this.state.assets)) this.state.assets = [];
+    if (!Array.isArray(this.state.liabilities)) this.state.liabilities = [];
     if (!Array.isArray(this.state.expenses)) this.state.expenses = [];
     if (!this.state.budgets || typeof this.state.budgets !== "object") this.state.budgets = {};
     this.state.learn = Object.assign({ scenarios: {}, sandbox: {}, lessons: {} }, this.state.learn || {});
@@ -576,6 +580,13 @@ const Store = {
         Shopping: { amount: 2000, currency: "MXN" },
         Entertainment: { amount: 800, currency: "MXN" },
       },
+      assets: [
+        { id: uid(), name: "Departamento CDMX", kind: "property", value: 2850000, currency: "MXN" },
+        { id: uid(), name: "Auto — Mazda 3", kind: "vehicle", value: 265000, currency: "MXN" },
+      ],
+      liabilities: [
+        { id: uid(), name: "Hipoteca depa", kind: "mortgage", balance: 1680000, apr: 10.4, payment: 19800, currency: "MXN" },
+      ],
     };
     this.save();
   },
@@ -602,15 +613,42 @@ function computeTotals() {
     debt += conv(Number(c.balance) || 0, c.currency);
     creditLimit += conv(Number(c.limit) || 0, c.currency);
   });
+  // off-platform wealth: property, vehicles, business stakes… and the loans
+  // behind them — without these a real balance sheet is fiction
+  let otherAssets = 0;
+  (s.assets || []).forEach(a => { otherAssets += conv(Number(a.value) || 0, a.currency); });
+  let otherDebt = 0;
+  (s.liabilities || []).forEach(l => { otherDebt += conv(Number(l.balance) || 0, l.currency); });
 
   const accountsTotal = cash + savings + investCash;
-  const assets = accountsTotal + marketValue;
+  const assets = accountsTotal + marketValue + otherAssets;
   return {
     cash, savings, investCash, accountsTotal,
     invested, marketValue, pnl: marketValue - invested,
     debt, creditLimit,
-    assets, netWorth: assets - debt,
+    otherAssets, otherDebt, totalDebt: debt + otherDebt,
+    liquidAssets: accountsTotal + marketValue,
+    assets, netWorth: assets - debt - otherDebt,
   };
+}
+
+/* Amortize a fixed-payment loan: months to payoff, total interest and the
+   payoff date — or infeasible when the payment doesn't even cover interest.
+   Iterative (like the card payoff) so the final partial payment is exact. */
+function amortizeLoan(balance, aprPct, monthlyPayment) {
+  let bal = Math.max(0, Number(balance) || 0);
+  const r = Math.max(0, Number(aprPct) || 0) / 1200;
+  const pay = Math.max(0, Number(monthlyPayment) || 0);
+  if (bal <= 0) return { months: 0, totalInterest: 0, feasible: true };
+  if (pay <= bal * r + 0.005) return { months: null, totalInterest: null, feasible: false };
+  let months = 0, interest = 0;
+  while (bal > 0.005 && months < 1200) {
+    const i = bal * r;
+    interest += i;
+    bal = bal + i - Math.min(pay, bal + i);
+    months++;
+  }
+  return { months: months, totalInterest: Math.round(interest * 100) / 100, feasible: true };
 }
 
 /* ---------- selling positions & realized gains ----------

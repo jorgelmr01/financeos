@@ -413,3 +413,156 @@ function periodsPerYear(points) {
   if (med <= 10) return 52;
   return 12;
 }
+
+/* ---------- money-weighted return (XIRR) ----------
+   The IRR of dated cashflows — the return YOUR pesos actually earned, which
+   time-weighted charts can't tell you. flows: [{t: ms, v}] with v<0 invested,
+   v>0 received. Newton's method with a bisection fallback; null if it can't
+   bracket a root (e.g. all flows the same sign). */
+function xirr(flows) {
+  const f = (flows || []).filter(x => x && isFinite(x.v) && x.v !== 0 && x.t != null).sort((a, b) => a.t - b.t);
+  if (f.length < 2) return null;
+  const hasNeg = f.some(x => x.v < 0), hasPos = f.some(x => x.v > 0);
+  if (!hasNeg || !hasPos) return null;
+  const t0 = f[0].t, YR = 365.25 * 86400000;
+  const npv = r => f.reduce((a, x) => a + x.v / Math.pow(1 + r, (x.t - t0) / YR), 0);
+  // bracket a sign change, then bisect (robust against Newton divergence)
+  let lo = -0.9999, hi = 10;
+  let flo = npv(lo), fhi = npv(hi);
+  if (flo * fhi > 0) {
+    hi = 100; fhi = npv(hi);
+    if (flo * fhi > 0) return null;
+  }
+  for (let i = 0; i < 200; i++) {
+    const mid = (lo + hi) / 2, fm = npv(mid);
+    if (Math.abs(fm) < 1e-7) return mid;
+    if (flo * fm < 0) { hi = mid; fhi = fm; } else { lo = mid; flo = fm; }
+  }
+  return (lo + hi) / 2;
+}
+
+/* dated cashflows for the CURRENT holdings: each purchase out, today's market
+   value back in. Honest about limits: dividends and sold positions are not in
+   the flows, and holdings without a purchase date are excluded (counted). */
+function portfolioXirrFlows(now) {
+  const t = now || todayMid().getTime();
+  const flows = [];
+  let excluded = 0, value = 0;
+  (Store.state.holdings || []).forEach(h => {
+    const d = parseISO(h.purchaseDate);
+    const cost = conv((Number(h.shares) || 0) * (Number(h.costBasis) || 0), h.currency);
+    const mv = conv((Number(h.shares) || 0) * (Number(h.currentPrice) || 0), h.currency);
+    if (!d || !(cost > 0)) { excluded++; return; }
+    flows.push({ t: d.getTime(), v: -cost });
+    value += mv;
+  });
+  if (value > 0) flows.push({ t: t, v: value });
+  return { flows: flows, excluded: excluded, value: value };
+}
+
+/* Sharpe & Sortino from a value series: annualized geometric return over the
+   risk-free rate, per unit of (downside) volatility. rf in % annual. */
+function riskAdjusted(points, ppy, rfPct) {
+  const rets = seriesReturns(points);
+  if (rets.length < 8) return null;
+  const n = points.length;
+  const first = points[0].c != null ? points[0].c : points[0].v;
+  const last = points[n - 1].c != null ? points[n - 1].c : points[n - 1].v;
+  if (!(first > 0) || !(last > 0)) return null;
+  const annRet = Math.pow(last / first, ppy / (n - 1)) - 1;
+  const rf = (Number(rfPct) || 0) / 100;
+  const vol = annualizedVol(rets, ppy);
+  const rfPer = Math.pow(1 + rf, 1 / ppy) - 1;
+  const downs = rets.filter(r => r < rfPer).map(r => r - rfPer);
+  const ddev = downs.length ? Math.sqrt(downs.reduce((a, x) => a + x * x, 0) / rets.length) * Math.sqrt(ppy) : 0;
+  return {
+    annRet: annRet, vol: vol,
+    sharpe: vol > 0 ? (annRet - rf) / vol : null,
+    sortino: ddev > 0 ? (annRet - rf) / ddev : null,
+  };
+}
+
+/* ---------- rebalancing vs a target allocation ----------
+   targets: { assetClass: pct }. Compares against the live look-through
+   exposure and says how many pesos each class is over/under — informational,
+   never "buy X". Unlisted classes target 0. */
+function rebalancePlan(targets) {
+  const e = portfolioExposure();
+  if (!(e.total > 0)) return null;
+  const tgt = targets || {};
+  const classes = {};
+  e.byAssetClass.forEach(c => { classes[c.name] = { cur: c.pct, value: c.value }; });
+  Object.keys(tgt).forEach(k => { if (!classes[k]) classes[k] = { cur: 0, value: 0 }; });
+  const sumT = Object.keys(tgt).reduce((a, k) => a + (Number(tgt[k]) || 0), 0);
+  const rows = Object.keys(classes).map(k => {
+    const target = Number(tgt[k]) || 0;
+    const drift = classes[k].cur - target;
+    return { name: k, current: classes[k].cur, target: target, drift: drift,
+      move: Math.round(-drift / 100 * e.total * 100) / 100 };   // + = add, − = trim
+  }).sort((a, b) => Math.abs(b.drift) - Math.abs(a.drift));
+  const maxDrift = rows.length ? Math.abs(rows[0].drift) : 0;
+  return { rows: rows, total: e.total, targetSum: sumT, maxDrift: maxDrift,
+    balanced: maxDrift <= 5 };                                  // the classic 5% band
+}
+
+/* ---------- currency exposure & stress testing ----------
+   Everything on the balance sheet bucketed by its ORIGINAL currency (converted
+   to display for comparability): the raw material for a devaluation stress. */
+function currencyExposure() {
+  const s = Store.state, by = {};
+  const add = (ccy, v) => { const k = ccy || displayCurrency(); by[k] = (by[k] || 0) + v; };
+  (s.accounts || []).forEach(a => add(a.currency, conv(Number(a.balance) || 0, a.currency)));
+  (s.holdings || []).forEach(h => add(h.currency, conv((Number(h.shares) || 0) * (Number(h.currentPrice) || 0), h.currency)));
+  (s.assets || []).forEach(a => add(a.currency, conv(Number(a.value) || 0, a.currency)));
+  (s.cards || []).forEach(c => add(c.currency, -conv(Number(c.balance) || 0, c.currency)));
+  (s.liabilities || []).forEach(l => add(l.currency, -conv(Number(l.balance) || 0, l.currency)));
+  const total = Object.keys(by).reduce((a, k) => a + by[k], 0);
+  return { byCurrency: by, total: total };
+}
+
+/* What a shock does to the whole balance sheet. Scenarios are multiplicative
+   on the exposed slice, in display-currency terms:
+   - equityShock: % move applied to Equity-classified market value
+   - mxnMove: % the MXN loses vs every other currency (0.2 = 20% devaluation);
+     in MXN display, foreign assets gain; in USD display, MXN assets shrink. */
+function stressTest(opts) {
+  opts = opts || {};
+  const t = computeTotals();
+  const nw = t.netWorth;
+  // equity slice via look-through
+  let equity = 0;
+  (Store.state.holdings || []).forEach(h => {
+    const mv = conv((Number(h.shares) || 0) * (Number(h.currentPrice) || 0), h.currency);
+    if (classifyHolding(h).assetClass === "Equity") equity += mv;
+  });
+  const fx = currencyExposure();
+  const disp = displayCurrency();
+  const mxnMove = opts.mxnMove != null ? opts.mxnMove : 0.2;
+  const eqShock = opts.equityShock != null ? opts.equityShock : -0.35;
+  const propShock = opts.propertyShock != null ? opts.propertyShock : -0.15;
+
+  const equityHit = equity * eqShock;
+  // devaluation: non-MXN positions re-价 in display terms
+  let fxHit = 0;
+  Object.keys(fx.byCurrency).forEach(ccy => {
+    const v = fx.byCurrency[ccy];
+    if (disp === "MXN") { if (ccy !== "MXN") fxHit += v * (1 / (1 - mxnMove) - 1); }
+    else { if (ccy === "MXN") fxHit += v * (-mxnMove); }
+  });
+  let property = 0;
+  (Store.state.assets || []).forEach(a => { if (a.kind === "property") property += conv(Number(a.value) || 0, a.currency); });
+  const propHit = property * propShock;
+
+  const scen = (label, hit) => ({ label: label, impact: Math.round(hit * 100) / 100, after: Math.round((nw + hit) * 100) / 100, pct: nw !== 0 ? hit / Math.abs(nw) * 100 : 0 });
+  const nonMxn = Object.keys(fx.byCurrency).reduce((a, k) => a + (k !== "MXN" ? fx.byCurrency[k] : 0), 0);
+  return {
+    netWorth: nw, equity: equity, property: property,
+    nonMxnShare: fx.total !== 0 ? nonMxn / Math.abs(fx.total) * 100 : 0,
+    scenarios: [
+      scen("Equities " + Math.round(eqShock * 100) + "%", equityHit),
+      scen("MXN devalues " + Math.round(mxnMove * 100) + "%", fxHit),
+      scen("Property " + Math.round(propShock * 100) + "%", propHit),
+      scen("All at once", equityHit + fxHit + propHit),
+    ],
+  };
+}

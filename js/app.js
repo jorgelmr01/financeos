@@ -349,6 +349,29 @@ const App = {
       case "add-holding": UI.holdingForm(); break;
       case "edit-holding": UI.holdingForm(Store.find("holdings", id)); break;
       case "sell-holding": UI.sellForm(Store.find("holdings", id)); break;
+      case "save-targets": {
+        const t = {};
+        document.querySelectorAll(".ta-input").forEach(inp => {
+          const v = parseNum(inp.value);
+          if (v > 0) t[inp.dataset.class] = v;
+        });
+        Store.state.settings.targetAlloc = t;
+        Store.save();
+        UI.toast("Target allocation saved");
+        this.render();
+        break;
+      }
+
+      case "add-asset": UI.assetForm(); break;
+      case "edit-asset": UI.assetForm(Store.find("assets", id)); break;
+      case "del-asset":
+        UI.confirm("Delete this asset?", "It leaves your balance sheet and net worth.", () => { Store.remove("assets", id); App.render(); });
+        break;
+      case "add-liability": UI.liabilityForm(); break;
+      case "edit-liability": UI.liabilityForm(Store.find("liabilities", id)); break;
+      case "del-liability":
+        UI.confirm("Delete this liability?", "It leaves your balance sheet and net worth.", () => { Store.remove("liabilities", id); App.render(); });
+        break;
       case "del-realized":
         UI.confirm("Delete this sale record?", "The realized gain leaves your tax summary. The position itself is not restored.", () => {
           Store.remove("realized", id);

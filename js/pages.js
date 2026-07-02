@@ -52,6 +52,7 @@ const Pages = {
       { label: "Savings", val: t.savings, color: "#8fe3a6" },
       { label: "Brokerage cash", val: t.investCash, color: "#9be3d2" },
       { label: "Investments", val: t.marketValue, color: "#c5b3e6" },
+      { label: "Property & other", val: t.otherAssets, color: "#e3c98f" },
     ].filter(x => x.val > 0);
     const segTotal = segs.reduce((a, x) => a + x.val, 0) || 1;
     const compBar = '<div class="comp-bar">' +
@@ -378,7 +379,84 @@ const Pages = {
       "</div>";
     }).join("");
 
-    return stats + '<div class="grid cols-2 section">' + cards + "</div>";
+    return stats + '<div class="grid cols-2 section">' + cards + "</div>" + this._balanceSheet();
+  },
+
+  /* ---------- personal balance sheet ----------
+     The full picture: on-platform money (accounts, portfolio, cards) plus the
+     off-platform wealth every real balance sheet needs — property, vehicles,
+     business stakes — and the loans behind them, with amortization. */
+  _balanceSheet() {
+    const s = Store.state, t = computeTotals();
+    const KIND_META = { property: ["home", "Property"], vehicle: ["car", "Vehicle"], business: ["bank", "Business / private equity"], crypto: ["growth", "Crypto (off-platform)"], other: ["dots", "Other"] };
+    const LKIND = { mortgage: "Mortgage", auto: "Auto loan", personal: "Personal loan", student: "Student loan", other: "Other debt" };
+    const assetRows = (s.assets || []).map(a =>
+      '<div class="bs-row"><span class="bs-name">' + icon((KIND_META[a.kind] || KIND_META.other)[0], "ic-cat") + esc(a.name) +
+        '<span class="bs-kind">' + (KIND_META[a.kind] || KIND_META.other)[1] + "</span></span>" +
+      '<span class="bs-amt">' + fmtMoneyIn(a.value, a.currency, { compact: true }) + "</span>" +
+      '<span class="bs-actions"><button class="icon-btn" data-action="edit-asset" data-id="' + a.id + '" title="Edit">' + icon("edit") + "</button>" +
+        '<button class="icon-btn danger" data-action="del-asset" data-id="' + a.id + '" title="Delete">' + icon("x") + "</button></span></div>").join("");
+    const liabRows = (s.liabilities || []).map(l => {
+      const am = amortizeLoan(l.balance, l.apr, l.payment);
+      const note = !(Number(l.payment) > 0) ? ""
+        : am.feasible
+          ? Math.floor(am.months / 12) + "y " + (am.months % 12) + "mo left · " + fmtMoneyIn(am.totalInterest, l.currency, { compact: true }) + " interest to go"
+          : "payment doesn't cover interest — balance grows";
+      return '<div class="bs-row"><span class="bs-name">' + icon("card", "ic-cat") + esc(l.name) +
+          '<span class="bs-kind">' + (LKIND[l.kind] || LKIND.other) + (Number(l.apr) > 0 ? " · " + l.apr + "%" : "") + "</span>" +
+          (note ? '<span class="bs-note' + (am.feasible ? "" : " neg") + '">' + note + "</span>" : "") + "</span>" +
+        '<span class="bs-amt neg">' + fmtMoneyIn(l.balance, l.currency, { compact: true }) + "</span>" +
+        '<span class="bs-actions"><button class="icon-btn" data-action="edit-liability" data-id="' + l.id + '" title="Edit">' + icon("edit") + "</button>" +
+          '<button class="icon-btn danger" data-action="del-liability" data-id="' + l.id + '" title="Delete">' + icon("x") + "</button></span></div>";
+    }).join("");
+    const line = (l, v, cls, strong) =>
+      '<div class="bs-line' + (strong ? " strong" : "") + '"><span>' + l + '</span><span class="' + (cls || "") + '">' + fmtMoney(v) + "</span></div>";
+    const statement =
+      '<div class="panel"><div class="panel-head"><div class="panel-title">Net worth statement</div>' +
+        '<span class="panel-sub">the full balance sheet · ' + displayCurrency() + "</span></div>" +
+      line("Cash & savings", t.cash + t.savings + t.investCash) +
+      line("Investments (market value)", t.marketValue) +
+      line("Property & other assets", t.otherAssets) +
+      line("Total assets", t.assets, "pos", true) +
+      line("Credit cards", -t.debt, t.debt > 0 ? "neg" : "") +
+      line("Loans & mortgages", -t.otherDebt, t.otherDebt > 0 ? "neg" : "") +
+      line("Total liabilities", -(t.totalDebt), t.totalDebt > 0 ? "neg" : "", true) +
+      line("Net worth", t.netWorth, t.netWorth >= 0 ? "pos" : "neg", true) +
+      '<p class="method-note" style="margin-top:12px">Liquid net worth (cash + investments − cards): <strong>' + fmtMoney(t.liquidAssets - t.debt) + "</strong> · " +
+        (t.assets > 0 ? Math.round(t.otherAssets / t.assets * 100) : 0) + "% of assets are illiquid · debt-to-assets " +
+        (t.assets > 0 ? Math.round(t.totalDebt / t.assets * 100) : 0) + "%</p></div>";
+    return '<div class="section bs-head-row"><h2 class="bs-title">Balance sheet</h2>' +
+      '<div class="bs-head-actions"><button class="btn small ghost" data-action="add-asset">+ Asset</button>' +
+      '<button class="btn small ghost" data-action="add-liability">+ Liability</button></div></div>' +
+      '<div class="grid cols-2 stack-wide section" style="align-items:start">' +
+        '<div>' +
+          '<div class="panel"><div class="panel-head"><div class="panel-title">Other assets</div>' +
+            '<span class="panel-sub">' + fmtMoney(t.otherAssets, { compact: true }) + "</span></div>" +
+            (assetRows || '<p class="method-note">Property, vehicles, business stakes, crypto held elsewhere — add them for a true net worth.</p>') + "</div>" +
+          '<div class="panel" style="margin-top:18px"><div class="panel-head"><div class="panel-title">Loans & mortgages</div>' +
+            '<span class="panel-sub">' + fmtMoney(t.otherDebt, { compact: true }) + "</span></div>" +
+            (liabRows || '<p class="method-note">Mortgage, auto or personal loans — with APR and payment, FinanceOS shows the payoff horizon and remaining interest.</p>') + "</div>" +
+        "</div>" +
+        statement +
+      "</div>" +
+      this._stressPanel();
+  },
+
+  /* what a bad year does to the whole balance sheet — not just the portfolio */
+  _stressPanel() {
+    if (typeof stressTest !== "function") return "";
+    const st = stressTest();
+    if (!(Math.abs(st.netWorth) > 0)) return "";
+    const rows = st.scenarios.map(s =>
+      "<tr><td>" + esc(s.label) + "</td>" +
+      '<td class="num ' + (s.impact >= 0 ? "pos" : "neg") + '">' + fmtMoney(s.impact, { sign: true, compact: true }) + "</td>" +
+      '<td class="num">' + fmtPct(s.pct, 1) + "</td>" +
+      '<td class="num">' + fmtMoney(s.after, { compact: true }) + "</td></tr>").join("");
+    return '<div class="panel section"><div class="panel-head"><div class="panel-title">Stress test' +
+      this._hint("Instant shocks applied to today's balance sheet: the equity slice (via look-through) takes the market hit, a peso devaluation re-prices everything not denominated in MXN, and property marks down. Each line is independent; the last stacks all three — roughly a 2008-style year. It says nothing about recovery, only how deep the first cut goes.") + "</div>" +
+      '<span class="panel-sub">' + Math.round(st.nonMxnShare) + "% of net worth is non-MXN denominated</span></div>" +
+      '<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Scenario</th><th class="num">Impact</th><th class="num">% of net worth</th><th class="num">Net worth after</th></tr></thead><tbody>' + rows + "</tbody></table></div>" +
+      '<p class="method-note" style="margin-top:10px">A devaluation <em>helps</em> a balance sheet holding foreign assets in MXN terms — if your line is positive there, your USD exposure is a natural hedge. If it’s deeply negative, your wealth is short the dollar.</p></div>';
   },
 
   /* ================= CREDIT CARDS ================= */
@@ -682,6 +760,7 @@ const Pages = {
     if (App.portfolioMode === "advanced") {
       return toggle + stats +
         this._advExposure() +
+        this._rebalancePanel() +
         this._advPerformanceMount() +
         this._advDividends() +
         this._advRiskMount() +
@@ -759,6 +838,43 @@ const Pages = {
       '<div class="exp-row"><span class="exp-name"><span class="dot" style="background:' + CHART_COLORS[i % CHART_COLORS.length] + '"></span>' +
       esc(x.name) + '</span><span class="exp-pct">' + x.pct.toFixed(1) + "%</span></div>").join("") + "</div>";
     return '<div class="exp-block"><div class="micro-label" style="margin-bottom:8px">' + title + "</div>" + bar + legend + "</div>";
+  },
+
+  /* ---- rebalancing vs target allocation ---- */
+  _rebalancePanel() {
+    if (typeof rebalancePlan !== "function") return "";
+    const e = portfolioExposure();
+    if (!(e.total > 0)) return "";
+    const saved = Store.state.settings.targetAlloc;
+    // first run: propose targets = today's allocation, rounded — edit and save.
+    // The standard classes always get a row so a 100%-equity book can still
+    // set a bonds/cash target to work toward.
+    const targets = Object.assign({ "Equity": 0, "Bonds": 0, "Cash": 0 }, saved || (function () {
+      const t = {}; e.byAssetClass.forEach(c => { t[c.name] = Math.round(c.pct / 5) * 5; }); return t;
+    })());
+    const plan = rebalancePlan(targets);
+    if (!plan) return "";
+    const rows = plan.rows.map(r => {
+      const over = r.drift > 5, under = r.drift < -5;
+      const tone = over || under ? (over ? "gold" : "sky") : "";
+      return "<tr><td>" + esc(r.name) + "</td>" +
+        '<td class="num">' + r.current.toFixed(1) + "%</td>" +
+        '<td class="num"><input class="ta-input" data-class="' + esc(r.name) + '" type="text" inputmode="numeric" value="' + r.target + '">%</td>' +
+        '<td class="num ' + (Math.abs(r.drift) > 5 ? "gold" : "") + '">' + fmtPct(r.drift, 1) + "</td>" +
+        '<td class="num ' + tone + '">' + (Math.abs(r.move) < 1 ? "—" : (r.move > 0 ? "add " : "trim ") + fmtMoney(Math.abs(r.move), { compact: true })) + "</td></tr>";
+    }).join("");
+    const status = !saved
+      ? '<span class="panel-sub">set your targets below — proposed from today’s mix</span>'
+      : plan.balanced
+        ? '<span class="panel-sub pos">within the 5% band — no action needed</span>'
+        : '<span class="panel-sub gold">max drift ' + plan.maxDrift.toFixed(1) + "% — outside the 5% band</span>";
+    const warn = Math.abs(plan.targetSum - 100) > 0.5 && saved
+      ? '<p class="method-note" style="margin-top:8px"><span class="gold">Targets sum to ' + Math.round(plan.targetSum) + "%</span> — adjust so they total 100%.</p>" : "";
+    return '<div class="panel section"><div class="panel-head"><div class="panel-title">Rebalancing</div>' + status + "</div>" +
+      '<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Asset class</th><th class="num">Current</th><th class="num">Target</th><th class="num">Drift</th><th class="num">To rebalance</th></tr></thead><tbody>' + rows + "</tbody></table></div>" +
+      '<div class="import-actions" style="margin-top:10px"><button type="button" class="btn small" data-action="save-targets">Save targets</button></div>' +
+      warn +
+      '<p class="method-note" style="margin-top:8px">Drift = current − target (look-through, so an S&amp;P ETF counts as equities). The classic discipline: rebalance when any class drifts past 5 points, and prefer directing NEW money to the underweight class over selling (no taxable event). Informational only.</p></div>';
   },
 
   /* ---- WS4: performance (async mount) ---- */
@@ -877,9 +993,19 @@ const Pages = {
       missing;
   },
 
+  /* money-weighted return: needs only purchase dates, so it renders offline */
+  _xirrStat() {
+    const stat = (l, v, n, tone) => '<div class="stat"><span class="micro-label">' + l + '</span><div class="stat-value ' + (tone || "") + '" style="font-size:21px">' + v + "</div>" + (n ? '<div class="stat-note">' + n + "</div>" : "") + "</div>";
+    const xf = portfolioXirrFlows();
+    const mwr = xirr(xf.flows);
+    return stat("XIRR (money-weighted)" + this._hint("The IRR of your actual dated purchases against today's value — the return YOUR money earned, which a price chart can't tell you. Current positions only; dividends and closed sales aren't in the flows" + (xf.excluded ? "; " + xf.excluded + " position(s) without a purchase date excluded" : "") + "."),
+      mwr == null ? "—" : fmtPct(mwr * 100, 1) + "/yr", "since your actual buy dates", mwr == null ? "" : mwr >= 0 ? "pos" : "neg");
+  },
+
   _advRiskRender(data) {
     const items = this._advItems(data);
-    if (items.length < 1) return '<div class="adv-loading">Couldn’t load live price history (offline or blocked). Try again in a moment.</div>';
+    if (items.length < 1) return '<div class="grid cols-3 section" style="margin-top:0">' + this._xirrStat() + "</div>" +
+      '<div class="adv-loading">Couldn’t load live price history (offline or blocked) — volatility, beta and Sharpe need it. Try again in a moment.</div>';
     const bench = (data.bench && data.bench.length > 1) ? data.bench : null;
     const winDays = this._advWindowDays(data.range);
     const series = weightedValueSeries(items);
@@ -902,10 +1028,21 @@ const Pages = {
     const betaTxt = pBeta == null ? "—" : pBeta.toFixed(2);
     const betaNote = pBeta == null ? "add a free Finnhub key or more history"
       : (pBeta > 1.05 ? "swings harder than the market" : pBeta < 0.95 ? "steadier than the market" : "moves with the market") + (pBetaSrc === "finnhub" ? " · Finnhub" : "");
+    // risk-adjusted + money-weighted returns — the numbers a pro actually asks for
+    const rf = (Store.state.settings.riskFreePct != null ? Number(Store.state.settings.riskFreePct) : 7.5);
+    const ra = riskAdjusted(pSeries, ppy, rf);
+    const sharpeTone = v => v == null ? "" : v >= 1 ? "pos" : v >= 0.5 ? "gold" : "neg";
     const summary = '<div class="grid cols-3 section" style="margin-top:0">' +
       stat("Portfolio volatility", (pVol * 100).toFixed(1) + "%", "annualized · " + (ppy === 252 ? "daily" : ppy === 52 ? "weekly" : "monthly") + " data", volTone) +
       stat("Beta vs S&P 500", betaTxt, betaNote, pBeta == null ? "" : pBeta > 1.05 ? "gold" : "pos") +
       stat("Positions analyzed", items.length + " of " + (data.holdings || []).length, "with live history") +
+      "</div>" +
+      '<div class="grid cols-3 section" style="margin-top:0">' +
+      this._xirrStat() +
+      stat("Sharpe ratio" + this._hint("Annualized return above the risk-free rate (" + rf + "%, editable in Settings — think CETES) per unit of volatility, over this window. Above 1 is strong; below 0.5 means you're barely being paid for the risk."),
+        ra && ra.sharpe != null ? ra.sharpe.toFixed(2) : "—", "vs " + rf + "% risk-free · this window", sharpeTone(ra && ra.sharpe)) +
+      stat("Sortino ratio" + this._hint("Like Sharpe, but only DOWNSIDE volatility counts as risk — upside swings don't get punished. The kinder, arguably fairer cousin."),
+        ra && ra.sortino != null ? ra.sortino.toFixed(2) : "—", "downside risk only", sharpeTone(ra && ra.sortino)) +
       "</div>";
     const rows = items.map(it => {
       const vol = annualizedVol(seriesReturns(it.points), periodsPerYear(it.points));
