@@ -2182,13 +2182,13 @@ body.light .sb-log-row { background: rgba(28, 38, 30, 0.04); }
   display: inline-flex; align-items: baseline;
   font-family: var(--font-mono); font-size: 13px; font-weight: 600; color: var(--mint-bright);
 }
-.r-num {
+.r-num, .wp-num {
   width: 62px; background: transparent; border: 1px solid transparent; border-radius: 6px;
   color: var(--mint-bright); font: inherit; text-align: right; padding: 1px 4px;
   font-variant-numeric: tabular-nums;
 }
-.r-num:hover, .re-num:hover { border-color: var(--hairline-strong); }
-.r-num:focus, .re-num:focus { border-color: var(--mint); outline: none; background: var(--surface-2); }
+.r-num:hover, .re-num:hover, .wp-num:hover { border-color: var(--hairline-strong); }
+.r-num:focus, .re-num:focus, .wp-num:focus { border-color: var(--mint); outline: none; background: var(--surface-2); }
 .re-num {
   width: 56px; background: transparent; border: 1px solid transparent; border-radius: 6px;
   color: var(--mint-bright); font: inherit; text-align: right; padding: 1px 4px;
