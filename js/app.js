@@ -18,6 +18,7 @@ const App = {
   debtBudget: null,    // monthly payment budget for the payoff calculator
   buro: null,          // self-reported inputs for the credit-score simulator
   irreg: null,         // inputs for the irregular-income planner
+  wplan: null,         // wealth-projection assumptions (lazy-init)
 
   PAGE_META: {
     overview:   { title: "Today",        actions: "" },
@@ -368,6 +369,10 @@ const App = {
         document.getElementById("data-menu-pop").classList.remove("open");
         break;
 
+      case "add-plan": UI.planForm(); break;
+      case "edit-plan": UI.planForm(Store.find("plan", id)); break;
+      case "del-plan": Store.remove("plan", id); this.render(); break;
+
       case "add-flow": UI.flowForm(el.dataset.kind); break;
       case "del-flow": Store.remove("flows", id); this.render(); break;
 
@@ -681,6 +686,29 @@ const App = {
         this.debtBudget = parseNum(di.value);
         const out = document.getElementById("debt-out");
         if (out) out.innerHTML = Pages.debtPayoffOutput();
+      }
+
+      /* wealth projection: sliders + exact fields recompute just the output */
+      const wp = e.target.closest(".wp-input");
+      if (wp && this.wplan) {
+        const k = wp.dataset.wk;
+        this.wplan[k] = parseNum(wp.value);
+        const num = document.querySelector('.wp-num[data-wk="' + k + '"]');
+        if (num && document.activeElement !== num) num.value = wp.value;
+        const out = document.getElementById("wplan-out");
+        if (out) out.innerHTML = Pages._wealthPlanOut();
+      }
+      const wn = e.target.closest(".wp-num");
+      if (wn && this.wplan) {
+        const k = wn.dataset.wk;
+        const v = parseNum(wn.value);
+        if (isFinite(v) && wn.value.trim() !== "") {
+          this.wplan[k] = v;
+          const sl = document.querySelector('.wp-input[data-wk="' + k + '"]');
+          if (sl) sl.value = v;
+          const out = document.getElementById("wplan-out");
+          if (out) out.innerHTML = Pages._wealthPlanOut();
+        }
       }
 
       /* credit-score simulator: live recompute on any self-reported input */

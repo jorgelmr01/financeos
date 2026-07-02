@@ -439,7 +439,96 @@ const Pages = {
         "</div>" +
         statement +
       "</div>" +
-      this._stressPanel();
+      this._stressPanel() +
+      this._wealthPlanPanel();
+  },
+
+  /* ---------- multi-year wealth projection with planned life events ---------- */
+  _wealthPlanPanel() {
+    if (typeof wealthProjection !== "function") return "";
+    const t = computeTotals();
+    if (!(Math.abs(t.netWorth) > 0)) return "";
+    if (!App.wplan) {
+      const infl = (Store.state.settings.tax && Number(Store.state.settings.tax.inflation)) || 4.5;
+      App.wplan = { years: 15, ret: 8, propG: infl, incomeG: 2, inflation: infl };
+    }
+    const w = App.wplan;
+    const slider = (key, label, val, min, max, step, suffix) =>
+      '<div class="r-row"><label>' + label +
+        '<span class="r-val-wrap"><input class="wp-num" data-wk="' + key + '" type="text" inputmode="decimal" value="' + val + '" aria-label="' + label + '"><span class="r-suffix">' + suffix + "</span></span></label>" +
+        '<input class="wp-input" data-wk="' + key + '" type="range" min="' + min + '" max="' + max + '" step="' + step + '" value="' + val + '"></div>';
+    const events = (Store.state.plan || []).slice().sort((a, b) => a.year - b.year);
+    const KIND = { purchase: ["bag", "Purchase"], raise: ["growth", "Raise"], windfall: ["gift", "Windfall"] };
+    const evRows = events.map(e => {
+      const meta = KIND[e.kind] || KIND.purchase;
+      const detail = e.kind === "raise" ? (Number(e.pct) > 0 ? "+" : "") + e.pct + "% salary"
+        : fmtMoneyIn(e.amount, e.currency, { compact: true }) + (e.kind === "purchase" ? (e.asset ? " · becomes an asset" : " · consumption") : "");
+      return '<div class="bs-row"><span class="bs-name">' + icon(meta[0], "ic-cat") + esc(e.name || meta[1]) +
+        '<span class="bs-kind">' + e.year + " · " + meta[1] + " · " + detail + "</span></span>" +
+        '<span class="bs-actions"><button class="icon-btn" data-action="edit-plan" data-id="' + e.id + '" title="Edit">' + icon("edit") + "</button>" +
+        '<button class="icon-btn danger" data-action="del-plan" data-id="' + e.id + '" title="Delete">' + icon("x") + "</button></span></div>";
+    }).join("");
+    return '<div class="panel section"><div class="panel-head"><div class="panel-title">Wealth projection' +
+      this._hint("Your whole balance sheet, year by year: financial assets compound at the return you set, property appreciates, loans amortize away (when one is paid off, its payment flows into savings automatically), income grows with your baseline raise, spending grows with inflation — and your planned life events land in their year. Deterministic on purpose: this shows the shape and the crossings; the Retirement page handles market randomness.") + "</div>" +
+      '<span class="panel-sub"><button class="btn small ghost" data-action="add-plan">+ Life event</button></span></div>' +
+      '<div class="r-grid">' +
+        slider("years", "Horizon", w.years, 3, 40, 1, " yr") +
+        slider("ret", "Return on investments", w.ret, 0, 15, 0.5, "%") +
+        slider("propG", "Property appreciation", w.propG, 0, 12, 0.5, "%") +
+        slider("incomeG", "Baseline salary growth", w.incomeG, 0, 10, 0.5, "%") +
+      "</div>" +
+      (evRows ? '<div style="margin-top:14px">' + evRows + "</div>"
+        : '<p class="method-note" style="margin-top:12px">No life events yet — add the house you plan to buy in 2030, the car in 2031, the raise you expect, and see what they do to the trajectory.</p>') +
+      '<div id="wplan-out">' + this._wealthPlanOut() + "</div></div>";
+  },
+
+  _wealthPlanOut() {
+    const w = App.wplan;
+    const sim = wealthProjection({ years: w.years, retPct: w.ret, propPct: w.propG, inflationPct: w.inflation, incomeGrowthPct: w.incomeG });
+    const rows = sim.rows;
+    if (!rows.length) return "";
+    const infl = (Number(w.inflation) || 0) / 100;
+    const endReal = sim.end / Math.pow(1 + infl, sim.years);
+    const doubled = rows.find(r => r.netWorth >= sim.start * 2);
+    const shortYear = rows.find(r => r.shortfall);
+    const stat = (l, v, n, tone) => '<div class="stat"><span class="micro-label">' + l + '</span><div class="stat-value ' + (tone || "") + '" style="font-size:21px">' + v + "</div>" + (n ? '<div class="stat-note">' + n + "</div>" : "") + "</div>";
+    const stats = '<div class="grid cols-4 section" style="margin-top:14px">' +
+      stat("Net worth in " + rows[rows.length - 1].year, fmtMoney(sim.end, { compact: true }), fmtMoney(endReal, { compact: true }) + " in today’s money", "pos") +
+      stat("From today", fmtMoney(sim.end - sim.start, { sign: true, compact: true }), fmtMoney(sim.start, { compact: true }) + " now", sim.end >= sim.start ? "pos" : "neg") +
+      stat("2× today’s net worth", doubled ? String(doubled.year) : "beyond horizon", doubled ? "in " + (doubled.year - rows[0].year + 1) + " years" : "", doubled ? "pos" : "") +
+      stat("Debt-free", sim.payoffs.length ? String(sim.payoffs[sim.payoffs.length - 1].year) : (rows[0].loans > 0 ? "beyond horizon" : "already"),
+        sim.payoffs.map(p => esc(p.name)).join(", "), sim.payoffs.length ? "pos" : "") +
+      "</div>";
+    // chart: net worth line with event-year markers
+    const vals = rows.map(r => r.netWorth);
+    const lo = Math.min.apply(null, vals.concat([0])), hi = Math.max.apply(null, vals) || 1;
+    const span = (hi - lo) || 1;
+    const W = 1000, H = 200, PAD = 10;
+    const X = i => PAD + (rows.length <= 1 ? 0 : i * (W - 2 * PAD) / (rows.length - 1));
+    const Y = v => H - PAD - (v - lo) / span * (H - 2 * PAD);
+    const line = rows.map((r, i) => X(i).toFixed(1) + "," + Y(r.netWorth).toFixed(1)).join(" ");
+    const area = line + " " + X(rows.length - 1).toFixed(1) + "," + (H - PAD) + " " + X(0).toFixed(1) + "," + (H - PAD);
+    const markers = rows.map((r, i) => r.events.length
+      ? '<circle cx="' + X(i).toFixed(1) + '" cy="' + Y(r.netWorth).toFixed(1) + '" r="5" fill="#e6cb80" stroke="#0d1512" stroke-width="1.5"/>' : "").join("");
+    const zero = lo < 0 ? '<line x1="0" y1="' + Y(0).toFixed(1) + '" x2="' + W + '" y2="' + Y(0).toFixed(1) + '" stroke="var(--rose)" stroke-width="1" stroke-dasharray="4 4" opacity="0.7"/>' : "";
+    const hits = this._chartHits(rows.map(r => ({
+      tip: r.year + " · <strong>" + fmtMoney(r.netWorth, { compact: true }) + "</strong>" +
+        "<br>fin " + fmtMoney(r.fin, { compact: true }) + " · prop " + fmtMoney(r.prop, { compact: true }) + (r.loans > 0 ? " · debt " + fmtMoney(-r.loans, { compact: true }) : "") +
+        (r.events.length ? "<br>" + r.events.map(e => esc(e.name) + " (" + esc(e.detail) + ")").join(", ") : ""),
+    })));
+    const chart = '<div class="chart-wrap"><div class="cf-fc-plot">' +
+      '<svg class="cf-fc-chart" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none">' +
+        '<defs><linearGradient id="wpfill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#8fe3a6" stop-opacity="0.20"/><stop offset="100%" stop-color="#8fe3a6" stop-opacity="0"/></linearGradient></defs>' +
+        zero +
+        '<polygon points="' + area + '" fill="url(#wpfill)"/>' +
+        '<polyline points="' + line + '" fill="none" stroke="#8fe3a6" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>' +
+        markers +
+      "</svg>" + hits + "</div></div>" +
+      '<div class="cf-fc-scale"><span>' + rows[0].year + "</span><span>" +
+        (shortYear ? '<span class="neg">cash runs negative in ' + shortYear.year + " — an event outruns your savings</span>" : "gold dots = your life events") +
+      "</span><span>" + rows[rows.length - 1].year + "</span></div>";
+    return stats + chart +
+      '<p class="method-note" style="margin-top:10px">Nominal figures unless marked. Assumes surpluses are invested, loan payments live inside today’s spending (a payoff frees them into savings), and purchases marked “becomes an asset” shift wealth from liquid to property rather than destroying it. Buying with a NEW loan isn’t modeled yet — add the loan to the balance sheet when it happens.</p>';
   },
 
   /* what a bad year does to the whole balance sheet — not just the portfolio */

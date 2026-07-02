@@ -26,7 +26,7 @@ vm.createContext(ctx);
 const bundle = [read("js/utils.js"), read("js/instruments.js"), read("js/budget.js"), read("js/statements.js"), read("js/store.js"), read("js/report.js")].join("\n;\n") +
   "\n;globalThis.__api = { interestPerPeriod, nextInterestDate, interestScheduleLabel, interestPeriodDays," +
   " accruedInterest, holdingReturnRate, parseAmount, parseExpenseDate, expenseSig, canonicalCategory," +
-  " earningsBreakdown, sellHolding, realizedSummary, amortizeLoan, xirr, portfolioXirrFlows, riskAdjusted, rebalancePlan, currencyExposure, stressTest, portfolioAdvice, weightedExpenseRatio, INSTRUMENTS, accountXirr, contributionSeries, Report, fromUSD, computeTotals, allCategories, categoryMeta, effectiveBudgetForCategory, retirementProjection, retirementMonteCarlo, retirementBuckets, retirementBucketsMC, makeEquityMarket, mulberry32, MARKET, realInterestEst, monthlyInterestEst," +
+  " earningsBreakdown, sellHolding, realizedSummary, amortizeLoan, xirr, portfolioXirrFlows, riskAdjusted, rebalancePlan, currencyExposure, stressTest, portfolioAdvice, weightedExpenseRatio, INSTRUMENTS, accountXirr, contributionSeries, Report, fromUSD, wealthProjection, computeTotals, allCategories, categoryMeta, effectiveBudgetForCategory, retirementProjection, retirementMonteCarlo, retirementBuckets, retirementBucketsMC, makeEquityMarket, mulberry32, MARKET, realInterestEst, monthlyInterestEst," +
   " convBetween, sparkline, categorySeries, debtPayoff, detectRecurring, cashflowForecast, buroScore, investReadiness, irregularIncomePlan," +
   " classifyHolding, portfolioExposure, seriesReturns, annualizedVol, alignReturns, betaOf, correlationOf, periodsPerYear, weightedValueSeries, seriesReturnOver, finnhubSectorToGICS, countryToRegion, dividendSummary, drawdownInfo, fmtNumInput, parseNum, budgetSpendEstimate," +
   " toISO, parseISO, daysBetween, todayMid, icsForCards, Statements, INTEREST_FREQ, Store };";
@@ -255,6 +255,61 @@ group("risk-adjusted returns — Sharpe & Sortino", () => {
   ok(rc.sharpe < ra.sharpe, "chop is punished");
   ok(rc.sortino != null && rc.vol > ra.vol, "and shows up as volatility");
   ok(A.riskAdjusted(up.slice(0, 4), 52, 7.5) == null, "too little data → null");
+});
+
+group("wealth projection — life events, raises, loan payoffs", () => {
+  const y0 = new Date().getFullYear();
+  const mk = (mm) => y0 + "-" + String(mm).padStart(2, "0") + "-05";
+  const base = {
+    settings: { currency: "MXN", fx: null, tax: { inflation: 0 } },
+    accounts: [{ id: "a", type: "savings", balance: 1000000, currency: "MXN" }],
+    cards: [], holdings: [], budgets: {}, snapshots: [], realized: [], assets: [], liabilities: [], flows: [],
+    incomes: [{ id: "i", name: "Salario", amount: 50000, amountType: "net", taxRate: 0, currency: "MXN", frequency: "monthly", payDay: 1 }],
+    // 3 complete months of spending 30k → budgetSpendEstimate ≈ 360k/yr
+    expenses: [1, 2, 3].map((m, i) => ({ id: "e" + i, date: mk(m), amount: 30000, category: "Housing", currency: "MXN" })),
+  };
+  // zero growth everywhere → pure cash-flow arithmetic: save 600k−360k = 240k/yr
+  resetStore(JSON.parse(JSON.stringify(base)));
+  let sim = A.wealthProjection({ years: 3, retPct: 0, propPct: 0, inflationPct: 0, incomeGrowthPct: 0 });
+  approx(sim.rows[0].surplus, 240000, 2000, "surplus = income − spending");
+  approx(sim.rows[2].netWorth - sim.start, 3 * sim.rows[0].surplus, 6000, "zero-return NW grows by the surplus each year");
+
+  // a raise in year 2 lifts salary from that year on (and compounds)
+  A.Store.state.plan = [{ id: "r", kind: "raise", year: y0 + 2, pct: 20, name: "Promoción" }];
+  sim = A.wealthProjection({ years: 3, retPct: 0, propPct: 0, inflationPct: 0, incomeGrowthPct: 0 });
+  approx(sim.rows[0].salary, 600000, 2000, "year 1 salary unchanged");
+  approx(sim.rows[1].salary, 720000, 2000, "the raise lands in its year");
+  approx(sim.rows[2].salary, 720000, 2000, "and persists");
+
+  // consumption purchase destroys wealth; asset purchase only shifts it
+  A.Store.state.plan = [{ id: "p", kind: "purchase", year: y0 + 2, amount: 500000, currency: "MXN", asset: false, name: "Viaje" }];
+  const spend = A.wealthProjection({ years: 3, retPct: 0, propPct: 0, inflationPct: 0, incomeGrowthPct: 0 });
+  A.Store.state.plan = [{ id: "p", kind: "purchase", year: y0 + 2, amount: 500000, currency: "MXN", asset: true, name: "Terreno" }];
+  const asset = A.wealthProjection({ years: 3, retPct: 0, propPct: 0, inflationPct: 0, incomeGrowthPct: 0 });
+  approx(asset.end - spend.end, 500000, 100, "asset purchase keeps the 500k on the balance sheet");
+  approx(asset.rows[2].prop, 500000, 100, "…as property");
+  ok(spend.rows[1].events.length === 1, "the event is marked in its year");
+
+  // a windfall adds straight to financial assets
+  A.Store.state.plan = [{ id: "w", kind: "windfall", year: y0 + 1, amount: 300000, currency: "MXN", name: "Bono" }];
+  const wind = A.wealthProjection({ years: 2, retPct: 0, propPct: 0, inflationPct: 0, incomeGrowthPct: 0 });
+  A.Store.state.plan = [];
+  const noWind = A.wealthProjection({ years: 2, retPct: 0, propPct: 0, inflationPct: 0, incomeGrowthPct: 0 });
+  approx(wind.end - noWind.end, 300000, 100, "windfall lifts the end state 1:1 at zero return");
+
+  // a loan amortizes away and its payment then flows into savings
+  A.Store.state.liabilities = [{ id: "m", name: "Credito", kind: "personal", balance: 100000, apr: 0, payment: 5000, currency: "MXN" }];
+  sim = A.wealthProjection({ years: 4, retPct: 0, propPct: 0, inflationPct: 0, incomeGrowthPct: 0 });
+  eq(sim.payoffs.length, 1, "the loan pays off inside the horizon");
+  eq(sim.payoffs[0].year, y0 + 2, "0% APR, 100k at 5k/mo → gone in year 2");
+  ok(sim.rows[2].surplus > sim.rows[0].surplus + 50000, "after payoff, the freed payments boost the surplus");
+  ok(sim.rows[3].loans === 0, "no loan balance remains");
+
+  // an unaffordable event flags a shortfall year
+  A.Store.state.liabilities = [];
+  A.Store.state.plan = [{ id: "x", kind: "purchase", year: y0 + 1, amount: 99000000, currency: "MXN", asset: false, name: "Yate" }];
+  sim = A.wealthProjection({ years: 2, retPct: 0, propPct: 0, inflationPct: 0, incomeGrowthPct: 0 });
+  ok(sim.rows[0].shortfall, "cash going negative is flagged, not hidden");
 });
 
 group("account-level XIRR from recorded flows", () => {

@@ -193,6 +193,12 @@ const I18N = {
     "Add deposit": "Agregar depósito", "Add withdrawal": "Agregar retiro",
     "Net invested": "Neto invertido", "Account value": "Valor de la cuenta",
     "True profit": "Ganancia real", "Account XIRR": "XIRR de la cuenta",
+    "Wealth projection": "Proyección patrimonial", "+ Life event": "+ Evento de vida",
+    "New life event": "Nuevo evento de vida", "Edit life event": "Editar evento de vida",
+    "Add event": "Agregar evento", "Horizon": "Horizonte",
+    "Return on investments": "Retorno de inversiones", "Property appreciation": "Plusvalía inmobiliaria",
+    "Baseline salary growth": "Crecimiento salarial base", "From today": "Desde hoy",
+    "Debt-free": "Libre de deuda", "Year": "Año", "Raise %": "Aumento %", "Type": "Tipo",
   },
 };
 

@@ -394,6 +394,56 @@ const UI = {
     });
   },
 
+  /* a planned life event for the wealth projection: a future purchase, a
+     raise in a specific year, or a windfall */
+  planForm(e) {
+    e = e || {};
+    const isEdit = !!e.id;
+    const y0 = todayMid().getFullYear();
+    const kind = e.kind || "purchase";
+    const kinds = [["purchase", "Purchase (house, car…)"], ["raise", "Salary raise"], ["windfall", "Windfall (bonus, sale, inheritance)"]];
+    const body = '<div class="f-grid">' +
+      this.field("Type", '<select name="kind" id="plan-kind">' + kinds.map(k => '<option value="' + k[0] + '"' + (kind === k[0] ? " selected" : "") + ">" + k[1] + "</option>").join("") + "</select>") +
+      this.field("Year", '<input name="year" type="number" min="' + (y0 + 1) + '" max="' + (y0 + 40) + '" step="1" required value="' + (e.year || y0 + 4) + '">') +
+      this.field("Name", '<input name="name" maxlength="40" value="' + esc(e.name || "") + '" placeholder="Casa CDMX, coche, bono…">', null, true) +
+      this.field("Amount", '<input name="amount" type="text" inputmode="decimal" class="fmt-num" value="' + (e.amount != null && e.amount !== 0 ? fmtNumInput(e.amount) : "") + '">', "For purchases & windfalls", false, "plan-amount-field") +
+      this.field("Currency", this.currencySelect("currency", e.currency), null, false, "plan-cur-field") +
+      this.field("Raise %", '<input name="pct" type="number" step="0.5" min="-50" max="200" value="' + (e.pct != null ? e.pct : "") + '" placeholder="10">', "Salary changes by this % from that year on", false, "plan-pct-field") +
+      '<div class="field full" id="plan-asset-field"><label class="check-row"><input type="checkbox" name="asset"' + (e.asset ? " checked" : "") + "> " +
+        'Becomes an asset (a house keeps its value on your balance sheet; a vacation doesn’t)</label></div>' +
+      "</div>";
+    this.openModal(isEdit ? "Edit life event" : "New life event", body, {
+      submitLabel: isEdit ? "Save changes" : "Add event",
+      onSubmit(fd) {
+        const k = fd.get("kind");
+        const patch = {
+          kind: k, year: parseInt(fd.get("year"), 10) || (y0 + 1),
+          name: (fd.get("name") || "").trim(),
+          amount: parseFloat(fd.get("amount")) || 0,
+          pct: parseFloat(fd.get("pct")) || 0,
+          currency: fd.get("currency"),
+          asset: k === "purchase" && fd.get("asset") != null,
+        };
+        if (k !== "raise" && !(patch.amount > 0)) { UI.toast("Enter the amount", "error"); return; }
+        if (k === "raise" && !patch.pct) { UI.toast("Enter the raise %", "error"); return; }
+        if (isEdit) Store.update("plan", e.id, patch); else Store.add("plan", patch);
+        UI.toast(isEdit ? "Event updated" : "Event added");
+        UI.closeModal(); App.render();
+      },
+    });
+    // show only the fields the chosen kind uses
+    const sync = () => {
+      const k = document.getElementById("plan-kind").value;
+      const show = (id, on) => { const el = document.getElementById(id); if (el) el.style.display = on ? "" : "none"; };
+      show("plan-amount-field", k !== "raise");
+      show("plan-cur-field", k !== "raise");
+      show("plan-pct-field", k === "raise");
+      show("plan-asset-field", k === "purchase");
+    };
+    document.getElementById("plan-kind").addEventListener("change", sync);
+    sync();
+  },
+
   /* record cash moved into / out of the brokerage (for account-level XIRR) */
   flowForm(kind) {
     const isW = kind === "withdrawal";

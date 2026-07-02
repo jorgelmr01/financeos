@@ -21,6 +21,7 @@ const Store = {
       goals: [],      // {id, name, target, saved, targetDate, currency} — savings goals / sinking funds
       realized: [],   // {id, symbol, name, date, shares, sellPrice, costBasis, proceeds, gain, currency} — closed sales
       flows: [],      // {id, date, amount, kind: deposit|withdrawal, note, currency} — cash in/out of the brokerage
+      plan: [],       // {id, kind: purchase|raise|windfall, year, name, amount, pct, currency, asset} — future life events
       assets: [],     // {id, name, kind: property|vehicle|business|crypto|other, value, currency} — off-platform assets
       liabilities: [],// {id, name, kind: mortgage|auto|personal|student|other, balance, apr, payment, currency} — non-card debt
       snapshots: [],  // [{d: ISO date, usd, liq, inv, debt} — net worth + composition in USD]
@@ -45,6 +46,7 @@ const Store = {
     if (!Array.isArray(this.state.realized)) this.state.realized = [];
     if (!Array.isArray(this.state.assets)) this.state.assets = [];
     if (!Array.isArray(this.state.flows)) this.state.flows = [];
+    if (!Array.isArray(this.state.plan)) this.state.plan = [];
     if (!Array.isArray(this.state.liabilities)) this.state.liabilities = [];
     if (!Array.isArray(this.state.expenses)) this.state.expenses = [];
     if (!this.state.budgets || typeof this.state.budgets !== "object") this.state.budgets = {};
@@ -591,6 +593,11 @@ const Store = {
           { id: uid(), kind: "withdrawal", amount: 800, currency: "USD", date: d(1, 20), note: "trip" },
         ];
       })(),
+      plan: [
+        { id: uid(), kind: "raise", year: t.getFullYear() + 2, pct: 15, name: "Promoción esperada" },
+        { id: uid(), kind: "purchase", year: t.getFullYear() + 4, amount: 850000, currency: "MXN", asset: false, name: "Enganche casa nueva" },
+        { id: uid(), kind: "purchase", year: t.getFullYear() + 6, amount: 420000, currency: "MXN", asset: true, name: "Coche nuevo" },
+      ],
       assets: [
         { id: uid(), name: "Departamento CDMX", kind: "property", value: 2850000, currency: "MXN" },
         { id: uid(), name: "Auto — Mazda 3", kind: "vehicle", value: 265000, currency: "MXN" },
@@ -1295,4 +1302,101 @@ function achievementContext() {
     nwPct: percentileFromTable(toUSD(t.netWorth), NETWORTH_PCT_TABLE),
     incPct: percentileFromTable(toUSD(eb.totalGross), INCOME_PCT_TABLE),  // income stats are pre-tax
   };
+}
+
+/* ---------- multi-year wealth projection ----------
+   The whole balance sheet, year by year: financial assets compound, property
+   appreciates, loans amortize away (freeing their payments into savings), and
+   the user's PLANNED LIFE EVENTS hit in their year — a house bought in 2030, a
+   car in 2031, a raise in 2028, a windfall. Deterministic and annual: the goal
+   is seeing the shape and the crossings, not simulating volatility (the
+   retirement page does that).
+
+   opts: { years, retPct (financial assets), propPct (property growth),
+           inflationPct, incomeGrowthPct (baseline annual raise) }
+   Reads Store for the starting balance sheet, income, spending, loans and the
+   plan[] events. Returns { rows:[{year, fin, prop, loans, netWorth, events,
+   surplus, shortfall}], payoffs:[{name, year}], end } */
+function wealthProjection(opts) {
+  opts = opts || {};
+  const N = Math.max(1, Math.min(40, Math.round(opts.years || 15)));
+  const ret = (Number(opts.retPct) != null && isFinite(Number(opts.retPct)) ? Number(opts.retPct) : 8) / 100;
+  const propG = (opts.propPct != null ? Number(opts.propPct) : 4.5) / 100;
+  const infl = (opts.inflationPct != null ? Number(opts.inflationPct) : 4.5) / 100;
+  const incG = (opts.incomeGrowthPct != null ? Number(opts.incomeGrowthPct) : 0) / 100;
+
+  const t = computeTotals();
+  const eb = earningsBreakdown();
+  const est = (typeof budgetSpendEstimate === "function") ? budgetSpendEstimate() : { annual: 0, months: 0 };
+  const y0 = todayMid().getFullYear();
+
+  // starting buckets (display currency)
+  let fin = t.liquidAssets - t.debt;                 // cash + savings + investments − cards
+  let prop = t.otherAssets;
+  let salary = eb.schedNet;                          // scheduled income only — investment income compounds in `fin`
+  const baseSpend = est.annual > 0 ? est.annual : salary * 0.6;   // fallback: spend 60% if no budget data
+  // loans amortize on their own schedule; their payments are assumed to already
+  // live inside baseSpend, so when one ends, spending drops by that payment
+  const loans = (Store.state.liabilities || []).map(l => ({
+    name: l.name, bal: conv(Number(l.balance) || 0, l.currency),
+    r: Math.max(0, Number(l.apr) || 0) / 1200, pay: conv(Number(l.payment) || 0, l.currency),
+  }));
+  const events = (Store.state.plan || []).slice();
+
+  const rows = [];
+  const payoffs = [];
+  let endedPayments = 0;
+  for (let i = 1; i <= N; i++) {
+    const year = y0 + i;
+    const yearEvents = [];
+
+    // baseline growth + any raises landing this year
+    salary *= (1 + incG);
+    events.filter(e => e.kind === "raise" && Number(e.year) === year).forEach(e => {
+      const pct = Number(e.pct) || 0;
+      salary *= (1 + pct / 100);
+      yearEvents.push({ kind: "raise", name: e.name || "Raise", detail: (pct > 0 ? "+" : "") + pct + "%" });
+    });
+
+    // loans: 12 payments each; a payoff frees its payment from spending
+    loans.forEach(l => {
+      if (l.bal <= 0.005 || !(l.pay > 0)) return;
+      for (let m = 0; m < 12 && l.bal > 0.005; m++) {
+        l.bal = Math.max(0, l.bal * (1 + l.r) - l.pay);
+      }
+      if (l.bal <= 0.005) {
+        endedPayments += l.pay * 12;
+        payoffs.push({ name: l.name, year: year });
+        yearEvents.push({ kind: "payoff", name: l.name, detail: "paid off — frees " + Math.round(l.pay) + "/mo" });
+      }
+    });
+    const loanBal = loans.reduce((a, l) => a + l.bal, 0);
+
+    // spending rises with inflation; ended loan payments leave it
+    const spend = Math.max(0, baseSpend * Math.pow(1 + infl, i) - endedPayments);
+    const surplus = salary - spend;
+
+    // financial assets compound, then absorb the year's cash flow and events
+    fin = fin * (1 + ret) + surplus;
+    prop = prop * (1 + propG);
+    events.filter(e => Number(e.year) === year && e.kind !== "raise").forEach(e => {
+      const amt = conv(Number(e.amount) || 0, e.currency);
+      if (e.kind === "windfall") {
+        fin += amt;
+        yearEvents.push({ kind: "windfall", name: e.name || "Windfall", detail: "+" + Math.round(amt) });
+      } else if (e.kind === "purchase") {
+        fin -= amt;
+        if (e.asset) prop += amt;                    // wealth shifts liquid → illiquid
+        yearEvents.push({ kind: "purchase", name: e.name || "Purchase", detail: (e.asset ? "asset " : "spend ") + Math.round(amt) });
+      }
+    });
+
+    rows.push({
+      year: year, fin: Math.round(fin), prop: Math.round(prop), loans: Math.round(loanBal),
+      netWorth: Math.round(fin + prop - loanBal),
+      salary: Math.round(salary), spend: Math.round(spend), surplus: Math.round(surplus),
+      events: yearEvents, shortfall: fin < 0,
+    });
+  }
+  return { rows: rows, payoffs: payoffs, start: Math.round(t.netWorth), end: rows[rows.length - 1].netWorth, years: N };
 }
