@@ -115,6 +115,16 @@ body.light .nw-chart stop:last-child { stop-color: rgba(23, 122, 66, 0); }
 body.light :is(.alloc-bar span, .comp-bar span, .comp-legend .dot) {
   filter: saturate(1.5) brightness(0.72);
 }
+/* every SVG line that hardcodes a dark-theme pastel (payday forecast, price &
+   retirement charts, drawdown, sparklines) drops to its accessible paper tone —
+   CSS wins over presentation attributes, so one rule set covers them all */
+body.light svg [stroke="#8fe3a6"] { stroke: #177a42; }
+body.light svg [stroke="#e8836f"], body.light svg [stroke="#ea8770"] { stroke: #bd4a33; }
+body.light svg [stroke="#e6cb80"] { stroke: #9a7110; }
+body.light svg [stroke="#9aa3b2"] { stroke: #5c6672; }
+body.light svg [stroke="#8fc9e3"] { stroke: #2a6e8f; }
+body.light svg stop[stop-color="#8fe3a6"] { stop-color: #177a42; }
+body.light svg stop[stop-color="#e8836f"] { stop-color: #bd4a33; }
 
 /* credit cards stay dark in both themes, like the cards in your wallet */
 .ccard {

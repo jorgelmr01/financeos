@@ -2182,7 +2182,7 @@ const Pages = {
       '<span class="panel-sub">same nest egg &amp; strategy · how much could you draw?</span></div>' +
       '<p class="method-note" style="margin-bottom:12px">' +
         (inRange ? "Your target implies about <strong>" + implied.toFixed(1) + "%</strong>."
-          : "Your target implies about <strong>" + implied.toFixed(1) + "%</strong> — beyond this scale, so the slider starts at the classic <strong>4%</strong>.") +
+          : "Your target implies about <strong>" + implied.toFixed(1) + "%</strong> — outside this scale, so the slider starts at the classic <strong>4%</strong>.") +
         " Slide to see how spending more or less changes your income and how long the money lasts — the chart and figures update live.</p>" +
       '<div class="r-grid"><div class="r-row r-row-wide"><label>Withdrawal rate' +
         '<output class="re-val">' + rate.toFixed(1) + '%</output></label>' +
