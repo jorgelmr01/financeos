@@ -443,14 +443,17 @@ const Pages = {
       this._wealthPlanPanel();
   },
 
-  /* ---------- multi-year wealth projection with planned life events ---------- */
+  /* ---------- lifetime wealth projection with planned life events ---------- */
   _wealthPlanPanel() {
     if (typeof wealthProjection !== "function") return "";
     const t = computeTotals();
     if (!(Math.abs(t.netWorth) > 0)) return "";
     if (!App.wplan) {
       const infl = (Store.state.settings.tax && Number(Store.state.settings.tax.inflation)) || 4.5;
-      App.wplan = { years: 15, ret: 8, propG: infl, incomeG: 2, inflation: infl };
+      const by = Number(Store.state.settings.birthYear) || 0;
+      const age = by > 1900 ? todayMid().getFullYear() - by : 30;
+      App.wplan = { age: age, toAge: Math.max(age + 10, 90), retireAge: 65, pensionPct: 0,
+        ret: 8, propG: infl, incomeG: 2, eqShare: 70, propCarry: 1, estateCost: 3, inflation: infl };
     }
     const w = App.wplan;
     const slider = (key, label, val, min, max, step, suffix) =>
@@ -462,42 +465,71 @@ const Pages = {
     const evRows = events.map(e => {
       const meta = KIND[e.kind] || KIND.purchase;
       const detail = e.kind === "raise" ? (Number(e.pct) > 0 ? "+" : "") + e.pct + "% salary"
-        : fmtMoneyIn(e.amount, e.currency, { compact: true }) + (e.kind === "purchase" ? (e.asset ? " · becomes an asset" : " · consumption") : "");
+        : fmtMoneyIn(e.amount, e.currency, { compact: true }) +
+          (e.kind === "purchase" ? (e.financed ? " · financed " + (e.downPct || 20) + "% down @ " + (e.loanRate || 0) + "% · " + (e.termYears || 20) + "y" : "") + (e.asset ? " · becomes an asset" : " · consumption") : "");
       return '<div class="bs-row"><span class="bs-name">' + icon(meta[0], "ic-cat") + esc(e.name || meta[1]) +
         '<span class="bs-kind">' + e.year + " · " + meta[1] + " · " + detail + "</span></span>" +
         '<span class="bs-actions"><button class="icon-btn" data-action="edit-plan" data-id="' + e.id + '" title="Edit">' + icon("edit") + "</button>" +
         '<button class="icon-btn danger" data-action="del-plan" data-id="' + e.id + '" title="Delete">' + icon("x") + "</button></span></div>";
     }).join("");
-    return '<div class="panel section"><div class="panel-head"><div class="panel-title">Wealth projection' +
-      this._hint("Your whole balance sheet, year by year: financial assets compound at the return you set, property appreciates, loans amortize away (when one is paid off, its payment flows into savings automatically), income grows with your baseline raise, spending grows with inflation — and your planned life events land in their year. Deterministic on purpose: this shows the shape and the crossings; the Retirement page handles market randomness.") + "</div>" +
+    return '<div class="panel section"><div class="panel-head"><div class="panel-title">Lifetime wealth plan' +
+      this._hint("Your whole balance sheet, year by year, for an entire life: financial assets compound with the Mexican tax drag on REAL returns (interest ISR on the non-equity share, 10% bursátil on the equity share, both only above inflation), property appreciates net of its carry cost (predial + upkeep), loans amortize away (a payoff frees its payment into savings), salary grows and STOPS at your retirement age (optionally replaced by a pension), and your planned life events land in their year — including purchases financed with a new loan. It ends with the estate: in Mexico, inheritances to direct heirs are ISR-exempt via testamento; what drags is settlement costs (notary, probate), which you can set below. Deterministic on purpose — the Retirement page handles market randomness; this shows the shape of a life.") + "</div>" +
       '<span class="panel-sub"><button class="btn small ghost" data-action="add-plan">+ Life event</button></span></div>' +
+      '<div class="sb-alloc-head"><span class="micro-label">Your life</span></div>' +
       '<div class="r-grid">' +
-        slider("years", "Horizon", w.years, 3, 40, 1, " yr") +
+        slider("age", "Your age today", w.age, 15, 90, 1, " yr") +
+        slider("toAge", "Model to age", w.toAge, Math.min(110, w.age + 5), 110, 1, " yr") +
+        slider("retireAge", "Retire at", w.retireAge, Math.min(90, w.age + 1), 90, 1, " yr") +
+        slider("pensionPct", "Pension replaces", w.pensionPct, 0, 100, 5, "%") +
+      "</div>" +
+      '<div class="sb-alloc-head" style="margin-top:14px"><span class="micro-label">Assumptions</span></div>' +
+      '<div class="r-grid">' +
         slider("ret", "Return on investments", w.ret, 0, 15, 0.5, "%") +
+        slider("eqShare", "Equity share of investments", w.eqShare, 0, 100, 5, "%") +
         slider("propG", "Property appreciation", w.propG, 0, 12, 0.5, "%") +
+        slider("propCarry", "Property carry cost", w.propCarry, 0, 4, 0.25, "%") +
         slider("incomeG", "Baseline salary growth", w.incomeG, 0, 10, 0.5, "%") +
+        slider("estateCost", "Estate settlement costs", w.estateCost, 0, 15, 0.5, "%") +
       "</div>" +
       (evRows ? '<div style="margin-top:14px">' + evRows + "</div>"
-        : '<p class="method-note" style="margin-top:12px">No life events yet — add the house you plan to buy in 2030, the car in 2031, the raise you expect, and see what they do to the trajectory.</p>') +
+        : '<p class="method-note" style="margin-top:12px">No life events yet — add the house you plan to buy in 2030 (financed, with its down payment and mortgage), the car in 2031, the raise you expect, and see what they do to a lifetime.</p>') +
       '<div id="wplan-out">' + this._wealthPlanOut() + "</div></div>";
   },
 
   _wealthPlanOut() {
     const w = App.wplan;
-    const sim = wealthProjection({ years: w.years, retPct: w.ret, propPct: w.propG, inflationPct: w.inflation, incomeGrowthPct: w.incomeG });
+    // remember the age so it survives reloads
+    const by = todayMid().getFullYear() - Math.round(w.age);
+    if (Store.state.settings.birthYear !== by) { Store.state.settings.birthYear = by; Store.save(); }
+    const sim = wealthProjection({
+      ageNow: w.age, toAge: w.toAge, retPct: w.ret, propPct: w.propG,
+      inflationPct: w.inflation, incomeGrowthPct: w.incomeG,
+      retireAge: w.retireAge, pensionPct: w.pensionPct, eqSharePct: w.eqShare,
+      interestTaxPct: (Store.state.settings.tax && Number(Store.state.settings.tax.interest)) || 0,
+      capGainsPct: (Store.state.settings.tax && Number(Store.state.settings.tax.capGains)) || 0,
+      propCarryPct: w.propCarry, estateCostPct: w.estateCost,
+    });
     const rows = sim.rows;
     if (!rows.length) return "";
-    const infl = (Number(w.inflation) || 0) / 100;
-    const endReal = sim.end / Math.pow(1 + infl, sim.years);
     const doubled = rows.find(r => r.netWorth >= sim.start * 2);
     const shortYear = rows.find(r => r.shortfall);
+    const peak = rows.reduce((m, r) => r.netWorth > m.netWorth ? r : m, rows[0]);
     const stat = (l, v, n, tone) => '<div class="stat"><span class="micro-label">' + l + '</span><div class="stat-value ' + (tone || "") + '" style="font-size:21px">' + v + "</div>" + (n ? '<div class="stat-note">' + n + "</div>" : "") + "</div>";
+    const last = rows[rows.length - 1];
     const stats = '<div class="grid cols-4 section" style="margin-top:14px">' +
-      stat("Net worth in " + rows[rows.length - 1].year, fmtMoney(sim.end, { compact: true }), fmtMoney(endReal, { compact: true }) + " in today’s money", "pos") +
-      stat("From today", fmtMoney(sim.end - sim.start, { sign: true, compact: true }), fmtMoney(sim.start, { compact: true }) + " now", sim.end >= sim.start ? "pos" : "neg") +
-      stat("2× today’s net worth", doubled ? String(doubled.year) : "beyond horizon", doubled ? "in " + (doubled.year - rows[0].year + 1) + " years" : "", doubled ? "pos" : "") +
-      stat("Debt-free", sim.payoffs.length ? String(sim.payoffs[sim.payoffs.length - 1].year) : (rows[0].loans > 0 ? "beyond horizon" : "already"),
-        sim.payoffs.map(p => esc(p.name)).join(", "), sim.payoffs.length ? "pos" : "") +
+      stat("Net worth at " + (last.age != null ? "age " + last.age : last.year), fmtMoney(sim.end, { compact: true }),
+        fmtMoney(sim.endReal, { compact: true }) + " in today’s money", sim.end >= 0 ? "pos" : "neg") +
+      stat("Peak wealth", fmtMoney(peak.netWorth, { compact: true }),
+        (peak.age != null ? "age " + peak.age + " · " : "") + peak.year, "gold") +
+      stat("Retirement" + (sim.retireYear ? " · " + sim.retireYear : ""),
+        shortYear && sim.retireYear && shortYear.year > sim.retireYear ? "runs dry " + shortYear.year
+          : sim.retireYear ? (shortYear && shortYear.year <= sim.retireYear ? "shortfall " + shortYear.year : "funded to " + (last.age != null ? "age " + last.age : last.year)) : "beyond horizon",
+        sim.retireYear ? "salary ends at " + w.retireAge + (w.pensionPct > 0 ? " · pension " + w.pensionPct + "%" : "") : "",
+        shortYear ? "neg" : "pos") +
+      stat("Estate to heirs" + this._hint("What your heirs receive at the end of the model. In Mexico, inheritances to legitimate heirs (spouse, children) are ISR-EXEMPT when settled properly through a will (testamento) — the real drag is settlement: notary, probate and appraisal costs, set above. Without a will, an intestate succession (juicio sucesorio) costs meaningfully more and takes years — the cheapest estate planning in Mexico is a testamento (≈$2–3k MXN in September campaigns)."),
+        fmtMoney(sim.estate.net, { compact: true }),
+        fmtMoney(sim.estate.netReal, { compact: true }) + " today’s money · " + fmtMoney(sim.estate.costs, { compact: true }) + " settlement",
+        sim.estate.net > 0 ? "pos" : "neg") +
       "</div>";
     // chart: net worth line with event-year markers
     const vals = rows.map(r => r.netWorth);
@@ -510,25 +542,31 @@ const Pages = {
     const area = line + " " + X(rows.length - 1).toFixed(1) + "," + (H - PAD) + " " + X(0).toFixed(1) + "," + (H - PAD);
     const markers = rows.map((r, i) => r.events.length
       ? '<circle cx="' + X(i).toFixed(1) + '" cy="' + Y(r.netWorth).toFixed(1) + '" r="5" fill="#e6cb80" stroke="#0d1512" stroke-width="1.5"/>' : "").join("");
+    const retIdx = rows.findIndex(r => r.retired);
+    const retLine = retIdx >= 0
+      ? '<line x1="' + X(retIdx).toFixed(1) + '" y1="0" x2="' + X(retIdx).toFixed(1) + '" y2="' + H + '" stroke="#8fc9e3" stroke-width="1.2" stroke-dasharray="5 4" opacity="0.8"/>' : "";
     const zero = lo < 0 ? '<line x1="0" y1="' + Y(0).toFixed(1) + '" x2="' + W + '" y2="' + Y(0).toFixed(1) + '" stroke="var(--rose)" stroke-width="1" stroke-dasharray="4 4" opacity="0.7"/>' : "";
     const hits = this._chartHits(rows.map(r => ({
-      tip: r.year + " · <strong>" + fmtMoney(r.netWorth, { compact: true }) + "</strong>" +
+      tip: r.year + (r.age != null ? " · age " + r.age : "") + " · <strong>" + fmtMoney(r.netWorth, { compact: true }) + "</strong>" +
         "<br>fin " + fmtMoney(r.fin, { compact: true }) + " · prop " + fmtMoney(r.prop, { compact: true }) + (r.loans > 0 ? " · debt " + fmtMoney(-r.loans, { compact: true }) : "") +
+        (r.tax > 0 ? " · tax " + fmtMoney(r.tax, { compact: true }) : "") +
         (r.events.length ? "<br>" + r.events.map(e => esc(e.name) + " (" + esc(e.detail) + ")").join(", ") : ""),
     })));
     const chart = '<div class="chart-wrap"><div class="cf-fc-plot">' +
       '<svg class="cf-fc-chart" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none">' +
         '<defs><linearGradient id="wpfill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#8fe3a6" stop-opacity="0.20"/><stop offset="100%" stop-color="#8fe3a6" stop-opacity="0"/></linearGradient></defs>' +
-        zero +
+        zero + retLine +
         '<polygon points="' + area + '" fill="url(#wpfill)"/>' +
         '<polyline points="' + line + '" fill="none" stroke="#8fe3a6" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>' +
         markers +
       "</svg>" + hits + "</div></div>" +
-      '<div class="cf-fc-scale"><span>' + rows[0].year + "</span><span>" +
-        (shortYear ? '<span class="neg">cash runs negative in ' + shortYear.year + " — an event outruns your savings</span>" : "gold dots = your life events") +
-      "</span><span>" + rows[rows.length - 1].year + "</span></div>";
+      '<div class="cf-fc-scale"><span>' + rows[0].year + (rows[0].age != null ? " · " + rows[0].age : "") + "</span><span>" +
+        (shortYear ? '<span class="neg">cash runs negative in ' + shortYear.year + (shortYear.age != null ? " (age " + shortYear.age + ")" : "") + "</span>"
+          : "gold dots = life events" + (retIdx >= 0 ? " · blue line = retirement" : "")) +
+      "</span><span>" + last.year + (last.age != null ? " · " + last.age : "") + "</span></div>";
     return stats + chart +
-      '<p class="method-note" style="margin-top:10px">Nominal figures unless marked. Assumes surpluses are invested, loan payments live inside today’s spending (a payoff frees them into savings), and purchases marked “becomes an asset” shift wealth from liquid to property rather than destroying it. Buying with a NEW loan isn’t modeled yet — add the loan to the balance sheet when it happens.</p>';
+      '<p class="method-note" style="margin-top:10px">Nominal unless marked. Investment returns pay the Mexican tax drag yearly on their REAL (above-inflation) component — blended from your Settings rates by the equity share (' +
+      fmtMoney(sim.taxPaid, { compact: true }) + " of lifetime tax in this run). Existing loan payments live inside today’s spending (a payoff frees them); financed purchases add their down payment now and their new loan’s payments on top of spending until it dies. Property pays its carry cost every year. Estate: direct heirs are ISR-exempt in Mexico — settlement costs are the drag, and a testamento is the cheapest estate planning there is.</p>";
   },
 
   /* what a bad year does to the whole balance sheet — not just the portfolio */

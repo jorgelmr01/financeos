@@ -199,6 +199,13 @@ const I18N = {
     "Return on investments": "Retorno de inversiones", "Property appreciation": "Plusvalía inmobiliaria",
     "Baseline salary growth": "Crecimiento salarial base", "From today": "Desde hoy",
     "Debt-free": "Libre de deuda", "Year": "Año", "Raise %": "Aumento %", "Type": "Tipo",
+    "Lifetime wealth plan": "Plan patrimonial de vida", "Your life": "Tu vida",
+    "Your age today": "Tu edad hoy", "Model to age": "Modelar hasta los", "Retire at": "Retiro a los",
+    "Pension replaces": "Pensión cubre", "Equity share of investments": "Proporción en acciones",
+    "Property carry cost": "Costo de mantener inmuebles", "Estate settlement costs": "Costos de sucesión",
+    "Peak wealth": "Riqueza máxima", "Estate to heirs": "Herencia a herederos",
+    "Down payment %": "Enganche %", "Loan rate % (APR)": "Tasa del crédito % (APR)",
+    "Term (years)": "Plazo (años)", "Assumptions": "Supuestos",
   },
 };
 

@@ -595,7 +595,7 @@ const Store = {
       })(),
       plan: [
         { id: uid(), kind: "raise", year: t.getFullYear() + 2, pct: 15, name: "Promoción esperada" },
-        { id: uid(), kind: "purchase", year: t.getFullYear() + 4, amount: 850000, currency: "MXN", asset: false, name: "Enganche casa nueva" },
+        { id: uid(), kind: "purchase", year: t.getFullYear() + 4, amount: 3400000, currency: "MXN", asset: true, financed: true, downPct: 25, loanRate: 10.5, termYears: 20, name: "Casa nueva (crédito)" },
         { id: uid(), kind: "purchase", year: t.getFullYear() + 6, amount: 420000, currency: "MXN", asset: true, name: "Coche nuevo" },
       ],
       assets: [
@@ -1304,99 +1304,159 @@ function achievementContext() {
   };
 }
 
-/* ---------- multi-year wealth projection ----------
-   The whole balance sheet, year by year: financial assets compound, property
-   appreciates, loans amortize away (freeing their payments into savings), and
-   the user's PLANNED LIFE EVENTS hit in their year — a house bought in 2030, a
-   car in 2031, a raise in 2028, a windfall. Deterministic and annual: the goal
-   is seeing the shape and the crossings, not simulating volatility (the
-   retirement page does that).
+/* ---------- lifetime wealth projection ----------
+   The whole balance sheet, year by year, for an entire LIFE (up to age 110):
+   financial assets compound with a Mexican tax drag on real returns, property
+   appreciates net of carry costs, loans amortize away (freeing their payments),
+   salary grows, stops at retirement (optionally replaced by a pension), and the
+   user's planned life events land in their year — including purchases FINANCED
+   with a new loan (down payment now, an auto-generated amortizing loan whose
+   payments stack on top of spending until it dies). Ends with the estate: what
+   heirs receive after settlement costs, with Mexico's ISR exemption for direct
+   heirs in mind. Deterministic on purpose — the Retirement page handles
+   randomness; this shows the shape of a life.
 
-   opts: { years, retPct (financial assets), propPct (property growth),
-           inflationPct, incomeGrowthPct (baseline annual raise) }
-   Reads Store for the starting balance sheet, income, spending, loans and the
-   plan[] events. Returns { rows:[{year, fin, prop, loans, netWorth, events,
-   surplus, shortfall}], payoffs:[{name, year}], end } */
+   opts: { years | (ageNow + toAge), retPct, propPct, inflationPct,
+           incomeGrowthPct, retireAge, pensionPct, eqSharePct,
+           interestTaxPct, capGainsPct, propCarryPct, estateCostPct }
+   All tax/carry params default to 0 so simple calls stay simple. */
 function wealthProjection(opts) {
   opts = opts || {};
-  const N = Math.max(1, Math.min(40, Math.round(opts.years || 15)));
-  const ret = (Number(opts.retPct) != null && isFinite(Number(opts.retPct)) ? Number(opts.retPct) : 8) / 100;
+  const ageNow = opts.ageNow != null ? Number(opts.ageNow) : null;
+  let N = opts.years != null ? Math.round(Number(opts.years))
+    : (ageNow != null && opts.toAge != null ? Math.round(Number(opts.toAge) - ageNow) : 15);
+  N = Math.max(1, Math.min(90, N));
+  const ret = (opts.retPct != null ? Number(opts.retPct) : 8) / 100;
   const propG = (opts.propPct != null ? Number(opts.propPct) : 4.5) / 100;
   const infl = (opts.inflationPct != null ? Number(opts.inflationPct) : 4.5) / 100;
   const incG = (opts.incomeGrowthPct != null ? Number(opts.incomeGrowthPct) : 0) / 100;
+  const retireAge = opts.retireAge != null ? Number(opts.retireAge) : null;
+  const pensionPct = (opts.pensionPct != null ? Number(opts.pensionPct) : 0) / 100;
+  const eqShare = Math.max(0, Math.min(1, (opts.eqSharePct != null ? Number(opts.eqSharePct) : 0) / 100));
+  const intTax = Math.max(0, (opts.interestTaxPct != null ? Number(opts.interestTaxPct) : 0) / 100);
+  const cgTax = Math.max(0, (opts.capGainsPct != null ? Number(opts.capGainsPct) : 0) / 100);
+  const propCarry = Math.max(0, (opts.propCarryPct != null ? Number(opts.propCarryPct) : 0) / 100);
+  const estateCost = Math.max(0, Math.min(0.5, (opts.estateCostPct != null ? Number(opts.estateCostPct) : 0) / 100));
 
   const t = computeTotals();
   const eb = earningsBreakdown();
   const est = (typeof budgetSpendEstimate === "function") ? budgetSpendEstimate() : { annual: 0, months: 0 };
   const y0 = todayMid().getFullYear();
 
-  // starting buckets (display currency)
   let fin = t.liquidAssets - t.debt;                 // cash + savings + investments − cards
   let prop = t.otherAssets;
   let salary = eb.schedNet;                          // scheduled income only — investment income compounds in `fin`
-  const baseSpend = est.annual > 0 ? est.annual : salary * 0.6;   // fallback: spend 60% if no budget data
-  // loans amortize on their own schedule; their payments are assumed to already
-  // live inside baseSpend, so when one ends, spending drops by that payment
+  let retired = false;
+  const baseSpend = est.annual > 0 ? est.annual : salary * 0.6;
+  // existing loans: payments assumed inside baseSpend (payoff frees them).
+  // plan-financed loans (extra:true) stack ON TOP of spending until they die.
   const loans = (Store.state.liabilities || []).map(l => ({
     name: l.name, bal: conv(Number(l.balance) || 0, l.currency),
-    r: Math.max(0, Number(l.apr) || 0) / 1200, pay: conv(Number(l.payment) || 0, l.currency),
+    r: Math.max(0, Number(l.apr) || 0) / 1200, pay: conv(Number(l.payment) || 0, l.currency), extra: false,
   }));
   const events = (Store.state.plan || []).slice();
+  // level monthly payment for a fully-amortizing loan
+  const annuity = (P, rMo, nMo) => rMo > 0 ? P * rMo / (1 - Math.pow(1 + rMo, -nMo)) : (nMo > 0 ? P / nMo : P);
 
-  const rows = [];
-  const payoffs = [];
-  let endedPayments = 0;
+  const rows = [], payoffs = [];
+  let endedPayments = 0, taxPaid = 0;
   for (let i = 1; i <= N; i++) {
     const year = y0 + i;
+    const age = ageNow != null ? ageNow + i : null;
     const yearEvents = [];
 
-    // baseline growth + any raises landing this year
+    // salary path: baseline growth, event raises, then retirement replaces it
     salary *= (1 + incG);
     events.filter(e => e.kind === "raise" && Number(e.year) === year).forEach(e => {
       const pct = Number(e.pct) || 0;
       salary *= (1 + pct / 100);
       yearEvents.push({ kind: "raise", name: e.name || "Raise", detail: (pct > 0 ? "+" : "") + pct + "%" });
     });
+    let income = salary;
+    if (retireAge != null && age != null && age >= retireAge) {
+      if (!retired) { retired = true; yearEvents.push({ kind: "retire", name: "Retirement", detail: "salary ends" + (pensionPct > 0 ? " · pension " + Math.round(pensionPct * 100) + "%" : "") }); }
+      income = salary * pensionPct;                  // pension replaces (part of) salary
+    }
 
-    // loans: 12 payments each; a payoff frees its payment from spending
+    // financed purchases spawn their loan BEFORE amortization runs this year
+    events.filter(e => Number(e.year) === year && e.kind === "purchase" && e.financed).forEach(e => {
+      const amt = conv(Number(e.amount) || 0, e.currency);
+      const down = amt * Math.max(0, Math.min(100, Number(e.downPct) || 20)) / 100;
+      const principal = amt - down;
+      const rMo = Math.max(0, Number(e.loanRate) || 0) / 1200;
+      const nMo = Math.max(12, Math.round((Number(e.termYears) || 20) * 12));
+      const pay = annuity(principal, rMo, nMo);
+      fin -= down;
+      if (e.asset) prop += amt;                      // the house enters at full value; the loan offsets it
+      loans.push({ name: e.name || "Loan", bal: principal, r: rMo, pay: pay, extra: true });
+      yearEvents.push({ kind: "purchase", name: e.name || "Purchase", detail: "down " + Math.round(down) + " · loan " + Math.round(principal) + " @ " + (Number(e.loanRate) || 0) + "% · " + Math.round(pay) + "/mo" });
+    });
+
+    // loans: 12 payments; a payoff of an ORIGINAL loan frees its payment from
+    // spending; an extra (plan) loan simply stops costing money
+    let extraPayments = 0;
     loans.forEach(l => {
       if (l.bal <= 0.005 || !(l.pay > 0)) return;
+      let paidThisYear = 0;
       for (let m = 0; m < 12 && l.bal > 0.005; m++) {
+        const before = l.bal;
         l.bal = Math.max(0, l.bal * (1 + l.r) - l.pay);
+        paidThisYear += Math.min(l.pay, before * (1 + l.r));
       }
+      if (l.extra) extraPayments += paidThisYear;
       if (l.bal <= 0.005) {
-        endedPayments += l.pay * 12;
+        if (!l.extra) endedPayments += l.pay * 12;
         payoffs.push({ name: l.name, year: year });
-        yearEvents.push({ kind: "payoff", name: l.name, detail: "paid off — frees " + Math.round(l.pay) + "/mo" });
+        yearEvents.push({ kind: "payoff", name: l.name, detail: "paid off" });
       }
     });
     const loanBal = loans.reduce((a, l) => a + l.bal, 0);
 
-    // spending rises with inflation; ended loan payments leave it
-    const spend = Math.max(0, baseSpend * Math.pow(1 + infl, i) - endedPayments);
-    const surplus = salary - spend;
+    // spending: inflation-grown base, minus freed original-loan payments, plus
+    // the new plan-loans' payments and the property carry cost (predial, upkeep)
+    const spend = Math.max(0, baseSpend * Math.pow(1 + infl, i) - endedPayments) + extraPayments + prop * propCarry;
+    const surplus = income - spend;
 
-    // financial assets compound, then absorb the year's cash flow and events
-    fin = fin * (1 + ret) + surplus;
+    // financial assets: compound, then pay Mexican tax on the REAL return —
+    // interest ISR applies to real interest; the 10% bursátil to real gains.
+    // The blend follows the equity share of the financial bucket.
+    const gross = fin * ret;
+    const real = Math.max(0, fin * (ret - infl));
+    const tax = real * (eqShare * cgTax + (1 - eqShare) * intTax);
+    taxPaid += tax;
+    fin = fin + gross - tax + surplus;
     prop = prop * (1 + propG);
     events.filter(e => Number(e.year) === year && e.kind !== "raise").forEach(e => {
       const amt = conv(Number(e.amount) || 0, e.currency);
       if (e.kind === "windfall") {
         fin += amt;
         yearEvents.push({ kind: "windfall", name: e.name || "Windfall", detail: "+" + Math.round(amt) });
-      } else if (e.kind === "purchase") {
+      } else if (e.kind === "purchase" && !e.financed) {
         fin -= amt;
-        if (e.asset) prop += amt;                    // wealth shifts liquid → illiquid
+        if (e.asset) prop += amt;
         yearEvents.push({ kind: "purchase", name: e.name || "Purchase", detail: (e.asset ? "asset " : "spend ") + Math.round(amt) });
       }
     });
 
     rows.push({
-      year: year, fin: Math.round(fin), prop: Math.round(prop), loans: Math.round(loanBal),
+      year: year, age: age, fin: Math.round(fin), prop: Math.round(prop), loans: Math.round(loanBal),
       netWorth: Math.round(fin + prop - loanBal),
-      salary: Math.round(salary), spend: Math.round(spend), surplus: Math.round(surplus),
-      events: yearEvents, shortfall: fin < 0,
+      salary: Math.round(income), spend: Math.round(spend), surplus: Math.round(surplus),
+      tax: Math.round(tax), events: yearEvents, shortfall: fin < 0, retired: retired,
     });
   }
-  return { rows: rows, payoffs: payoffs, start: Math.round(t.netWorth), end: rows[rows.length - 1].netWorth, years: N };
+  const last = rows[rows.length - 1];
+  const realF = Math.pow(1 + infl, N);
+  // the estate: what heirs receive. In Mexico, inheritances to legitimate heirs
+  // are ISR-exempt (via testamento/sucesión) — the drag is settlement costs
+  // (notary, probate, appraisals), not income tax.
+  const estate = {
+    gross: last.netWorth,
+    costs: Math.round(last.netWorth > 0 ? last.netWorth * estateCost : 0),
+    net: Math.round(last.netWorth > 0 ? last.netWorth * (1 - estateCost) : last.netWorth),
+    netReal: Math.round((last.netWorth > 0 ? last.netWorth * (1 - estateCost) : last.netWorth) / realF),
+  };
+  return { rows: rows, payoffs: payoffs, start: Math.round(t.netWorth), end: last.netWorth,
+    endReal: Math.round(last.netWorth / realF), years: N, estate: estate,
+    taxPaid: Math.round(taxPaid), retireYear: rows.find(r => r.retired) ? rows.find(r => r.retired).year : null };
 }

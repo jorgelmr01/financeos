@@ -312,6 +312,73 @@ group("wealth projection — life events, raises, loan payoffs", () => {
   ok(sim.rows[0].shortfall, "cash going negative is flagged, not hidden");
 });
 
+group("lifetime model — financed purchases, retirement, taxes, estate", () => {
+  const y0 = new Date().getFullYear();
+  const mk = (mm) => y0 + "-" + String(mm).padStart(2, "0") + "-05";
+  const base = {
+    settings: { currency: "MXN", fx: null, tax: { inflation: 0, interest: 0, capGains: 0 } },
+    accounts: [{ id: "a", type: "savings", balance: 2000000, currency: "MXN" }],
+    cards: [], holdings: [], budgets: {}, snapshots: [], realized: [], assets: [], liabilities: [], flows: [], plan: [],
+    incomes: [{ id: "i", name: "Salario", amount: 50000, amountType: "net", taxRate: 0, currency: "MXN", frequency: "monthly", payDay: 1 }],
+    expenses: [1, 2, 3].map((m, i) => ({ id: "e" + i, date: mk(m), amount: 30000, category: "Housing", currency: "MXN" })),
+  };
+
+  // FINANCED purchase: down payment leaves cash, a loan is born and amortizes
+  resetStore(JSON.parse(JSON.stringify(base)));
+  A.Store.state.plan = [{ id: "c", kind: "purchase", year: y0 + 2, amount: 1000000, currency: "MXN",
+    asset: true, financed: true, downPct: 20, loanRate: 12, termYears: 5, name: "Casa" }];
+  let sim = A.wealthProjection({ years: 10, retPct: 0, propPct: 0, inflationPct: 0, incomeGrowthPct: 0 });
+  const buyYear = sim.rows[1];
+  approx(buyYear.prop, 1000000, 1, "the house enters at full value");
+  ok(buyYear.loans > 650000 && buyYear.loans < 800000, "an 800k loan is born and already amortizing");
+  ok(buyYear.spend > sim.rows[0].spend + 100000, "the new loan's payments stack ON TOP of spending");
+  const payoff = sim.payoffs.find(pp => pp.name === "Casa");
+  ok(payoff && payoff.year <= y0 + 7, "the 5-year loan dies on schedule");
+  const after = sim.rows.find(r => r.year === payoff.year + 1);
+  ok(after.spend < sim.rows.find(r => r.year === payoff.year).spend, "spending falls once the loan is gone");
+
+  // RETIREMENT: salary ends at retireAge; pension replaces part of it
+  resetStore(JSON.parse(JSON.stringify(base)));
+  sim = A.wealthProjection({ ageNow: 60, toAge: 70, retPct: 0, propPct: 0, inflationPct: 0, incomeGrowthPct: 0, retireAge: 65, pensionPct: 40 });
+  const working = sim.rows.find(r => r.age === 64), retired = sim.rows.find(r => r.age === 66);
+  approx(working.salary, 600000, 2000, "full salary while working");
+  approx(retired.salary, 240000, 2000, "pension = 40% of salary after 65");
+  ok(sim.retireYear != null && sim.rows.find(r => r.age === 65).retired, "retirement year marked");
+  eq(sim.rows.length, 10, "age 60 → 70 is a 10-year model");
+
+  // TAXES: the drag on real returns reduces the end state
+  resetStore(JSON.parse(JSON.stringify(base)));
+  const noTax = A.wealthProjection({ years: 20, retPct: 8, propPct: 0, inflationPct: 4, incomeGrowthPct: 0 });
+  const taxed = A.wealthProjection({ years: 20, retPct: 8, propPct: 0, inflationPct: 4, incomeGrowthPct: 0,
+    eqSharePct: 50, interestTaxPct: 30, capGainsPct: 10 });
+  ok(taxed.end < noTax.end, "the tax drag costs real money over 20 years");
+  ok(taxed.taxPaid > 0, "lifetime tax is accounted");
+  // at 100% inflation-matching returns there is no REAL gain → no tax
+  const noReal = A.wealthProjection({ years: 5, retPct: 4, propPct: 0, inflationPct: 4, incomeGrowthPct: 0,
+    eqSharePct: 50, interestTaxPct: 30, capGainsPct: 10 });
+  eq(noReal.taxPaid, 0, "returns at inflation → zero real gain → zero ISR (the Mexican rule)");
+
+  // ESTATE: settlement costs shave the inheritance; heirs get the rest
+  resetStore(JSON.parse(JSON.stringify(base)));
+  sim = A.wealthProjection({ years: 5, retPct: 0, propPct: 0, inflationPct: 0, incomeGrowthPct: 0, estateCostPct: 4 });
+  approx(sim.estate.costs, sim.end * 0.04, 2, "settlement = 4% of the estate");
+  approx(sim.estate.net, sim.end * 0.96, 2, "heirs receive the rest — ISR-exempt in Mexico");
+  approx(sim.estate.netReal, sim.estate.net, 2, "zero inflation → real = nominal");
+
+  // PROPERTY CARRY: holding real estate costs money every year
+  resetStore(JSON.parse(JSON.stringify(base)));
+  A.Store.state.assets = [{ id: "p", name: "Depa", kind: "property", value: 3000000, currency: "MXN" }];
+  const noCarry = A.wealthProjection({ years: 5, retPct: 0, propPct: 0, inflationPct: 0, incomeGrowthPct: 0 });
+  const carry = A.wealthProjection({ years: 5, retPct: 0, propPct: 0, inflationPct: 0, incomeGrowthPct: 0, propCarryPct: 1 });
+  approx(noCarry.end - carry.end, 5 * 30000, 200, "1% carry on 3M costs 30k/yr of cash");
+
+  // horizon can reach a full life
+  resetStore(JSON.parse(JSON.stringify(base)));
+  sim = A.wealthProjection({ ageNow: 25, toAge: 110, retPct: 0, propPct: 0, inflationPct: 0, incomeGrowthPct: 0, retireAge: 65 });
+  eq(sim.rows.length, 85, "age 25 → 110 = an 85-year model");
+  eq(sim.rows[sim.rows.length - 1].age, 110, "ends at age 110");
+});
+
 group("account-level XIRR from recorded flows", () => {
   const YR = 365.25 * 86400000;
   const iso = (msAgo) => { const d = new Date(Date.now() - msAgo); return d.toISOString().slice(0, 10); };

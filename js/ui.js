@@ -411,6 +411,11 @@ const UI = {
       this.field("Raise %", '<input name="pct" type="number" step="0.5" min="-50" max="200" value="' + (e.pct != null ? e.pct : "") + '" placeholder="10">', "Salary changes by this % from that year on", false, "plan-pct-field") +
       '<div class="field full" id="plan-asset-field"><label class="check-row"><input type="checkbox" name="asset"' + (e.asset ? " checked" : "") + "> " +
         'Becomes an asset (a house keeps its value on your balance sheet; a vacation doesn’t)</label></div>' +
+      '<div class="field full" id="plan-fin-field"><label class="check-row"><input type="checkbox" name="financed" id="plan-financed"' + (e.financed ? " checked" : "") + "> " +
+        "Financed with a new loan (pay a down payment now; the mortgage/loan and its monthly payments are modeled automatically)</label></div>" +
+      this.field("Down payment %", '<input name="downPct" type="number" step="1" min="0" max="100" value="' + (e.downPct != null ? e.downPct : 20) + '">', "Paid from your investments in that year", false, "plan-down-field") +
+      this.field("Loan rate % (APR)", '<input name="loanRate" type="number" step="0.1" min="0" max="60" value="' + (e.loanRate != null ? e.loanRate : 10.5) + '">', null, false, "plan-rate-field") +
+      this.field("Term (years)", '<input name="termYears" type="number" step="1" min="1" max="40" value="' + (e.termYears != null ? e.termYears : 20) + '">', "The level payment is computed from rate + term", false, "plan-term-field") +
       "</div>";
     this.openModal(isEdit ? "Edit life event" : "New life event", body, {
       submitLabel: isEdit ? "Save changes" : "Add event",
@@ -423,6 +428,10 @@ const UI = {
           pct: parseFloat(fd.get("pct")) || 0,
           currency: fd.get("currency"),
           asset: k === "purchase" && fd.get("asset") != null,
+          financed: k === "purchase" && fd.get("financed") != null,
+          downPct: parseFloat(fd.get("downPct")) || 20,
+          loanRate: parseFloat(fd.get("loanRate")) || 0,
+          termYears: parseFloat(fd.get("termYears")) || 20,
         };
         if (k !== "raise" && !(patch.amount > 0)) { UI.toast("Enter the amount", "error"); return; }
         if (k === "raise" && !patch.pct) { UI.toast("Enter the raise %", "error"); return; }
@@ -431,16 +440,22 @@ const UI = {
         UI.closeModal(); App.render();
       },
     });
-    // show only the fields the chosen kind uses
+    // show only the fields the chosen kind (and financing choice) uses
     const sync = () => {
       const k = document.getElementById("plan-kind").value;
+      const fin = k === "purchase" && document.getElementById("plan-financed").checked;
       const show = (id, on) => { const el = document.getElementById(id); if (el) el.style.display = on ? "" : "none"; };
       show("plan-amount-field", k !== "raise");
       show("plan-cur-field", k !== "raise");
       show("plan-pct-field", k === "raise");
       show("plan-asset-field", k === "purchase");
+      show("plan-fin-field", k === "purchase");
+      show("plan-down-field", fin);
+      show("plan-rate-field", fin);
+      show("plan-term-field", fin);
     };
     document.getElementById("plan-kind").addEventListener("change", sync);
+    document.getElementById("plan-financed").addEventListener("change", sync);
     sync();
   },
 
