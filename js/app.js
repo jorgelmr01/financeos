@@ -128,9 +128,10 @@ const App = {
   render() {
     if (!Store.state) return; // locked — nothing to render yet
     const meta = this.PAGE_META[this.page];
-    document.getElementById("page-title").textContent = meta.title;
-    document.getElementById("topbar-actions").innerHTML = meta.actions;
-    document.getElementById("page").innerHTML = Pages[this.page]();
+    document.getElementById("page-title").textContent = tr(meta.title);
+    document.getElementById("topbar-actions").innerHTML = I18N.translateHtml(meta.actions);
+    document.getElementById("page").innerHTML = I18N.translateHtml(Pages[this.page]());
+    I18N.applyChrome();
     if (Pages.afterRender) Pages.afterRender(this.page);
 
     // compute initial values for any live learn-widgets just rendered
@@ -149,7 +150,7 @@ const App = {
 
     const today = new Date();
     document.getElementById("page-date").textContent =
-      today.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+      today.toLocaleDateString(I18N.active() ? "es-MX" : "en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 
     // privacy mode + lock button visibility
     document.body.classList.toggle("privacy", !!Store.state.settings.privacy);

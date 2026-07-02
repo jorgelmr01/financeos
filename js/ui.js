@@ -12,13 +12,13 @@ const UI = {
       '<div class="modal-overlay" data-action="close-modal-overlay">' +
         '<div class="modal' + (opts.wide ? " wide" : "") + '" role="dialog" aria-modal="true" aria-labelledby="modal-title">' +
           '<div class="modal-head">' +
-            '<div class="modal-title" id="modal-title">' + title + "</div>" +
+            '<div class="modal-title" id="modal-title">' + I18N.translateHtml('>'+title+'<').slice(1,-1) + "</div>" +
             '<button class="icon-btn" data-action="close-modal" title="Close" aria-label="Close dialog">' + icon("x") + '</button>' +
           "</div>" +
-          '<form id="modal-form"><div class="modal-body">' + bodyHtml + "</div>" +
+          '<form id="modal-form"><div class="modal-body">' + I18N.translateHtml(bodyHtml) + "</div>" +
           '<div class="modal-foot">' +
-            '<button type="button" class="btn ghost" data-action="close-modal">Cancel</button>' +
-            '<button type="submit" class="btn primary">' + (opts.submitLabel || "Save") + "</button>" +
+            '<button type="button" class="btn ghost" data-action="close-modal">' + tr("Cancel") + '</button>' +
+            '<button type="submit" class="btn primary">' + tr(opts.submitLabel || "Save") + "</button>" +
           "</div></form>" +
         "</div>" +
       "</div>";
@@ -74,7 +74,7 @@ const UI = {
   },
 
   field(label, inputHtml, hint, full, id) {
-    return '<div class="field' + (full ? " full" : "") + '"' + (id ? ' id="' + id + '"' : "") + '><label>' + label + "</label>" +
+    return '<div class="field' + (full ? " full" : "") + '"' + (id ? ' id="' + id + '"' : "") + '><label>' + tr(label) + "</label>" +
       inputHtml + (hint ? '<div class="hint">' + hint + "</div>" : "") + "</div>";
   },
 
@@ -473,6 +473,13 @@ const UI = {
       : "Using built-in fallback rates — refresh from the ⋯ menu when online";
     const body =
       '<div class="f-grid">' +
+      this.field("Language",
+        '<select name="lang">' +
+          '<option value="auto"' + (!st.lang || st.lang === "auto" ? " selected" : "") + ">" + tr("Auto (browser)") + "</option>" +
+          '<option value="es"' + (st.lang === "es" ? " selected" : "") + ">Español</option>" +
+          '<option value="en"' + (st.lang === "en" ? " selected" : "") + ">English</option>" +
+        "</select>",
+        "Interface language. Course lessons are in Spanish either way.", true) +
       this.field("Finnhub API key (optional)",
         '<input name="finnhubKey" value="' + esc(st.finnhubKey || "") + '" placeholder="works without one — Yahoo fallback" autocomplete="off">',
         "“Update prices” works with no key via Yahoo (through a public CORS proxy, which sees only the ticker symbols). A free finnhub.io key adds a direct, faster source for stock quotes — and powers the Advanced portfolio view: it auto-classifies single stocks by sector &amp; country and pulls each one's market beta. Stored only in this browser.", true) +
@@ -499,6 +506,8 @@ const UI = {
           capGains: parseFloat(fd.get("taxCapGains")) || 0,
         };
         Store.state.settings.autoInterest = fd.get("autoInterest") != null;
+        Store.state.settings.lang = fd.get("lang") || "auto";
+        I18N.refresh();
         Store.save();
         Store.settleInterest();          // apply immediately if just turned on
         UI.toast("Settings saved");
