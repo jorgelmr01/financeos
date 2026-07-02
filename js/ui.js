@@ -528,7 +528,7 @@ const UI = {
   expenseForm(e) {
     e = e || {};
     const isEdit = !!e.id;
-    const catOpts = EXPENSE_CATEGORIES.map(c =>
+    const catOpts = allCategories().map(c =>
       '<option value="' + esc(c.name) + '"' + (e.category === c.name ? " selected" : "") + ">" + esc(c.name) + "</option>").join("");
     const body = '<div class="f-grid">' +
       this.field("Date", '<input name="date" type="date" required value="' + esc(e.date || toISO(todayMid())) + '">') +
@@ -559,32 +559,58 @@ const UI = {
 
   budgetsForm() {
     const b = Store.state.budgets || {};
-    const firstCur = EXPENSE_CATEGORIES.map(c => b[c.name] && b[c.name].currency).find(Boolean) || displayCurrency();
-    const rows = EXPENSE_CATEGORIES.map((c, i) => {
+    const cats = allCategories();
+    const firstCur = cats.map(c => b[c.name] && b[c.name].currency).find(Boolean) || displayCurrency();
+    const rows = cats.map((c, i) => {
       const v = b[c.name] && b[c.name].amount != null ? fmtNumInput(b[c.name].amount) : "";
-      return this.field('<span class="field-ic">' + icon(c.icon) + "</span>" + esc(c.name),
+      return this.field('<span class="field-ic">' + icon(c.icon) + "</span>" + esc(c.name) +
+        (c.custom ? ' <button type="button" class="link-btn cat-del" data-cat="' + esc(c.name) + '" title="Remove this category">×</button>' : ""),
         '<input name="b' + i + '" type="text" inputmode="decimal" class="fmt-num" value="' + v + '" placeholder="—">');
     }).join("");
     const body =
       '<p class="modal-note">Set an optional monthly limit per category — leave blank for no limit. Your spending each month is tracked against these.</p>' +
       this.field("Budget currency", this.currencySelect("budgetCurrency", firstCur), "Applies to every limit below", true) +
-      '<div class="f-grid">' + rows + "</div>";
+      '<label class="check-row"><input type="checkbox" name="rollover"' + (Store.state.settings.budgetRollover ? " checked" : "") + "> " +
+        "Roll last month's leftover into this month's limits <span class=\"hint\" style=\"display:block\">Underspend a category and next month's envelope grows; overspend and it shrinks (one month of memory, never below zero).</span></label>" +
+      '<div class="f-grid">' + rows + "</div>" +
+      '<div class="field full" style="margin-top:6px"><label>Add your own category</label>' +
+        '<div class="cat-add-row"><input name="newCat" maxlength="24" placeholder="e.g. Mascotas, Colegiaturas">' +
+        '<select name="newCatBucket"><option value="wants">Want</option><option value="needs">Need</option></select></div>' +
+        '<div class="hint">It appears in every category picker; classify it as a need or a want for the 50/30/20 view.</div></div>';
     this.openModal("Monthly budgets", body, {
       submitLabel: "Save budgets",
       onSubmit(fd) {
         const cur = fd.get("budgetCurrency") || displayCurrency();
         const next = {};
-        EXPENSE_CATEGORIES.forEach((c, i) => {
+        cats.forEach((c, i) => {
           const v = parseFloat(fd.get("b" + i));
           if (v > 0) next[c.name] = { amount: Math.round(v * 100) / 100, currency: cur };
         });
         Store.state.budgets = next;
+        Store.state.settings.budgetRollover = !!fd.get("rollover");
+        const nc = String(fd.get("newCat") || "").trim();
+        if (nc) {
+          const exists = allCategories().some(c => c.name.toLowerCase() === nc.toLowerCase());
+          if (!exists) {
+            Store.state.settings.customCats = (Store.state.settings.customCats || [])
+              .concat([{ name: nc, bucket: fd.get("newCatBucket") === "needs" ? "needs" : "wants" }]);
+          }
+        }
         Store.save();
         UI.toast("Budgets saved");
         UI.closeModal();
         App.render();
       },
     });
+    // removing a custom category keeps its historical expenses (they fall back
+    // to a generic look) — it just leaves the pick-lists
+    document.querySelectorAll(".cat-del").forEach(btn => btn.addEventListener("click", () => {
+      const name = btn.getAttribute("data-cat");
+      Store.state.settings.customCats = (Store.state.settings.customCats || []).filter(c => c.name !== name);
+      delete (Store.state.budgets || {})[name];
+      Store.save();
+      UI.budgetsForm();          // re-render the modal with the list updated
+    }));
   },
 
   expenseImportHelp() {
@@ -661,8 +687,12 @@ const UI = {
   },
 
   _catOptions(selected) {
-    return EXPENSE_CATEGORIES.map(c =>
-      '<option value="' + c.name + '"' + (c.name === selected ? " selected" : "") + ">" + c.name + "</option>").join("");
+    const cats = allCategories();
+    // an imported/legacy category outside the list still shows as selected
+    const known = cats.some(c => c.name === selected);
+    return cats.map(c =>
+      '<option value="' + esc(c.name) + '"' + (c.name === selected ? " selected" : "") + ">" + esc(c.name) + "</option>").join("") +
+      (!known && selected ? '<option value="' + esc(selected) + '" selected>' + esc(selected) + "</option>" : "");
   },
 
   statementReview(parse) {

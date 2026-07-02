@@ -26,7 +26,7 @@ vm.createContext(ctx);
 const bundle = [read("js/utils.js"), read("js/instruments.js"), read("js/budget.js"), read("js/statements.js"), read("js/store.js")].join("\n;\n") +
   "\n;globalThis.__api = { interestPerPeriod, nextInterestDate, interestScheduleLabel, interestPeriodDays," +
   " accruedInterest, holdingReturnRate, parseAmount, parseExpenseDate, expenseSig, canonicalCategory," +
-  " earningsBreakdown, retirementProjection, retirementMonteCarlo, retirementBuckets, retirementBucketsMC, makeEquityMarket, mulberry32, MARKET, realInterestEst, monthlyInterestEst," +
+  " earningsBreakdown, allCategories, categoryMeta, effectiveBudgetForCategory, retirementProjection, retirementMonteCarlo, retirementBuckets, retirementBucketsMC, makeEquityMarket, mulberry32, MARKET, realInterestEst, monthlyInterestEst," +
   " convBetween, sparkline, categorySeries, debtPayoff, detectRecurring, cashflowForecast, buroScore, investReadiness, irregularIncomePlan," +
   " classifyHolding, portfolioExposure, seriesReturns, annualizedVol, alignReturns, betaOf, correlationOf, periodsPerYear, weightedValueSeries, seriesReturnOver, finnhubSectorToGICS, countryToRegion, dividendSummary, drawdownInfo, fmtNumInput, parseNum, budgetSpendEstimate," +
   " toISO, parseISO, daysBetween, todayMid, icsForCards, Statements, INTEREST_FREQ, Store };";
@@ -200,6 +200,34 @@ group("Statements.parseSantander (OCR layout)", () => {
   eq(rows[0].amount, 135, "amount");
   eq(rows[0].description, "MERPAGO PERIFERICO", "reference code stripped");
   eq(rows[1].type, "payment", "PAGO POR TRANSFERENCIA → payment");
+});
+
+group("custom categories + budget rollover", () => {
+  const mk = (mm, dd) => "2026-" + String(mm).padStart(2, "0") + "-" + String(dd).padStart(2, "0");
+  resetStore({
+    settings: { currency: "MXN", fx: null, tax: {}, budgetRollover: true, customCats: [{ name: "Mascotas", bucket: "needs" }] },
+    budgets: { "Dining": { amount: 1000, currency: "MXN" }, "Mascotas": { amount: 500, currency: "MXN" } },
+    accounts: [], cards: [], holdings: [], incomes: [], snapshots: [],
+    expenses: [
+      { id: "a", date: mk(5, 10), amount: 600, description: "Tacos", category: "Dining", currency: "MXN" },
+      { id: "b", date: mk(5, 12), amount: 700, description: "Vet", category: "Mascotas", currency: "MXN" },
+    ],
+  });
+  // custom category is first-class: in the pick list and with its bucket
+  ok(A.allCategories().some(c => c.name === "Mascotas" && c.custom), "custom category joins the list");
+  eq(A.categoryMeta("mascotas").bucket, "needs", "custom bucket drives 50/30/20 (case-insensitive)");
+  // rollover: Dining under by 400 → June envelope = 1,400; Mascotas over by 200 → 300
+  eq(A.effectiveBudgetForCategory("Dining", "2026-06"), 1400, "underspend grows next month's envelope");
+  eq(A.effectiveBudgetForCategory("Mascotas", "2026-06"), 300, "overspend shrinks it");
+  // one month of memory only: July looks at June (no expenses) → base
+  eq(A.effectiveBudgetForCategory("Dining", "2026-07"), 1000, "no activity last month → base budget");
+  // a huge blowout clamps at zero, never negative
+  A.Store.state.expenses.push({ id: "c", date: mk(5, 20), amount: 9000, description: "Feast", category: "Dining", currency: "MXN" });
+  eq(A.effectiveBudgetForCategory("Dining", "2026-06"), 0, "a blowout clamps the envelope at zero");
+  // toggle off → always base
+  A.Store.state.settings.budgetRollover = false;
+  eq(A.effectiveBudgetForCategory("Dining", "2026-06"), 1000, "rollover off → base budget");
+  eq(A.effectiveBudgetForCategory("Unbudgeted", "2026-06"), null, "no base budget → null either way");
 });
 
 group("calendar export — card cut & due dates as .ics", () => {

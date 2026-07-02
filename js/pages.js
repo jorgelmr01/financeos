@@ -1471,10 +1471,10 @@ const Pages = {
         "</div>" +
       "</div>";
 
-    // ---- category breakdown (actual vs budget) ----
+    // ---- category breakdown (actual vs budget, rollover-aware) ----
     const maxCat = cats.reduce((m, c) => Math.max(m, c.amount), 0) || 1;
     const catRows = cats.map(c => {
-      const budget = budgetForCategory(c.name);
+      const budget = effectiveBudgetForCategory(c.name, mk);
       const over = budget != null && c.amount > budget;
       const ratio = budget != null ? Math.min(1, c.amount / budget) : c.amount / maxCat;
       const barColor = budget != null ? (over ? "var(--rose)" : "var(--mint)") : "var(--sky)";

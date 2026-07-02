@@ -51,8 +51,20 @@ const CATEGORY_BY_LOWER = (() => {
   return m;
 })();
 
+/* user-defined categories live in settings so they sync with backups */
+function customCategories() {
+  return ((Store.state.settings && Store.state.settings.customCats) || [])
+    .map(c => ({ name: c.name, icon: c.icon || "tag", bucket: c.bucket === "needs" ? "needs" : "wants", custom: true }));
+}
+
+/* the full pick-list: built-ins + the user's own categories */
+function allCategories() {
+  return EXPENSE_CATEGORIES.concat(customCategories());
+}
+
 function categoryMeta(name) {
-  const c = CATEGORY_BY_LOWER[String(name || "").toLowerCase()];
+  const lc = String(name || "").toLowerCase();
+  const c = CATEGORY_BY_LOWER[lc] || customCategories().find(x => x.name.toLowerCase() === lc);
   return c || { name: name || "Other", icon: "dots", bucket: "wants" };
 }
 
@@ -213,6 +225,23 @@ function budgetForCategory(name) {
 function totalBudget() {
   const b = Store.state.budgets || {};
   return Object.keys(b).reduce((a, k) => a + (budgetForCategory(k) || 0), 0);
+}
+
+/* Envelope-style rollover: when enabled, whatever you under- or over-spent
+   last month carries into this month's limit (one month of memory — enough to
+   reward discipline without compounding into fantasy budgets). Clamped at 0 so
+   a blowout month can't produce a negative allowance. */
+function effectiveBudgetForCategory(name, mk) {
+  const base = budgetForCategory(name);
+  if (base == null) return null;
+  if (!(Store.state.settings && Store.state.settings.budgetRollover)) return base;
+  const cur = mk || monthKeyOf(toISO(todayMid()));
+  const prevExp = expensesForMonth(monthAdd(cur, -1));
+  if (!prevExp.length) return base;                 // nothing tracked → nothing to carry
+  const lc = String(name).toLowerCase();
+  const spent = prevExp.reduce((a, e) =>
+    a + (String(e.category || "").toLowerCase() === lc ? conv(Number(e.amount) || 0, e.currency) : 0), 0);
+  return Math.max(0, Math.round((base + (base - spent)) * 100) / 100);
 }
 
 /* ---------- historic series (WHOOP-style trends) ---------- */
