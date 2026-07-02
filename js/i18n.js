@@ -188,6 +188,11 @@ const I18N = {
     "Portfolio checkup": "Chequeo del portafolio", "Fix first": "Arregla primero",
     "Worth doing": "Vale la pena", "Idea": "Idea",
     "Instruments that address this": "Instrumentos que lo atienden",
+    "Contributions": "Aportaciones", "+ Deposit": "+ Depósito", "− Withdrawal": "− Retiro",
+    "Record deposit": "Registrar depósito", "Record withdrawal": "Registrar retiro",
+    "Add deposit": "Agregar depósito", "Add withdrawal": "Agregar retiro",
+    "Net invested": "Neto invertido", "Account value": "Valor de la cuenta",
+    "True profit": "Ganancia real", "Account XIRR": "XIRR de la cuenta",
   },
 };
 

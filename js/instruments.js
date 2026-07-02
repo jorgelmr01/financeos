@@ -694,3 +694,44 @@ function portfolioAdvice() {
   const rank = { high: 0, medium: 1, idea: 2 };
   return out.sort((a, b) => rank[a.sev] - rank[b.sev]);
 }
+
+/* ---------- account-level money-weighted return ----------
+   The textbook-correct MWR: cash you put IN (−) and took OUT (+) of the
+   brokerage, against what the account is worth today. Internal buys, sells and
+   dividends don't appear as flows — they're captured in the ending value, so
+   this is the number that includes everything. Needs recorded flows; when none
+   exist we fall back to per-purchase flows (positions only). */
+function accountXirr() {
+  const t = computeTotals();
+  const terminal = t.marketValue + t.investCash;
+  const flows = (Store.state.flows || [])
+    .map(f => {
+      const d = parseISO(f.date);
+      if (!d) return null;
+      const v = conv(Math.abs(Number(f.amount) || 0), f.currency);
+      return { t: d.getTime(), v: f.kind === "withdrawal" ? v : -v };
+    })
+    .filter(Boolean);
+  if (!flows.length) {
+    const pf = portfolioXirrFlows();
+    return { rate: xirr(pf.flows), source: "purchases", flows: pf.flows, terminal: pf.value,
+      invested: -pf.flows.filter(f => f.v < 0).reduce((a, f) => a + f.v, 0), withdrawn: 0 };
+  }
+  const invested = -flows.filter(f => f.v < 0).reduce((a, f) => a + f.v, 0);
+  const withdrawn = flows.filter(f => f.v > 0).reduce((a, f) => a + f.v, 0);
+  const all = flows.concat(terminal > 0 ? [{ t: todayMid().getTime(), v: terminal }] : []);
+  return { rate: xirr(all), source: "flows", flows: all, terminal: terminal,
+    invested: invested, withdrawn: withdrawn,
+    profit: terminal + withdrawn - invested };
+}
+
+/* cumulative net contributions over time — the "money you actually put in"
+   step line the value curve gets judged against */
+function contributionSeries() {
+  const fl = (Store.state.flows || [])
+    .map(f => ({ d: f.date, v: (f.kind === "withdrawal" ? -1 : 1) * conv(Math.abs(Number(f.amount) || 0), f.currency) }))
+    .filter(f => parseISO(f.d))
+    .sort((a, b) => (a.d < b.d ? -1 : 1));
+  let run = 0;
+  return fl.map(f => { run += f.v; return { t: parseISO(f.d).getTime(), v: run }; });
+}

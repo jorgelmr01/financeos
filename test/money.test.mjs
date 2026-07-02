@@ -23,10 +23,10 @@ const ctx = {
   WebAssembly: undefined, document: undefined,
 };
 vm.createContext(ctx);
-const bundle = [read("js/utils.js"), read("js/instruments.js"), read("js/budget.js"), read("js/statements.js"), read("js/store.js")].join("\n;\n") +
+const bundle = [read("js/utils.js"), read("js/instruments.js"), read("js/budget.js"), read("js/statements.js"), read("js/store.js"), read("js/report.js")].join("\n;\n") +
   "\n;globalThis.__api = { interestPerPeriod, nextInterestDate, interestScheduleLabel, interestPeriodDays," +
   " accruedInterest, holdingReturnRate, parseAmount, parseExpenseDate, expenseSig, canonicalCategory," +
-  " earningsBreakdown, sellHolding, realizedSummary, amortizeLoan, xirr, portfolioXirrFlows, riskAdjusted, rebalancePlan, currencyExposure, stressTest, portfolioAdvice, weightedExpenseRatio, INSTRUMENTS, computeTotals, allCategories, categoryMeta, effectiveBudgetForCategory, retirementProjection, retirementMonteCarlo, retirementBuckets, retirementBucketsMC, makeEquityMarket, mulberry32, MARKET, realInterestEst, monthlyInterestEst," +
+  " earningsBreakdown, sellHolding, realizedSummary, amortizeLoan, xirr, portfolioXirrFlows, riskAdjusted, rebalancePlan, currencyExposure, stressTest, portfolioAdvice, weightedExpenseRatio, INSTRUMENTS, accountXirr, contributionSeries, Report, fromUSD, computeTotals, allCategories, categoryMeta, effectiveBudgetForCategory, retirementProjection, retirementMonteCarlo, retirementBuckets, retirementBucketsMC, makeEquityMarket, mulberry32, MARKET, realInterestEst, monthlyInterestEst," +
   " convBetween, sparkline, categorySeries, debtPayoff, detectRecurring, cashflowForecast, buroScore, investReadiness, irregularIncomePlan," +
   " classifyHolding, portfolioExposure, seriesReturns, annualizedVol, alignReturns, betaOf, correlationOf, periodsPerYear, weightedValueSeries, seriesReturnOver, finnhubSectorToGICS, countryToRegion, dividendSummary, drawdownInfo, fmtNumInput, parseNum, budgetSpendEstimate," +
   " toISO, parseISO, daysBetween, todayMid, icsForCards, Statements, INTEREST_FREQ, Store };";
@@ -255,6 +255,65 @@ group("risk-adjusted returns — Sharpe & Sortino", () => {
   ok(rc.sharpe < ra.sharpe, "chop is punished");
   ok(rc.sortino != null && rc.vol > ra.vol, "and shows up as volatility");
   ok(A.riskAdjusted(up.slice(0, 4), 52, 7.5) == null, "too little data → null");
+});
+
+group("account-level XIRR from recorded flows", () => {
+  const YR = 365.25 * 86400000;
+  const iso = (msAgo) => { const d = new Date(Date.now() - msAgo); return d.toISOString().slice(0, 10); };
+  resetStore({
+    settings: { currency: "USD", fx: null, tax: {} },
+    accounts: [{ id: "b", type: "investment", balance: 500, currency: "USD" }],
+    cards: [], incomes: [], expenses: [], budgets: {}, snapshots: [], realized: [], assets: [], liabilities: [],
+    holdings: [{ id: "h", symbol: "VOO", kind: "etf", shares: 20, currentPrice: 550, costBasis: 500, currency: "USD", purchaseDate: iso(YR) }],
+    flows: [
+      { id: "f1", kind: "deposit", amount: 10000, currency: "USD", date: iso(YR) },
+      { id: "f2", kind: "withdrawal", amount: 1000, currency: "USD", date: iso(YR / 2) },
+    ],
+  });
+  const ax = A.accountXirr();
+  eq(ax.source, "flows", "recorded flows win over purchase-based");
+  approx(ax.invested, 10000, 1e-6, "sums deposits");
+  approx(ax.withdrawn, 1000, 1e-6, "sums withdrawals");
+  // terminal = 20×550 + 500 cash = 11,500; put in 10k, took out 1k → profitable
+  ok(ax.rate > 0.15 && ax.rate < 0.45, "a sensible positive account IRR (got " + (ax.rate * 100).toFixed(1) + "%)");
+  // contribution series is a running net-sum in date order
+  const cs = A.contributionSeries();
+  eq(cs.length, 2, "one point per flow");
+  approx(cs[0].v, 10000, 1e-6, "starts at the first deposit");
+  approx(cs[1].v, 9000, 1e-6, "withdrawal steps it down");
+  // no flows → falls back to purchases
+  A.Store.state.flows = [];
+  eq(A.accountXirr().source, "purchases", "without flows, purchase-based fallback");
+});
+
+group("annual report — assembles the year from local data", () => {
+  const y = new Date().getFullYear();
+  const mk = (mm, dd) => y + "-" + String(mm).padStart(2, "0") + "-" + String(dd).padStart(2, "0");
+  resetStore({
+    settings: { currency: "MXN", fx: null, tax: { interest: 5, dividends: 10, capGains: 10, inflation: 4.5 } },
+    accounts: [{ id: "a", type: "savings", balance: 100000, apy: 8, currency: "MXN", balanceAsOf: mk(1, 1) }],
+    cards: [], incomes: [], budgets: {}, snapshots: [{ d: mk(1, 2), usd: 5000 }],
+    holdings: [{ id: "h", symbol: "NAFTRAC", kind: "etf", shares: 100, currentPrice: 60, costBasis: 50, currency: "MXN", purchaseDate: mk(1, 10) }],
+    realized: [{ id: "r", symbol: "X", date: mk(3, 1), shares: 1, sellPrice: 10, costBasis: 5, proceeds: 10, gain: 500, currency: "MXN" }],
+    assets: [], liabilities: [], flows: [],
+    expenses: [
+      { id: "e1", date: mk(2, 5), amount: 9000, description: "Renta", category: "Housing", currency: "MXN" },
+      { id: "e2", date: mk(2, 12), amount: 2000, description: "Super", category: "Groceries", currency: "MXN" },
+    ],
+  });
+  const d = A.Report.data(y);
+  eq(d.year, y, "reports the requested year");
+  approx(d.spending.total, 11000, 1, "sums the year's spending");
+  eq(d.spending.topCats[0].name, "Housing", "top category leads");
+  approx(d.portfolio.realizedGain, 500, 1e-6, "realized gains flow in");
+  approx(d.taxes.capGainsDue, 50, 1e-6, "10% ISR on the net gain");
+  approx(d.balance.assets, 100000 + 6000, 1, "balance sheet totals");
+  ok(d.netWorth.start != null, "net worth start comes from the year's first snapshot");
+  // the printable document contains the key figures and no NaN/undefined
+  const html = A.Report.html(y);
+  ok(html.indexOf("Annual Report " + y) > 0, "titled with the year");
+  ok(!/NaN|undefined/.test(html), "no NaN or undefined leaks into the document");
+  ok(/Housing/.test(html), "category table present");
 });
 
 group("portfolio checkup — rule-based improvement ideas", () => {

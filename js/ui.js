@@ -394,6 +394,27 @@ const UI = {
     });
   },
 
+  /* record cash moved into / out of the brokerage (for account-level XIRR) */
+  flowForm(kind) {
+    const isW = kind === "withdrawal";
+    const body = '<div class="f-grid">' +
+      this.field("Amount", '<input name="amount" type="text" inputmode="decimal" class="fmt-num" required placeholder="10,000">') +
+      this.field("Currency", this.currencySelect("currency")) +
+      this.field("Date", '<input name="date" type="date" required value="' + toISO(todayMid()) + '">', "Approximate is fine — the return barely moves for a few days' difference") +
+      this.field("Note", '<input name="note" maxlength="40" placeholder="' + (isW ? "e.g. trip, emergency" : "e.g. monthly deposit, bonus") + '">') +
+      "</div>";
+    this.openModal(isW ? "Record withdrawal" : "Record deposit", body, {
+      submitLabel: isW ? "Add withdrawal" : "Add deposit",
+      onSubmit(fd) {
+        const amount = parseFloat(fd.get("amount")) || 0;
+        if (!(amount > 0)) { UI.toast("Enter the amount", "error"); return; }
+        Store.add("flows", { kind: isW ? "withdrawal" : "deposit", amount: amount, currency: fd.get("currency"), date: fd.get("date"), note: (fd.get("note") || "").trim() });
+        UI.toast(isW ? "Withdrawal recorded" : "Deposit recorded");
+        UI.closeModal(); App.render();
+      },
+    });
+  },
+
   /* record a (partial) sale of a position → realized gain + smaller holding */
   sellForm(h) {
     if (!h) return;

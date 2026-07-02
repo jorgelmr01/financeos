@@ -20,6 +20,7 @@ const Store = {
       budgets: {},    // { [category]: { amount, currency } }  — monthly limit per category
       goals: [],      // {id, name, target, saved, targetDate, currency} — savings goals / sinking funds
       realized: [],   // {id, symbol, name, date, shares, sellPrice, costBasis, proceeds, gain, currency} — closed sales
+      flows: [],      // {id, date, amount, kind: deposit|withdrawal, note, currency} — cash in/out of the brokerage
       assets: [],     // {id, name, kind: property|vehicle|business|crypto|other, value, currency} — off-platform assets
       liabilities: [],// {id, name, kind: mortgage|auto|personal|student|other, balance, apr, payment, currency} — non-card debt
       snapshots: [],  // [{d: ISO date, usd, liq, inv, debt} — net worth + composition in USD]
@@ -43,6 +44,7 @@ const Store = {
     if (!Array.isArray(this.state.goals)) this.state.goals = [];
     if (!Array.isArray(this.state.realized)) this.state.realized = [];
     if (!Array.isArray(this.state.assets)) this.state.assets = [];
+    if (!Array.isArray(this.state.flows)) this.state.flows = [];
     if (!Array.isArray(this.state.liabilities)) this.state.liabilities = [];
     if (!Array.isArray(this.state.expenses)) this.state.expenses = [];
     if (!this.state.budgets || typeof this.state.budgets !== "object") this.state.budgets = {};
@@ -580,6 +582,15 @@ const Store = {
         Shopping: { amount: 2000, currency: "MXN" },
         Entertainment: { amount: 800, currency: "MXN" },
       },
+      flows: (function () {
+        const d = (mOff, dd) => toISO(new Date(t.getFullYear(), t.getMonth() - mOff, dd));
+        return [
+          { id: uid(), kind: "deposit", amount: 6500, currency: "USD", date: d(14, 10), note: "opening deposit" },
+          { id: uid(), kind: "deposit", amount: 6000, currency: "USD", date: d(8, 5), note: "bonus" },
+          { id: uid(), kind: "deposit", amount: 5000, currency: "USD", date: d(3, 5), note: "monthly savings sweep" },
+          { id: uid(), kind: "withdrawal", amount: 800, currency: "USD", date: d(1, 20), note: "trip" },
+        ];
+      })(),
       assets: [
         { id: uid(), name: "Departamento CDMX", kind: "property", value: 2850000, currency: "MXN" },
         { id: uid(), name: "Auto — Mazda 3", kind: "vehicle", value: 265000, currency: "MXN" },

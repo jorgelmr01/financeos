@@ -3,7 +3,7 @@
    The Tesseract OCR assets under vendor/tesseract/ are deliberately NOT in the
    precache shell (~9MB) — they're fetched lazily the first time someone imports
    a scanned statement, then cached on use by the same-origin handler below. */
-const CACHE = 'financeos-v24';
+const CACHE = 'financeos-v25';
 
 /* Local app shell — everything needed to boot fully offline.
    (lessons.js loads lazily and is runtime-cached on first use.) */
@@ -22,6 +22,7 @@ const SHELL = [
   './js/statements.js',
   './js/ui.js',
   './js/learn.js',
+  './js/report.js',
   './js/pages.js',
   './js/app.js',
   './icons/icon-180.png',

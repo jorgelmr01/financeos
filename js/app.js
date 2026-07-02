@@ -362,6 +362,15 @@ const App = {
         break;
       }
 
+      case "annual-report":
+        Report.download();
+        UI.toast("Annual report downloaded — open it and print to PDF for your records");
+        document.getElementById("data-menu-pop").classList.remove("open");
+        break;
+
+      case "add-flow": UI.flowForm(el.dataset.kind); break;
+      case "del-flow": Store.remove("flows", id); this.render(); break;
+
       case "add-asset": UI.assetForm(); break;
       case "edit-asset": UI.assetForm(Store.find("assets", id)); break;
       case "del-asset":

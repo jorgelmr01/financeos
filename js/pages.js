@@ -765,6 +765,7 @@ const Pages = {
         this._advPerformanceMount() +
         this._advDividends() +
         this._advRiskMount() +
+        this._flowsPanel() +
         alloc + table +
         this._realizedPanel() +
         '<p class="method-note section">Sector &amp; geography use a built-in classification of common instruments (with ETF look-through); edit any position to correct or fill it in. Risk &amp; performance use Yahoo Finance price history. The checkup’s ideas are rule-based educational observations — not personalized investment advice.</p>';
@@ -1022,13 +1023,79 @@ const Pages = {
       missing;
   },
 
-  /* money-weighted return: needs only purchase dates, so it renders offline */
+  /* money-weighted return: needs only dates, so it renders offline. Prefers
+     the account-level version (recorded deposits/withdrawals — captures
+     dividends and closed sales) over the per-purchase fallback. */
   _xirrStat() {
     const stat = (l, v, n, tone) => '<div class="stat"><span class="micro-label">' + l + '</span><div class="stat-value ' + (tone || "") + '" style="font-size:21px">' + v + "</div>" + (n ? '<div class="stat-note">' + n + "</div>" : "") + "</div>";
-    const xf = portfolioXirrFlows();
-    const mwr = xirr(xf.flows);
-    return stat("XIRR (money-weighted)" + this._hint("The IRR of your actual dated purchases against today's value — the return YOUR money earned, which a price chart can't tell you. Current positions only; dividends and closed sales aren't in the flows" + (xf.excluded ? "; " + xf.excluded + " position(s) without a purchase date excluded" : "") + "."),
-      mwr == null ? "—" : fmtPct(mwr * 100, 1) + "/yr", "since your actual buy dates", mwr == null ? "" : mwr >= 0 ? "pos" : "neg");
+    const ax = accountXirr();
+    const hint = ax.source === "flows"
+      ? this._hint("The IRR of the cash you actually moved in and out of the brokerage against what the account is worth today. Because buys, sells and dividends all stay inside the account, this number includes ALL of them — the truest personal return there is.")
+      : this._hint("The IRR of your dated purchases against today's value. Current positions only — record your deposits and withdrawals in the Contributions panel below and this upgrades to a full account-level return that includes dividends and closed sales.");
+    return stat("XIRR (money-weighted)" + hint,
+      ax.rate == null ? "—" : fmtPct(ax.rate * 100, 1) + "/yr",
+      ax.source === "flows" ? "from your recorded cash flows" : "from purchase dates · record flows to upgrade",
+      ax.rate == null ? "" : ax.rate >= 0 ? "pos" : "neg");
+  },
+
+  /* ---- contributions & withdrawals: the money-in vs value picture ---- */
+  _flowsPanel() {
+    if (typeof accountXirr !== "function") return "";
+    const s = Store.state;
+    const flows = (s.flows || []).slice().sort((a, b) => (a.date < b.date ? 1 : -1));
+    const ax = accountXirr();
+    const t = computeTotals();
+    const head = '<div class="panel-head"><div class="panel-title">Contributions' +
+      this._hint("Record every peso you move INTO the brokerage (deposits) and OUT of it (withdrawals). That's all the data needed for the account-level XIRR — the return that includes dividends, sales, everything — and the invested-vs-value picture below.") + "</div>" +
+      '<span class="panel-sub"><button class="btn small ghost" data-action="add-flow" data-kind="deposit">+ Deposit</button> ' +
+      '<button class="btn small ghost" data-action="add-flow" data-kind="withdrawal">− Withdrawal</button></span></div>';
+    if (!flows.length) {
+      return '<div class="panel section">' + head +
+        '<p class="method-note">No flows recorded yet. Add your deposits (and any withdrawals) into the brokerage — even approximate dates work — and the XIRR above upgrades from purchase-based to a true account-level return.</p></div>';
+    }
+    const value = t.marketValue + t.investCash;
+    const profit = value + ax.withdrawn - ax.invested;
+    const stat = (l, v, n, tone) => '<div class="stat"><span class="micro-label">' + l + '</span><div class="stat-value ' + (tone || "") + '" style="font-size:21px">' + v + "</div>" + (n ? '<div class="stat-note">' + n + "</div>" : "") + "</div>";
+    const stats = '<div class="grid cols-4 section" style="margin-top:0">' +
+      stat("Net invested", fmtMoney(ax.invested - ax.withdrawn, { compact: true }), fmtMoney(ax.invested, { compact: true }) + " in · " + fmtMoney(ax.withdrawn, { compact: true }) + " out") +
+      stat("Account value", fmtMoney(value, { compact: true }), "holdings + brokerage cash") +
+      stat("True profit", fmtMoney(profit, { sign: true, compact: true }), "value + withdrawn − invested", profit >= 0 ? "pos" : "neg") +
+      stat("Account XIRR", ax.rate == null ? "—" : fmtPct(ax.rate * 100, 1) + "/yr", "includes dividends & sales", ax.rate == null ? "" : ax.rate >= 0 ? "pos" : "neg") +
+      "</div>";
+    // invested-vs-value: cumulative contribution step line, value as end marker
+    const cs = contributionSeries();
+    let chart = "";
+    if (cs.length >= 2) {
+      const pts = cs.concat([{ t: todayMid().getTime(), v: cs[cs.length - 1].v }]);
+      const vals = pts.map(p => p.v).concat([value]);
+      const lo = Math.min.apply(null, vals.concat([0])), hi = Math.max.apply(null, vals) || 1;
+      const span = (hi - lo) || 1;
+      const W = 1000, H = 150, PAD = 8;
+      const t0 = pts[0].t, t1 = pts[pts.length - 1].t || t0 + 1;
+      const X = tm => PAD + (t1 === t0 ? 0 : (tm - t0) / (t1 - t0)) * (W - 2 * PAD);
+      const Y = v => H - PAD - (v - lo) / span * (H - 2 * PAD);
+      // step line for contributions
+      let d = "";
+      pts.forEach((p, i) => {
+        if (i === 0) d += X(p.t).toFixed(1) + "," + Y(p.v).toFixed(1);
+        else d += " " + X(p.t).toFixed(1) + "," + Y(pts[i - 1].v).toFixed(1) + " " + X(p.t).toFixed(1) + "," + Y(p.v).toFixed(1);
+      });
+      chart = '<div class="chart-wrap"><svg class="cf-fc-chart" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none">' +
+        '<polyline points="' + d + '" fill="none" stroke="#9aa3b2" stroke-width="2" stroke-dasharray="5 4" stroke-linejoin="round"/>' +
+        '<circle cx="' + X(t1).toFixed(1) + '" cy="' + Y(value).toFixed(1) + '" r="5" fill="#8fe3a6"/>' +
+        '<line x1="' + X(t1).toFixed(1) + '" y1="' + Y(pts[pts.length - 1].v).toFixed(1) + '" x2="' + X(t1).toFixed(1) + '" y2="' + Y(value).toFixed(1) + '" stroke="#8fe3a6" stroke-width="1.5" stroke-dasharray="2 3"/>' +
+        "</svg></div>" +
+        '<div class="comp-legend" style="margin-top:8px"><span class="lg"><span class="dot" style="background:#9aa3b2"></span>Net invested</span>' +
+        '<span class="lg"><span class="dot" style="background:#8fe3a6"></span>Value today</span>' +
+        '<span class="lg ' + (profit >= 0 ? "pos" : "neg") + '" style="margin-left:auto">gap = ' + fmtMoney(profit, { sign: true, compact: true }) + " earned</span></div>";
+    }
+    const rows = flows.slice(0, 10).map(f =>
+      '<div class="bs-row"><span class="bs-name">' + (f.kind === "withdrawal" ? "− Withdrawal" : "+ Deposit") +
+        '<span class="bs-kind">' + fmtDateShort(parseISO(f.date)) + (f.note ? " · " + esc(f.note) : "") + "</span></span>" +
+      '<span class="bs-amt' + (f.kind === "withdrawal" ? " neg" : "") + '">' + fmtMoneyIn(f.amount, f.currency, { compact: true }) + "</span>" +
+      '<span class="bs-actions"><button class="icon-btn danger" data-action="del-flow" data-id="' + f.id + '" title="Delete">' + icon("x") + "</button></span></div>").join("");
+    return '<div class="panel section">' + head + stats + chart +
+      '<div style="margin-top:12px">' + rows + (flows.length > 10 ? '<p class="method-note">…and ' + (flows.length - 10) + " more</p>" : "") + "</div></div>";
   },
 
   _advRiskRender(data) {
