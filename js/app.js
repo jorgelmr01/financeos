@@ -572,22 +572,47 @@ const App = {
         // changing an assumption changes the nest egg, so re-sync the withdrawal
         // explorer to the rate your (new) target spending implies
         this.retire.exploreSWR = null;
-        if (ri.dataset.suffix != null) {
-          const lab = document.querySelector('.r-val[data-rv="' + k + '"]');
-          if (lab) lab.textContent = ri.value + ri.dataset.suffix;
-        }
+        const num = document.querySelector('.r-num[data-rk="' + k + '"]');
+        if (num && document.activeElement !== num) num.value = ri.value;
         const out = document.getElementById("retire-out");
         if (out) out.innerHTML = Pages.retirementOutput();
+      }
+
+      /* the slider's paired text field — type an exact value, slider follows */
+      const rn = e.target.closest(".r-num");
+      if (rn && this.retire) {
+        const k = rn.dataset.rk;
+        const v = parseNum(rn.value);
+        if (isFinite(v) && rn.value.trim() !== "") {
+          this.retire[k] = v;
+          this.retire.exploreSWR = null;
+          const sl = document.querySelector('.r-input[data-rk="' + k + '"]');
+          if (sl) sl.value = v;                    // the range clamps its own display
+          const out = document.getElementById("retire-out");
+          if (out) out.innerHTML = Pages.retirementOutput();
+        }
       }
 
       /* withdrawal-rate explorer: recompute just its box (keep the slider drag) */
       const rei = e.target.closest(".re-input");
       if (rei && this.retire) {
         this.retire.exploreSWR = parseNum(rei.value);
-        const lab = rei.closest(".r-row").querySelector(".re-val");
-        if (lab) lab.textContent = Number(rei.value).toFixed(1) + "%";
+        const num = rei.closest(".r-row").querySelector(".re-num");
+        if (num && document.activeElement !== num) num.value = Number(rei.value).toFixed(1);
         const out = document.getElementById("retire-explore-out");
         if (out) out.innerHTML = Pages._withdrawExploreRefresh();
+      }
+
+      const ren = e.target.closest(".re-num");
+      if (ren && this.retire) {
+        const v = parseNum(ren.value);
+        if (isFinite(v) && ren.value.trim() !== "" && v > 0) {
+          this.retire.exploreSWR = v;
+          const sl = ren.closest(".r-row").querySelector(".re-input");
+          if (sl) sl.value = v;
+          const out = document.getElementById("retire-explore-out");
+          if (out) out.innerHTML = Pages._withdrawExploreRefresh();
+        }
       }
 
       /* debt payoff: live recompute on the monthly-budget input */

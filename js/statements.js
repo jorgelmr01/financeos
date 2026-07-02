@@ -166,17 +166,43 @@ const Statements = {
     return out;
   },
 
-  /* ---------- bank detection ---------- */
+  /* ---------- bank detection ----------
+     Tuned parsers exist for the first four; every other recognized Mexican
+     issuer maps to the generic parser but still gets its proper label and MXN
+     currency (instead of silently assuming the display currency). */
   detectBank(text) {
     const t = text.toLowerCase();
     if (/american express|americanexpress/.test(t)) return "amex";
     if (/\bklar\b/.test(t)) return "klar";
     if (/openbank/.test(t)) return "openbank";
     if (/santander/.test(t)) return "santander";
+    if (/\bbbva\b|bancomer/.test(t)) return "bbva";
+    if (/banorte/.test(t)) return "banorte";
+    if (/citibanamex|banamex/.test(t)) return "banamex";
+    if (/\bhsbc\b/.test(t)) return "hsbc";
+    if (/scotiabank/.test(t)) return "scotiabank";
+    if (/\bnu\s*m[eé]xico\b|nubank|\bnu\b.*tarjeta/.test(t)) return "nu";
+    if (/hey\s*banco|hey,?\s*inc/.test(t)) return "hey";
+    if (/banregio/.test(t)) return "banregio";
+    if (/inbursa/.test(t)) return "inbursa";
+    if (/banco azteca/.test(t)) return "azteca";
+    if (/bancoppel/.test(t)) return "bancoppel";
+    if (/\bstori\b/.test(t)) return "stori";
+    if (/rappi\s*card/.test(t)) return "rappicard";
+    if (/\bual[aá]\b/.test(t)) return "uala";
+    if (/plata\s*card/.test(t)) return "plata";
     return "generic";
   },
 
-  BANK_LABEL: { amex: "American Express", klar: "Klar", openbank: "Openbank", santander: "Santander", generic: "Statement" },
+  BANK_LABEL: {
+    amex: "American Express", klar: "Klar", openbank: "Openbank", santander: "Santander",
+    bbva: "BBVA", banorte: "Banorte", banamex: "Citibanamex", hsbc: "HSBC",
+    scotiabank: "Scotiabank", nu: "Nu", hey: "Hey Banco", banregio: "Banregio",
+    inbursa: "Inbursa", azteca: "Banco Azteca", bancoppel: "BanCoppel", stori: "Stori",
+    rappicard: "RappiCard", uala: "Ualá", plata: "Plata Card", generic: "Statement",
+  },
+  // recognized Mexican issuers — their amounts are in pesos even via the generic parser
+  _MX_BANKS: { amex: 1, klar: 1, openbank: 1, santander: 1, bbva: 1, banorte: 1, banamex: 1, hsbc: 1, scotiabank: 1, nu: 1, hey: 1, banregio: 1, inbursa: 1, azteca: 1, bancoppel: 1, stori: 1, rappicard: 1, uala: 1, plata: 1 },
 
   /* ---------- helpers ---------- */
   _MONTHS: {
@@ -193,11 +219,20 @@ const Statements = {
     return y + "-" + pad(m) + "-" + pad(d);
   },
   _amt(raw) {
-    // keep digits, dot, comma, minus; comma is a thousands sep in these locales
-    const neg = /-/.test(raw);
-    const cleaned = String(raw).replace(/[^0-9.]/g, "");
-    if (!cleaned) return null;
-    let n = parseFloat(cleaned);
+    const s = String(raw);
+    // negatives arrive as "-", a trailing "-", or accounting parentheses "(1,234.56)"
+    const neg = /-/.test(s) || /^\s*\(.*\)\s*$/.test(s);
+    let body = s.replace(/[()\s$-]/g, "").replace(/[A-Za-z]/g, "");
+    if (!body) return null;
+    // decide the decimal separator by the LAST symbol with 1–2 trailing digits:
+    // "1,234.56" → dot-decimal · "1.234,56" / "135,00" → comma-decimal
+    const lastDot = body.lastIndexOf("."), lastComma = body.lastIndexOf(",");
+    if (lastComma > lastDot && /,\d{1,2}$/.test(body)) {
+      body = body.replace(/\./g, "").replace(",", ".");
+    } else {
+      body = body.replace(/,/g, "");
+    }
+    const n = parseFloat(body);
     if (isNaN(n)) return null;
     return neg ? -n : n;
   },
@@ -354,35 +389,76 @@ const Statements = {
     return rows;
   },
 
-  /* generic: any line with a recognizable date and a trailing amount */
+  /* generic: any line with a recognizable date and a trailing amount.
+     Handles ISO / numeric (day-first, as Mexican statements are) / Spanish
+     month-name dates, dot- and comma-decimal amounts, accounting negatives,
+     and the classic "…cargo saldo" layout where a running balance follows the
+     amount (we take the charge, not the balance). */
   parseGeneric(text) {
     const rows = [];
     const lines = text.split("\n");
+    const yearHint = (text.match(/\b(20\d{2})\b/) || [])[1];
     const reISO = /\b(\d{4})-(\d{2})-(\d{2})\b/;
     const reDMY = /\b(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})\b/;
-    const reAmt = /(-?\$?\s*[\d,]+\.\d{2})\s*(CR)?$/;
+    // "12 ene 2026" · "12-ENE-26" · "12 de enero de 2026" · "12/ene"
+    const reDName = /\b(\d{1,2})(?:\s+de)?[\s\/\-.]([A-Za-zÁÉÍÓÚáéíóú]{3,10})\.?(?:(?:\s+de)?[\s\/\-.](\d{2,4}))?\b/;
+    const MONEY = "-?\\(?\\$?\\s*\\d[\\d.,]*[.,]\\d{2}\\)?";
+    // one amount at the end — or amount + running balance (take the first)
+    const reAmt2 = new RegExp("(" + MONEY + ")\\s+(" + MONEY + ")\\s*(CR)?$");
+    const reAmt1 = new RegExp("(" + MONEY + ")\\s*(CR)?$");
     for (const ln of lines) {
-      const am = ln.match(reAmt);
-      if (!am) continue;
-      let date = null, mISO, mDMY;
-      if ((mISO = ln.match(reISO))) date = this._iso(+mISO[1], +mISO[2], +mISO[3]);
+      let amtRaw = null, hasCR = false, stripRe = null;
+      let m2 = ln.match(reAmt2), m1;
+      if (m2) { amtRaw = m2[1]; hasCR = !!m2[3]; stripRe = reAmt2; }
+      else if ((m1 = ln.match(reAmt1))) { amtRaw = m1[1]; hasCR = !!m1[2]; stripRe = reAmt1; }
+      if (amtRaw == null) continue;
+      let date = null, dateStr = "", mISO, mDMY, mDN;
+      if ((mISO = ln.match(reISO))) { date = this._iso(+mISO[1], +mISO[2], +mISO[3]); dateStr = mISO[0]; }
       else if ((mDMY = ln.match(reDMY))) {
         let y = +mDMY[3]; if (y < 100) y += 2000;
         const a = +mDMY[1], b = +mDMY[2];
-        date = a > 12 ? this._iso(y, b, a) : this._iso(y, a, b);
+        // Mexican statements are day-first; only flip when the day slot can't be a month
+        if (b > 12 && a <= 12) date = this._iso(y, a, b);
+        else if (b <= 12) date = this._iso(y, b, a);
+        dateStr = mDMY[0];
+      } else if ((mDN = ln.match(reDName))) {
+        const mo = this._monthIdx(mDN[2]);
+        if (mo) {
+          let y = mDN[3] ? +mDN[3] : (yearHint ? +yearHint : new Date().getFullYear());
+          if (y < 100) y += 2000;
+          date = this._iso(y, mo, +mDN[1]);
+          dateStr = mDN[0];
+        }
       }
       if (!date) continue;
-      const amt = this._amt(am[1]);
+      const amt = this._amt(amtRaw);
       if (amt == null) continue;
-      let desc = ln.replace(reAmt, "").replace(reISO, "").replace(reDMY, "").replace(/\s+/g, " ").trim();
+      // strip only the amount tail and the exact date text we consumed — a
+      // blanket month-name replace would eat "12 STARBUCKS" from a description
+      let desc = ln.replace(stripRe, "");
+      if (dateStr) desc = desc.split(dateStr).join(" ");
+      desc = desc.replace(reISO, "").replace(reDMY, "").replace(/\s+/g, " ").trim();
       if (desc.length < 2) continue;
-      rows.push({ date, description: desc.slice(0, 80), amount: amt, type: this.classify(desc, amt, !!am[2]) });
+      rows.push({ date, description: desc.slice(0, 80), amount: amt, type: this.classify(desc, amt, hasCR) });
     }
     return rows;
   },
 
   /* ---------- top-level: parse a File into reviewable rows ----------
      onProgress({phase, page, pages}) is called during the (slow) OCR pass. */
+  /* run the right per-bank parser (plus the generic sweep) over a text blob */
+  _parseText(text) {
+    const bank = this.detectBank(text);
+    let raw;
+    if (bank === "amex") raw = this.parseAmex(text);
+    else if (bank === "klar") raw = this.parseKlar(text);
+    else if (bank === "openbank") raw = this.parseOpenbank(text);
+    else if (bank === "santander") raw = this.parseSantander(text);
+    else raw = [];
+    if (bank === "generic" || !raw.length) raw = raw.concat(this.parseGeneric(text));
+    return { bank: bank, raw: raw };
+  },
+
   async parse(file, onProgress) {
     const ex = await this.extract(file);
     const warnings = [];
@@ -391,7 +467,14 @@ const Statements = {
 
     // A scanned statement has little/no text layer. If OCR is available, read
     // the image pages on-device; otherwise tell the user to use the template.
-    const minChars = 40 * Math.max(1, ex.numPages / 6);
+    // ALSO handle the mixed case: a text cover page over scanned transaction
+    // pages — the text layer alone yields (almost) no rows, so OCR the
+    // image-only pages and merge before giving up.
+    let minChars = 40 * Math.max(1, ex.numPages / 6);
+    if (ex.charCount >= minChars) {
+      const textlessPages = ex.pages.filter(pg => pg.chars < 20).length;
+      if (textlessPages > 0 && this._parseText(text).raw.length < 3) minChars = Infinity;
+    }
     if (ex.charCount < minChars) {
       if (!this.ocrAvailable()) {
         try { ex.doc.destroy(); } catch (e) {}
@@ -429,25 +512,17 @@ const Statements = {
     }
     try { ex.doc.destroy(); } catch (e) {}
 
-    const bank = this.detectBank(text);
+    const parsed = this._parseText(text);
+    const bank = parsed.bank;
+    const raw = parsed.raw;
 
-    let raw;
-    if (bank === "amex") raw = this.parseAmex(text);
-    else if (bank === "klar") raw = this.parseKlar(text);
-    else if (bank === "openbank") raw = this.parseOpenbank(text);
-    else if (bank === "santander") raw = this.parseSantander(text);
-    else raw = [];
-    // always try the generic pass too; merge anything new the bank parser missed
-    if (bank === "generic" || !raw.length) raw = raw.concat(this.parseGeneric(text));
-
-    if (viaOCR) warnings.push("Read from a scan with on-device OCR — double-check the amounts and dates before importing.");
+    if (viaOCR) warnings.push("Read from a scan with on-device OCR — double-check the amounts and dates before importing (you can edit any row below).");
 
     // de-dupe rows within the statement (same date+desc+amount)
     const seen = {};
-    // the supported sample banks are all Mexican; unknown layouts use the
-    // user's display currency so amounts land in the right denomination.
-    const currency = (bank === "amex" || bank === "klar" || bank === "openbank" || bank === "santander")
-      ? "MXN" : displayCurrency();
+    // recognized Mexican issuers bill in pesos even when the layout is generic;
+    // truly unknown statements use the user's display currency.
+    const currency = this._MX_BANKS[bank] ? "MXN" : displayCurrency();
     const rows = [];
     raw.forEach(r => {
       if (r.type === "balance") return;                       // never a real expense

@@ -10,7 +10,7 @@ const UI = {
     const root = document.getElementById("modal-root");
     root.innerHTML =
       '<div class="modal-overlay" data-action="close-modal-overlay">' +
-        '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">' +
+        '<div class="modal' + (opts.wide ? " wide" : "") + '" role="dialog" aria-modal="true" aria-labelledby="modal-title">' +
           '<div class="modal-head">' +
             '<div class="modal-title" id="modal-title">' + title + "</div>" +
             '<button class="icon-btn" data-action="close-modal" title="Close" aria-label="Close dialog">' + icon("x") + '</button>' +
@@ -627,8 +627,9 @@ const UI = {
         "<div><strong>100% on your device.</strong> The PDF is parsed right here in your browser — it is never uploaded, " +
         "sent to a server, or stored anywhere but on this device.</div></div>" +
       '<ul class="import-steps">' +
-        "<li>Tuned for <strong>Amex</strong>, <strong>Klar</strong>, <strong>Openbank</strong> and <strong>Santander</strong> — other banks use a generic reader.</li>" +
-        "<li>Payments and card transfers are detected and left <strong>unchecked</strong> (they aren't expenses).</li>" +
+        "<li>Tuned for <strong>Amex</strong>, <strong>Klar</strong>, <strong>Openbank</strong> and <strong>Santander</strong>; BBVA, Banorte, Citibanamex, Nu, HSBC and most other banks are recognized and read with a generic parser.</li>" +
+        "<li>Scanned (image) statements are read with <strong>on-device OCR</strong> — slower, and still 100% private.</li>" +
+        "<li>Every row is <strong>editable in review</strong>: fix a description or amount before importing. Payments and card transfers are detected and left unchecked (they aren't expenses).</li>" +
         "<li>Re-uploading is safe — duplicate rows are never added twice.</li>" +
       "</ul>" +
       '<p class="modal-note" style="margin-top:10px;color:var(--text-faint);font-size:12px">Scanned statements (like Santander) are read with on-device OCR — that takes a little longer and still never leaves your device. Double-check the amounts before importing.</p>';
@@ -687,9 +688,9 @@ const UI = {
       return '<div class="stmt-row" data-i="' + i + '">' +
         '<input type="checkbox" class="stmt-inc"' + (r.include ? " checked" : "") + ' aria-label="Include ' + esc(r.description) + '">' +
         '<span class="stmt-date">' + esc(dateLabel) + "</span>" +
-        '<span class="stmt-desc">' + esc(r.description) + tag + "</span>" +
+        '<span class="stmt-desc"><input class="stmt-desc-in" type="text" maxlength="80" value="' + esc(r.description) + '" aria-label="Description">' + tag + "</span>" +
         '<select class="stmt-cat"' + (disabled ? " disabled" : "") + ">" + this._catOptions(r.category) + "</select>" +
-        '<span class="stmt-amt' + amtCls + '">' + fmtMoneyIn(r.amount, r.currency) + "</span>" +
+        '<span class="stmt-amt' + amtCls + '"><input class="stmt-amt-in" type="text" inputmode="decimal" value="' + (Math.round(r.amount * 100) / 100) + '" aria-label="Amount (' + esc(r.currency) + ')" title="Amount in ' + esc(r.currency) + ' — edit if it was misread">' + "</span>" +
       "</div>";
     }).join("");
 
@@ -724,6 +725,7 @@ const UI = {
 
     this.openModal('Review transactions <span class="beta-pill">Beta</span>', body, {
       submitLabel: "Import selected",
+      wide: true,                        // the table needs room to breathe
       onSubmit() { UI.commitStatement(parse); },
     });
 
@@ -760,11 +762,14 @@ const UI = {
       const base = parse.rows[i];
       if (!base) return;
       const sel = row.querySelector(".stmt-cat");
+      const descIn = row.querySelector(".stmt-desc-in");
+      const amtIn = row.querySelector(".stmt-amt-in");
+      const editedAmt = amtIn ? parseNum(amtIn.value) : base.amount;
       picked.push({
         date: base.date,
-        description: base.description,
+        description: (descIn && descIn.value.trim()) || base.description,
         category: sel && sel.value ? sel.value : base.category,
-        amount: base.amount,
+        amount: isFinite(editedAmt) && editedAmt !== 0 ? editedAmt : base.amount,
         currency: base.currency,
       });
     });

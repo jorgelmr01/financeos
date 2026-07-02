@@ -2077,7 +2077,8 @@ const Pages = {
       "</div>" +
       '<div class="retire-phase"><div class="sb-alloc-head"><span class="micro-label">① While saving — you have income</span></div>' +
         '<p class="retire-phase-note">A paycheck covers your bills, so a market dip never forces you to sell. Lean into growth — the rest of your contributions go to bonds.</p>' +
-        '<div class="r-grid"><div class="r-row r-row-wide"><label>Equities while saving<output class="r-val" data-rv="accEquity">' + r.accEquity + '%</output></label>' +
+        '<div class="r-grid"><div class="r-row r-row-wide"><label>Equities while saving' +
+          '<span class="r-val-wrap"><input class="r-num" data-rk="accEquity" type="text" inputmode="numeric" value="' + r.accEquity + '" aria-label="Equities while saving (exact value)"><span class="r-suffix">%</span></span></label>' +
           '<input class="r-input" data-rk="accEquity" data-suffix="%" type="range" min="0" max="100" step="5" value="' + r.accEquity + '"></div></div></div>' +
       '<div class="retire-phase"><div class="sb-alloc-head"><span class="micro-label">② In retirement — no paycheck</span></div>' +
         '<p class="retire-phase-note">Now a crash hits <em>while you withdraw</em> — real risk. Keep a few years of spending safe in cash &amp; bonds, spend those first, and let stocks recover. Pick a risk profile or set the buffers:</p>' +
@@ -2090,9 +2091,11 @@ const Pages = {
       "</div></div>";
   },
 
+  /* a slider + a paired text field: drag for feel, type for exactness */
   _rslider(key, label, val, min, max, step, suffix) {
     return '<div class="r-row"><label>' + label +
-      '<output class="r-val" data-rv="' + key + '">' + val + suffix + "</output></label>" +
+      '<span class="r-val-wrap"><input class="r-num" data-rk="' + key + '" type="text" inputmode="decimal" value="' + val + '" aria-label="' + label + ' (exact value)">' +
+      '<span class="r-suffix">' + suffix + "</span></span></label>" +
       '<input class="r-input" data-rk="' + key + '" data-suffix="' + suffix + '" type="range" min="' + min +
       '" max="' + max + '" step="' + step + '" value="' + val + '"></div>';
   },
@@ -2185,7 +2188,7 @@ const Pages = {
           : "Your target implies about <strong>" + implied.toFixed(1) + "%</strong> — outside this scale, so the slider starts at the classic <strong>4%</strong>.") +
         " Slide to see how spending more or less changes your income and how long the money lasts — the chart and figures update live.</p>" +
       '<div class="r-grid"><div class="r-row r-row-wide"><label>Withdrawal rate' +
-        '<output class="re-val">' + rate.toFixed(1) + '%</output></label>' +
+        '<span class="r-val-wrap"><input class="re-num" type="text" inputmode="decimal" value="' + rate.toFixed(1) + '" aria-label="Withdrawal rate (exact value)"><span class="r-suffix">%</span></span></label>' +
         '<input class="re-input" type="range" min="' + RMIN + '" max="' + RMAX + '" step="0.1" value="' + rate.toFixed(1) + '"></div></div>' +
       '<div id="retire-explore-out">' + this._withdrawExploreOut(r, P, sim) + "</div></div>";
   },

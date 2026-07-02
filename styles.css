@@ -2161,3 +2161,40 @@ body.light .sb-log-row { background: rgba(28, 38, 30, 0.04); }
 
 /* tables whose cells should never word-wrap — the wrapper scrolls instead */
 .tbl-nowrap th, .tbl-nowrap td { white-space: nowrap; }
+
+/* editable fields in the statement review — fix a misread OCR row in place */
+.stmt-desc-in {
+  width: 100%; background: transparent; border: 1px solid transparent; border-radius: 6px;
+  color: var(--text); font: inherit; font-size: 12.5px; padding: 3px 6px; margin-left: -6px;
+}
+.stmt-desc-in:hover { border-color: var(--hairline-strong); }
+.stmt-desc-in:focus { border-color: var(--mint); outline: none; background: var(--surface-2); }
+.stmt-amt-in {
+  width: 92px; background: transparent; border: 1px solid transparent; border-radius: 6px;
+  color: inherit; font-family: var(--font-mono); font-size: 12.5px; text-align: right;
+  padding: 3px 6px; font-variant-numeric: tabular-nums;
+}
+.stmt-amt-in:hover { border-color: var(--hairline-strong); }
+.stmt-amt-in:focus { border-color: var(--mint); outline: none; background: var(--surface-2); }
+
+/* slider's paired exact-value field — looks like the old label, but editable */
+.r-val-wrap {
+  display: inline-flex; align-items: baseline;
+  font-family: var(--font-mono); font-size: 13px; font-weight: 600; color: var(--mint-bright);
+}
+.r-num {
+  width: 62px; background: transparent; border: 1px solid transparent; border-radius: 6px;
+  color: var(--mint-bright); font: inherit; text-align: right; padding: 1px 4px;
+  font-variant-numeric: tabular-nums;
+}
+.r-num:hover, .re-num:hover { border-color: var(--hairline-strong); }
+.r-num:focus, .re-num:focus { border-color: var(--mint); outline: none; background: var(--surface-2); }
+.re-num {
+  width: 56px; background: transparent; border: 1px solid transparent; border-radius: 6px;
+  color: var(--mint-bright); font: inherit; text-align: right; padding: 1px 4px;
+  font-variant-numeric: tabular-nums;
+}
+.r-suffix { margin-left: 1px; }
+
+/* wide modal variant for table-heavy dialogs (statement review) */
+.modal.wide { max-width: 780px; }

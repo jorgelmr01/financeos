@@ -202,6 +202,59 @@ group("Statements.parseSantander (OCR layout)", () => {
   eq(rows[1].type, "payment", "PAGO POR TRANSFERENCIA → payment");
 });
 
+group("Statements._amt — every real-world amount format", () => {
+  const S = A.Statements;
+  eq(S._amt("1,234.56"), 1234.56, "US/MX format: comma thousands, dot decimal");
+  eq(S._amt("1.234,56"), 1234.56, "European format: dot thousands, comma decimal");
+  eq(S._amt("135,00"), 135, "bare comma-decimal");
+  eq(S._amt("$ 12,500.00"), 12500, "currency symbol + spaces");
+  eq(S._amt("-450.00"), -450, "leading minus");
+  eq(S._amt("(1,234.56)"), -1234.56, "accounting parentheses = negative");
+  eq(S._amt("1,234"), 1234, "comma thousands with no decimals");
+  eq(S._amt(""), null, "empty → null, never NaN");
+  eq(S._amt("abc"), null, "garbage → null");
+});
+
+group("Statements.parseGeneric — layouts in the wild", () => {
+  const S = A.Statements;
+  // Mexican numeric dates are day-first: 05/03 = March 5th, not May 3rd
+  let rows = S.parseGeneric("05/03/2026 OXXO CENTRO 145.50");
+  eq(rows[0].date, "2026-03-05", "ambiguous DD/MM defaults to day-first (Mexico)");
+  rows = S.parseGeneric("25/03/2026 SORIANA 890.00");
+  eq(rows[0].date, "2026-03-25", "day > 12 stays day-first");
+  rows = S.parseGeneric("03/25/2026 US MERCHANT 55.00");
+  eq(rows[0].date, "2026-03-25", "month-first only when the second slot can't be a month");
+  // Spanish month names, with and without a year (year comes from the doc)
+  rows = S.parseGeneric("Periodo 2026\n12 ene STARBUCKS REFORMA 89.50");
+  eq(rows[0].date, "2026-01-12", "\"12 ene\" resolves via the statement's year");
+  ok(/STARBUCKS/.test(rows[0].description), "merchant text survives date stripping");
+  rows = S.parseGeneric("14-Mar-2026 UBER TRIP 76.00");
+  eq(rows[0].date, "2026-03-14", "\"14-Mar-2026\" parses");
+  // amount + running balance: take the charge, not the balance
+  rows = S.parseGeneric("10/02/2026 FARMACIA GUADALAJARA 234.50 18,765.50");
+  eq(rows[0].amount, 234.5, "with a trailing running balance, the charge wins");
+  // comma-decimal amounts flow through the generic reader
+  rows = S.parseGeneric("10/02/2026 CAFE EUROPEO 1.234,56");
+  eq(rows[0].amount, 1234.56, "comma-decimal rows parse");
+  // a number that happens to start a merchant name is not eaten as a date
+  rows = S.parseGeneric("2026-02-10 7 LEGUAS RESTAURANTE 380.00");
+  ok(/7 LEGUAS/.test(rows[0].description), "\"7 LEGUAS\" is not mistaken for a date");
+});
+
+group("Statements.detectBank — the Mexican market", () => {
+  const S = A.Statements;
+  eq(S.detectBank("Estado de cuenta BBVA Bancomer"), "bbva", "BBVA");
+  eq(S.detectBank("Banco Mercantil del Norte Banorte"), "banorte", "Banorte");
+  eq(S.detectBank("Citibanamex tarjeta"), "banamex", "Citibanamex");
+  eq(S.detectBank("Nu México Financiera"), "nu", "Nu");
+  eq(S.detectBank("Hey Banco estado de cuenta"), "hey", "Hey Banco");
+  eq(S.detectBank("tarjeta Stori clásica"), "stori", "Stori");
+  eq(S.detectBank("RappiCard resumen"), "rappicard", "RappiCard");
+  eq(S.detectBank("algo desconocido"), "generic", "unknown → generic");
+  // every recognized issuer bills in MXN even through the generic parser
+  ["bbva", "banorte", "nu", "stori", "hey"].forEach(b => ok(S._MX_BANKS[b] === 1, b + " maps to MXN"));
+});
+
 group("Statements._reconcile flags gross gaps, tolerates small ones", () => {
   const S = A.Statements;
   const rows = [{ type: "charge", amount: 100 }, { type: "charge", amount: 50 }, { type: "payment", amount: 999 }];
