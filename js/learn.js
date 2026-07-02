@@ -626,6 +626,7 @@ const Learn = {
       case "learn-course-home": this.courseTrack = null; this.lessonId = null; break;
       case "learn-lesson-done": {
         const Ls = Store.state.learn; Ls.lessons = Ls.lessons || {}; Ls.lessons[id] = true; Store.save();
+        if (typeof LESSONS === "undefined") break;
         const lsn = LESSONS.find(x => x.id === id);
         const arr = lsn ? LESSONS.filter(x => x.track === lsn.track) : [];
         const pos = arr.findIndex(x => x.id === id);
@@ -859,8 +860,32 @@ const Learn = {
     return this.renderHome();
   },
 
-  /* ---------- curriculum (60 lessons) ---------- */
+  /* ---------- curriculum (60 lessons) ----------
+     lessons.js is ~380KB of content, so it loads lazily the first time the
+     Learn page needs it instead of slowing down every app start. */
+  _lessonsLoading: false,
+  ensureLessons() {
+    if (typeof LESSONS !== "undefined") return true;
+    if (!this._lessonsLoading) {
+      this._lessonsLoading = true;
+      const s = document.createElement("script");
+      s.src = "js/lessons.js";
+      s.onload = () => { this._lessonsLoading = false; if (App.page === "learn") App.render(); };
+      s.onerror = () => {
+        this._lessonsLoading = false;
+        if (typeof UI !== "undefined") UI.toast("Couldn't load the course — check your connection", "error");
+      };
+      document.head.appendChild(s);
+    }
+    return false;
+  },
+  _courseLoading() {
+    return '<div class="panel section"><div class="panel-head"><div class="panel-title">Course · 60 lessons</div></div>' +
+      '<div class="adv-loading">Loading the course…</div></div>';
+  },
+
   _coursePanel() {
+    if (!this.ensureLessons()) return this._courseLoading();
     const done = (Store.state.learn && Store.state.learn.lessons) || {};
     const tracks = (typeof LESSON_TRACKS !== "undefined" ? LESSON_TRACKS : []).map(tr => {
       const items = LESSONS.filter(x => x.track === tr.id);
@@ -880,6 +905,7 @@ const Learn = {
   },
 
   renderTrack() {
+    if (!this.ensureLessons()) return this._courseLoading();
     const tr = (typeof LESSON_TRACKS !== "undefined" ? LESSON_TRACKS : []).find(t => t.id === this.courseTrack);
     if (!tr) { this.courseTrack = null; return this.renderHome(); }
     const done = (Store.state.learn && Store.state.learn.lessons) || {};
@@ -902,6 +928,7 @@ const Learn = {
   },
 
   renderLesson() {
+    if (!this.ensureLessons()) return this._courseLoading();
     const lsn = LESSONS.find(x => x.id === this.lessonId);
     if (!lsn) { this.lessonId = null; return this.render(); }
     const tr = (typeof LESSON_TRACKS !== "undefined" ? LESSON_TRACKS : []).find(t => t.id === lsn.track) || { title: "Course" };

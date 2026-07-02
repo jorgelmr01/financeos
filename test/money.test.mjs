@@ -29,7 +29,7 @@ const bundle = [read("js/utils.js"), read("js/instruments.js"), read("js/budget.
   " earningsBreakdown, retirementProjection, retirementMonteCarlo, retirementBuckets, retirementBucketsMC, makeEquityMarket, mulberry32, MARKET, realInterestEst, monthlyInterestEst," +
   " convBetween, sparkline, categorySeries, debtPayoff, detectRecurring, cashflowForecast, buroScore, investReadiness, irregularIncomePlan," +
   " classifyHolding, portfolioExposure, seriesReturns, annualizedVol, alignReturns, betaOf, correlationOf, periodsPerYear, weightedValueSeries, seriesReturnOver, finnhubSectorToGICS, countryToRegion, dividendSummary, drawdownInfo, fmtNumInput, parseNum, budgetSpendEstimate," +
-  " toISO, parseISO, daysBetween, todayMid, Statements, INTEREST_FREQ, Store };";
+  " toISO, parseISO, daysBetween, todayMid, icsForCards, Statements, INTEREST_FREQ, Store };";
 vm.runInContext(bundle, ctx, { filename: "bundle.js" });
 const A = ctx.__api;
 // fresh in-memory store, no persistence
@@ -200,6 +200,26 @@ group("Statements.parseSantander (OCR layout)", () => {
   eq(rows[0].amount, 135, "amount");
   eq(rows[0].description, "MERPAGO PERIFERICO", "reference code stripped");
   eq(rows[1].type, "payment", "PAGO POR TRANSFERENCIA → payment");
+});
+
+group("calendar export — card cut & due dates as .ics", () => {
+  const cards = [
+    { id: "c1", name: "Platinum", issuer: "Amex", payDay: 4, cutDay: 14 },
+    { id: "c2", name: "Visa; con, rara", payDay: 15 },          // needs escaping, no cut day
+  ];
+  const from = new Date(2026, 6, 2);                            // Jul 2, 2026
+  const ics = A.icsForCards(cards, { months: 2, from: from });
+  ok(/^BEGIN:VCALENDAR\r\n/.test(ics) && /END:VCALENDAR\r\n$/.test(ics), "well-formed envelope");
+  const events = (ics.match(/BEGIN:VEVENT/g) || []).length;
+  // c1: pay Jul 4 + Aug 4, cut Jul 14 + Aug 14 → 4 · c2: pay Jul 15 + Aug 15 → 2
+  eq(events, 6, "one event per date per card within the window");
+  ok(ics.indexOf("DTSTART;VALUE=DATE:20260704") >= 0, "first due date lands on the right day");
+  ok(ics.indexOf("SUMMARY:Pagar Platinum") >= 0, "payment events are labeled");
+  ok(ics.indexOf("Visa\\; con\\, rara") >= 0, "semicolons and commas are escaped");
+  ok(ics.indexOf("TRIGGER:-P1D") >= 0, "carries a day-before reminder");
+  // dates before `from` are skipped, so no July event for a day-1 card late in the month
+  const late = A.icsForCards([{ id: "x", name: "X", payDay: 1 }], { months: 1, from: from });
+  eq((late.match(/BEGIN:VEVENT/g) || []).length, 0, "a day already past this month is not emitted");
 });
 
 group("Statements._amt — every real-world amount format", () => {

@@ -22,7 +22,7 @@ const App = {
   PAGE_META: {
     overview:   { title: "Today",        actions: "" },
     accounts:   { title: "Accounts",     actions: '<button class="btn primary" data-action="add-account">+ Add account</button>' },
-    cards:      { title: "Credit Cards", actions: '<button class="btn primary" data-action="add-card">+ Add card</button>' },
+    cards:      { title: "Credit Cards", actions: '<button class="btn" data-action="cards-ics" title="Download an .ics file with every cut & due date — drop it into Google or Apple Calendar for real reminders">⤓ Calendar</button><button class="btn primary" data-action="add-card">+ Add card</button>' },
     portfolio:  { title: "Portfolio",    actions: '<button class="btn" data-action="refresh-prices">↻ Update prices</button><button class="btn primary" data-action="add-holding">+ Add position</button>' },
     earnings:   { title: "Income",       actions: '<button class="btn primary" data-action="add-income">+ Add income stream</button>' },
     budget:     { title: "Budget",       actions: '<button class="btn" data-action="expense-template">↓ Template</button><button class="btn" data-action="expense-import">↑ Upload</button><button class="btn primary" data-action="add-expense">+ Add expense</button>' },
@@ -466,6 +466,25 @@ const App = {
           this.render();
         }
         break;
+
+      case "onboard-dismiss":
+        Store.state.settings.onboardDone = true;
+        Store.save();
+        this.render();
+        break;
+
+      case "cards-ics": {
+        if (!Store.state.cards.length) { UI.toast("Add a card first — then export its dates"); break; }
+        const ics = icsForCards(Store.state.cards, { months: 6 });
+        const blob = new Blob([ics], { type: "text/calendar" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "financeos-tarjetas.ics";
+        a.click();
+        URL.revokeObjectURL(a.href);
+        UI.toast("Calendar file downloaded — open it to add 6 months of cut & due dates");
+        break;
+      }
 
       case "export": {
         Store.state.settings.lastExport = toISO(todayMid());

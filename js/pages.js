@@ -4,6 +4,31 @@
 const Pages = {
 
   /* ================= OVERVIEW ================= */
+  /* first-week checklist: walks a new user from empty app to full picture.
+     Shows until every core step is done (or they dismiss it). */
+  _onboardPanel() {
+    const s = Store.state;
+    if (s.settings.onboardDone) return "";
+    const steps = [
+      { done: s.accounts.length > 0, label: "Add an account", sub: "checking, savings or CETES — your money's home base", action: "add-account" },
+      { done: s.incomes.length > 0, label: "Add your income", sub: "salary or any recurring deposit — powers the forecasts", action: "add-income" },
+      { done: (s.expenses || []).length > 0, label: "Log or import expenses", sub: "import a statement PDF or add one by hand — unlocks the Budget", action: "statement-import" },
+      { done: s.cards.length > 0, label: "Add a credit card", sub: "get due-date alerts and your utilization at a glance", action: "add-card" },
+    ];
+    const nDone = steps.filter(x => x.done).length;
+    if (nDone === steps.length) return "";
+    const rows = steps.map(st =>
+      '<div class="ob-step' + (st.done ? " done" : "") + '">' +
+        '<span class="ob-check">' + (st.done ? "✓" : "") + "</span>" +
+        '<div class="ob-tx"><strong>' + st.label + "</strong><span>" + st.sub + "</span></div>" +
+        (st.done ? "" : '<button class="btn small ghost" data-action="' + st.action + '">Do it →</button>') +
+      "</div>").join("");
+    return '<div class="panel section ob-panel"><div class="panel-head"><div class="panel-title">Set up your command center</div>' +
+      '<span class="panel-sub">' + nDone + " of " + steps.length + ' done · <a href="#" class="ob-dismiss" data-action="onboard-dismiss">dismiss</a></span></div>' +
+      '<div class="ob-bar"><span style="width:' + (nDone / steps.length * 100) + '%"></span></div>' +
+      '<div class="ob-steps">' + rows + "</div></div>";
+  },
+
   overview() {
     const t = computeTotals();
     const alerts = collectAlerts();
@@ -104,6 +129,7 @@ const Pages = {
 
     return (
       todayStrip +
+      this._onboardPanel() +
       '<div class="hero section">' +
         '<div class="hero-health">' +
           '<div class="health-top">' + this._scoreRing(fh.score, fg.tone, fg.grade) +

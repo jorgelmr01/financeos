@@ -587,3 +587,47 @@ async function deriveKeyFromPin(pin, saltBuf) {
     { name: "PBKDF2", salt: saltBuf, iterations: 150000, hash: "SHA-256" },
     material, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
 }
+
+/* ---------- calendar export (.ics) ----------
+   Card cut & due dates as an iCalendar file the user drops into Google/Apple
+   Calendar — real reminders with zero backend. Pure: pass the cards and a
+   start date so tests are deterministic. Each event carries a stable UID so
+   re-importing the file updates events instead of duplicating them. */
+function icsEscape(s) {
+  return String(s || "").replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\n/g, "\\n");
+}
+
+function icsForCards(cards, opts) {
+  opts = opts || {};
+  const months = Math.max(1, Math.min(12, opts.months || 6));
+  const from = opts.from || todayMid();
+  const ymd = d => d.getFullYear() + String(d.getMonth() + 1).padStart(2, "0") + String(d.getDate()).padStart(2, "0");
+  const lines = [
+    "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//FinanceOS//Card dates//ES", "CALSCALE:GREGORIAN",
+    "X-WR-CALNAME:FinanceOS — Tarjetas",
+  ];
+  (cards || []).forEach(c => {
+    const name = icsEscape(c.name || "Card");
+    [["payDay", "Pagar " + name, "Fecha límite de pago" + (c.issuer ? " · " + icsEscape(c.issuer) : "")],
+     ["cutDay", "Corte " + name, "Corte de estado de cuenta — compras después de hoy van al siguiente periodo"]]
+      .forEach(([key, summary, desc]) => {
+        const day = Number(c[key]);
+        if (!(day >= 1 && day <= 31)) return;
+        for (let i = 0; i < months; i++) {
+          const d = clampedDate(from.getFullYear(), from.getMonth() + i, day);
+          if (d < from) continue;
+          lines.push(
+            "BEGIN:VEVENT",
+            "UID:financeos-" + (c.id || name) + "-" + key + "-" + ymd(d) + "@financeos",
+            "DTSTAMP:" + ymd(from) + "T090000Z",
+            "DTSTART;VALUE=DATE:" + ymd(d),
+            "SUMMARY:" + summary,
+            "DESCRIPTION:" + desc,
+            "BEGIN:VALARM", "ACTION:DISPLAY", "DESCRIPTION:" + summary, "TRIGGER:-P1D", "END:VALARM",
+            "END:VEVENT");
+        }
+      });
+  });
+  lines.push("END:VCALENDAR");
+  return lines.join("\r\n") + "\r\n";
+}
