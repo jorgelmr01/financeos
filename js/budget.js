@@ -354,8 +354,15 @@ function budgetSpendEstimate() {
 /* Find recurring expenses / subscriptions: same merchant (normalized
    description) with a steady amount showing up across multiple recent months.
    Returns one row per subscription with its monthly cost. */
+/* Categories that are inherently variable spending, never a fixed commitment —
+   a steady grocery bill or a flight that shows up two months running is NOT a
+   recurring obligation, and flagging it dilutes the "cancel what you don't use"
+   message. These flow into the everyday-spending daily burn instead. */
+const RECURRING_EXCLUDE = { groceries: 1, dining: 1, transport: 1, shopping: 1, travel: 1, entertainment: 1 };
+
 function detectRecurring(maxMonths) {
-  const all = (Store.state.expenses || []).filter(e => Number(e.amount) > 0);
+  const all = (Store.state.expenses || []).filter(e =>
+    Number(e.amount) > 0 && !RECURRING_EXCLUDE[String(e.category || "").toLowerCase()]);
   if (!all.length) return [];
   const cutoff = monthAdd(monthKeyOf(toISO(todayMid())), -(maxMonths || 6));
   const recent = all.filter(e => monthKeyOf(e.date) >= cutoff);

@@ -540,13 +540,27 @@ group("recurring detection — steady monthly charges", () => {
       { id: "g3", date: mk(6, 3), amount: 1500, description: "Super", category: "Groceries", currency: "MXN" },
       // one-off → never recurring (single occurrence)
       { id: "o1", date: mk(5, 9), amount: 5000, description: "Vuelo Cancun", category: "Travel", currency: "MXN" },
+      // STEADY groceries & travel — pass the amount filter, but variable
+      // categories are never fixed commitments, so category excludes them
+      { id: "w1", date: mk(4, 6), amount: 1800, description: "Walmart", category: "Groceries", currency: "MXN" },
+      { id: "w2", date: mk(5, 6), amount: 1815, description: "Walmart", category: "Groceries", currency: "MXN" },
+      { id: "w3", date: mk(6, 6), amount: 1790, description: "Walmart", category: "Groceries", currency: "MXN" },
+      { id: "v1", date: mk(5, 16), amount: 4525, description: "Vuelo Volaris", category: "Travel", currency: "MXN" },
+      { id: "v2", date: mk(6, 16), amount: 4525, description: "Vuelo Volaris", category: "Travel", currency: "MXN" },
+      // steady gym membership under Health → still legitimately recurring
+      { id: "y1", date: mk(4, 2), amount: 650, description: "Gym", category: "Health", currency: "MXN" },
+      { id: "y2", date: mk(5, 2), amount: 650, description: "Gym", category: "Health", currency: "MXN" },
+      { id: "y3", date: mk(6, 2), amount: 650, description: "Gym", category: "Health", currency: "MXN" },
     ],
   });
   const rec = A.detectRecurring(6);
   const names = rec.map(r => r.name);
   ok(names.includes("Netflix"), "catches a steady monthly subscription");
   ok(names.includes("Renta depa"), "catches rent as a recurring fixed cost");
+  ok(names.includes("Gym"), "a steady membership (Health) is recurring");
   ok(!names.includes("Super"), "ignores groceries — same label but volatile amount");
+  ok(!names.includes("Walmart"), "even STEADY groceries are spending, not a commitment");
+  ok(!names.includes("Vuelo Volaris"), "a flight repeating two months is not a recurring bill");
   ok(!names.includes("Vuelo Cancun"), "ignores a one-off charge");
   ok(rec[0].monthly >= rec[rec.length - 1].monthly, "sorted by monthly cost, biggest first");
   const nf = rec.find(r => r.name === "Netflix");

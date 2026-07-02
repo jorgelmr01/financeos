@@ -37,10 +37,19 @@ const App = {
   retireDefaults() {
     const t = computeTotals();
     const infl = (Store.state.settings.tax && Number(Store.state.settings.tax.inflation)) || 4.5;
-    const spend = (typeof budgetSpendEstimate === "function") ? Math.round(budgetSpendEstimate().annual) : 0;
+    const est = (typeof budgetSpendEstimate === "function") ? budgetSpendEstimate() : { annual: 0, months: 0 };
+    const spend = Math.round(est.annual);
+    // seed the monthly contribution from what they actually save (net income −
+    // budget spend) — a zero default makes every projection look hopeless for
+    // someone who is in fact saving heavily
+    let contrib = 0;
+    if (est.months > 0 && typeof earningsBreakdown === "function") {
+      const net = Number(earningsBreakdown().monthlyNet) || 0;
+      contrib = Math.max(0, Math.round((net - est.annual / 12) / 100) * 100);
+    }
     return {
       mode: "basic",
-      start: Math.max(0, Math.round(t.netWorth)), contrib: 0, ret: 8, years: 20, withdraw: 4, inflation: infl, annualSpend: spend,
+      start: Math.max(0, Math.round(t.netWorth)), contrib: contrib, ret: 8, years: 20, withdraw: 4, inflation: infl, annualSpend: spend,
       // advanced (bucket-strategy) inputs
       eqRet: 10, bondRet: 7, cashRet: 4.5, cashYears: 1, bondYears: 2, accEquity: 100,
       exploreSWR: null,  // withdrawal-rate explorer slider (null = follow your target)
@@ -65,7 +74,9 @@ const App = {
       const eb = (typeof earningsBreakdown === "function") ? earningsBreakdown() : { monthlyNet: 0 };
       const spend = (typeof budgetSpendEstimate === "function") ? Math.round(budgetSpendEstimate().annual / 12) : 0;
       const high = Math.round(eb.monthlyNet) || (spend ? Math.round(spend * 1.5) : 0);
-      this.irreg = { low: Math.round(high * 0.6), high: high, essentials: spend };
+      // seed lean = good: don't invent a swing the user doesn't have — they
+      // lower the lean month themselves if their income actually varies
+      this.irreg = { low: high, high: high, essentials: spend };
     }
     return {
       low:        { label: "A lean month (net)", hint: "What you bring home in a slow month." },

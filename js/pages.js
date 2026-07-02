@@ -131,7 +131,7 @@ const Pages = {
       "</div>" +
 
       '<div class="grid cols-4 section">' +
-        '<div class="stat"><span class="micro-label">Liquid cash</span><div class="stat-value">' + fmtMoney(t.cash + t.savings + t.investCash) + '</div><div class="stat-note">' + s.accounts.length + " account" + (s.accounts.length === 1 ? "" : "s") + "</div></div>" +
+        '<div class="stat"><span class="micro-label">Liquid cash</span><div class="stat-value">' + fmtMoney(t.cash + t.savings + t.investCash) + '</div><div class="stat-note">' + s.accounts.length + " account" + (s.accounts.length === 1 ? "" : "s") + (t.investCash > 0 ? " · incl. brokerage cash" : "") + "</div></div>" +
         '<div class="stat"><span class="micro-label">Portfolio value</span><div class="stat-value">' + fmtMoney(t.marketValue) + '</div><div class="stat-note ' + (t.pnl >= 0 ? "pos" : "neg") + '">' + fmtMoney(t.pnl, { sign: true }) + " (" + fmtPct(t.invested ? t.pnl / t.invested * 100 : 0, 1) + ")</div></div>" +
         '<div class="stat"><span class="micro-label">Credit available</span><div class="stat-value">' + fmtMoney(Math.max(0, t.creditLimit - t.debt)) + '</div><div class="stat-note">of ' + fmtMoney(t.creditLimit, { compact: true }) + " total limit</div></div>" +
         '<div class="stat"><span class="micro-label">Monthly income (net)</span><div class="stat-value gold">' + fmtMoney(eb.monthlyNet) + '</div><div class="stat-note">after tax · incl. interest &amp; dividends</div></div>' +
@@ -749,10 +749,11 @@ const Pages = {
       stat("Yield on cost", d.yieldOnCost.toFixed(2) + "%", "income ÷ what you paid", d.yieldOnCost > d.portfolioYield ? "pos" : "") +
       stat(divTax > 0 ? "After " + divTax + "% tax" : "Paying positions", divTax > 0 ? fmtMoney(afterTax, { compact: true }) + "/yr" : d.payers + " of " + d.positions, divTax > 0 ? "≈ " + fmtMoney(afterTax / 12, { compact: true }) + "/mo net" : "hold a dividend", "") +
       "</div>";
+    const small = v => v < 10 ? fmtMoney(v) : fmtMoney(v, { compact: true });   // "$0.40", not a rounded "$0"
     const rows = d.rows.map(r =>
       "<tr><td><span class=\"sym-badge\">" + esc(String(r.symbol).slice(0, 5)) + "</span> " + esc(r.name) + "</td>" +
-      '<td class="num">' + fmtMoney(r.annual, { compact: true }) + "</td>" +
-      '<td class="num">' + fmtMoney(r.annual / 12, { compact: true }) + "</td>" +
+      '<td class="num">' + small(r.annual) + "</td>" +
+      '<td class="num">' + small(r.annual / 12) + "</td>" +
       '<td class="num">' + r.yield.toFixed(2) + "%</td>" +
       '<td class="num">' + r.yieldOnCost.toFixed(2) + "%</td></tr>").join("");
     const table = '<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Position</th>' +
@@ -1229,7 +1230,7 @@ const Pages = {
     const streams =
       '<div class="panel section"><div class="panel-head"><div class="panel-title">Income streams</div>' +
       '<button class="btn small primary" data-action="add-income">+ Add stream</button></div>' +
-      '<div style="overflow-x:auto"><table class="tbl"><thead><tr>' +
+      '<div style="overflow-x:auto"><table class="tbl tbl-nowrap"><thead><tr>' +
         "<th>Stream</th><th>Deposits into</th><th class=\"num\">Net / deposit</th><th class=\"num\">≈ Monthly net</th><th>Next payment</th><th></th>" +
       "</tr></thead><tbody>" + streamsRows + "</tbody></table></div></div>";
 
@@ -1570,7 +1571,7 @@ const Pages = {
       ? '<span class="neg">You dip to <strong>' + fmtMoney(f.min, { compact: true }) + "</strong> around " + fmtDateShort(f.minDate) + " — line up " + fmtMoney(-f.min, { compact: true }) + " before then.</span>"
       : '<span class="pos">You stay in the black — lowest is <strong>' + fmtMoney(f.min, { compact: true }) + "</strong> around " + fmtDateShort(f.minDate) + ".</span>";
     return '<div class="panel section"><div class="panel-head"><div class="panel-title">Will you make it to payday?</div>' +
-      '<span class="panel-sub">liquid balance · income, bills &amp; everyday spending · next ' + f.horizon + " days</span></div>" +
+      '<span class="panel-sub">checking + savings · income, bills &amp; everyday spending · next ' + f.horizon + " days</span></div>" +
       '<div class="chart-wrap"><div class="cf-fc-plot">' +
         '<svg class="cf-fc-chart" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none">' +
           '<defs><linearGradient id="cffill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="' + col + '" stop-opacity="0.22"/><stop offset="100%" stop-color="' + col + '" stop-opacity="0"/></linearGradient></defs>' +
@@ -2170,13 +2171,19 @@ const Pages = {
     const implied = (Number(r.annualSpend) || 0) / nestReal * 100;
     const RMIN = 2.5, RMAX = 9;
     const clampR = x => Math.max(RMIN, Math.min(RMAX, x));
-    const rate = App.retire.exploreSWR != null ? clampR(App.retire.exploreSWR) : clampR(implied);
+    const inRange = implied >= RMIN && implied <= RMAX;
+    // when the implied rate is off the scale, start at the classic 4% — pinning
+    // the slider to a clamped extreme reads as "your rate" when it isn't
+    const rate = App.retire.exploreSWR != null ? clampR(App.retire.exploreSWR) : (inRange ? implied : 4);
     const hint = this._hint("Your nest egg is fixed by how much you save (the assumptions above) — spending it faster or slower doesn’t change how big it gets, only how long it lasts. This slider holds that same nest egg and the same bucket strategy, then applies a different first-year withdrawal as a % of the nest (in today’s pesos, rising with inflation each year). " +
-      (implied <= RMAX && implied >= RMIN ? "Your target spending of " + fmtMoney(r.annualSpend, { compact: true }) + " works out to about " + implied.toFixed(1) + "% — the starting point below." : "Your target spending of " + fmtMoney(r.annualSpend, { compact: true }) + " works out to about " + implied.toFixed(1) + "%, outside the slider’s range.") +
+      (inRange ? "Your target spending of " + fmtMoney(r.annualSpend, { compact: true }) + " works out to about " + implied.toFixed(1) + "% — the starting point below." : "Your target spending of " + fmtMoney(r.annualSpend, { compact: true }) + " works out to about " + implied.toFixed(1) + "%, off this scale — so we start you at the classic 4% instead.") +
       " The classic 4% rule is a rough guide; lower is safer.");
     return '<div class="panel section"><div class="panel-head"><div class="panel-title">Explore your withdrawal rate' + hint + "</div>" +
       '<span class="panel-sub">same nest egg &amp; strategy · how much could you draw?</span></div>' +
-      '<p class="method-note" style="margin-bottom:12px">Your target implies about <strong>' + implied.toFixed(1) + '%</strong>. Slide to see how spending more or less changes your income and how long the money lasts — the chart and figures update live.</p>' +
+      '<p class="method-note" style="margin-bottom:12px">' +
+        (inRange ? "Your target implies about <strong>" + implied.toFixed(1) + "%</strong>."
+          : "Your target implies about <strong>" + implied.toFixed(1) + "%</strong> — beyond this scale, so the slider starts at the classic <strong>4%</strong>.") +
+        " Slide to see how spending more or less changes your income and how long the money lasts — the chart and figures update live.</p>" +
       '<div class="r-grid"><div class="r-row r-row-wide"><label>Withdrawal rate' +
         '<output class="re-val">' + rate.toFixed(1) + '%</output></label>' +
         '<input class="re-input" type="range" min="' + RMIN + '" max="' + RMAX + '" step="0.1" value="' + rate.toFixed(1) + '"></div></div>' +
@@ -2197,7 +2204,8 @@ const Pages = {
     const RMIN = 2.5, RMAX = 9;
     const implied = (Number(r.annualSpend) || 0) / nestReal * 100;
     const clampR = x => Math.max(RMIN, Math.min(RMAX, x));
-    const rate = App.retire.exploreSWR != null ? clampR(App.retire.exploreSWR) : clampR(implied);
+    const rate = App.retire.exploreSWR != null ? clampR(App.retire.exploreSWR)
+      : (implied >= RMIN && implied <= RMAX ? implied : 4);
     const spend0 = rate / 100 * nestReal;                       // today's-pesos annual draw
     const eP = Object.assign({}, P, { annualSpend: spend0 });
     const eSim = retirementBuckets(eP);
