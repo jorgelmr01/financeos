@@ -586,7 +586,8 @@ const Pages = {
       return this._startInvestingPanel() +
         '<div class="section"><div class="empty"><div class="empty-glyph">' + icon("growth") + '</div>' +
         "<h3>Already investing?</h3><p>Add the stocks and ETFs you own with the price you paid, and FinanceOS computes your returns as you update prices.</p>" +
-        '<button class="btn primary" data-action="add-holding">+ Add your first position</button></div></div>';
+        '<button class="btn primary" data-action="add-holding">+ Add your first position</button></div></div>' +
+        this._realizedPanel();          // a fully-sold book still shows its history
     }
     // per-stock detail view
     if (App.holdingDetail) {
@@ -664,8 +665,9 @@ const Pages = {
         '<td class="num">' + fmtMoney(mv) + "</td>" +
         '<td class="num ' + (pnl >= 0 ? "pos" : "neg") + '">' + fmtMoney(pnl, { sign: true }) + '<div class="cell-sub ' + (pnl >= 0 ? "pos" : "neg") + '">' + fmtPct(pct) + "</div></td>" +
         '<td class="actions-cell">' +
+          '<button class="btn small ghost" data-action="sell-holding" data-id="' + h.id + '" title="Record a sale (realized gain)">Sell</button>' +
           '<button class="icon-btn" data-action="edit-holding" data-id="' + h.id + '" title="Edit">' + icon("edit") + '</button>' +
-          '<button class="icon-btn danger" data-action="del-holding" data-id="' + h.id + '" title="Delete">' + icon("x") + '</button>' +
+          '<button class="icon-btn danger" data-action="del-holding" data-id="' + h.id + '" title="Delete without recording a sale">' + icon("x") + '</button>' +
         "</td></tr>";
     }).join("");
 
@@ -684,9 +686,36 @@ const Pages = {
         this._advDividends() +
         this._advRiskMount() +
         alloc + table +
+        this._realizedPanel() +
         '<p class="method-note section">Advanced analytics are for information only — FinanceOS never tells you what to buy, sell or hold. Sector &amp; geography use a built-in classification of common instruments (with ETF look-through); edit any position to correct or fill it in. Risk &amp; performance use Yahoo Finance price history.</p>';
     }
-    return toggle + stats + alloc + table;
+    return toggle + stats + alloc + table + this._realizedPanel();
+  },
+
+  /* closed sales: realized gains for the year + the ISR the sale generates */
+  _realizedPanel() {
+    if (typeof realizedSummary !== "function") return "";
+    const r = realizedSummary();
+    if (!r.rows.length) return "";
+    const stat = (l, v, n, tone) => '<div class="stat"><span class="micro-label">' + l + '</span><div class="stat-value ' + (tone || "") + '" style="font-size:21px">' + v + "</div>" + (n ? '<div class="stat-note">' + n + "</div>" : "") + "</div>";
+    const stats = '<div class="grid cols-3 section" style="margin-top:0">' +
+      stat("Realized " + r.year, fmtMoney(r.gainYear, { sign: true }), r.count + " sale" + (r.count === 1 ? "" : "s") + " · " + fmtMoney(r.proceedsYear, { compact: true }) + " proceeds", r.gainYear >= 0 ? "pos" : "neg") +
+      stat("ISR on gains (est.)", r.taxRate > 0 ? fmtMoney(r.taxDue) : "—",
+        r.taxRate > 0 ? r.taxRate + "% on the net gain — set aside for April" : "set your capital-gains rate in Settings", r.taxDue > 0 ? "gold" : "") +
+      stat("All-time realized", fmtMoney(r.totalGain, { sign: true }), "across every recorded sale", r.totalGain >= 0 ? "pos" : "neg") +
+      "</div>";
+    const rows = r.rows.slice(0, 12).map(x =>
+      "<tr><td>" + fmtDateShort(parseISO(x.date)) + "</td>" +
+      "<td><span class=\"sym-badge\">" + esc(String(x.symbol).slice(0, 5)) + "</span> " + esc(x.symbol) + "</td>" +
+      '<td class="num">' + fmtNum(x.shares) + "</td>" +
+      '<td class="num">' + fmtMoneyIn(x.sellPrice, x.currency, { compact: true }) + "</td>" +
+      '<td class="num ' + (x.gain >= 0 ? "pos" : "neg") + '">' + fmtMoney(conv(x.gain, x.currency), { sign: true }) + "</td>" +
+      '<td class="actions-cell"><button class="icon-btn danger" data-action="del-realized" data-id="' + x.id + '" title="Delete this record">' + icon("x") + "</button></td></tr>").join("");
+    return '<div class="panel section"><div class="panel-head"><div class="panel-title">Realized gains</div>' +
+      '<span class="panel-sub">closed sales · avg-cost basis</span></div>' + stats +
+      '<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Date</th><th>Position</th><th class="num">Shares</th><th class="num">Price</th><th class="num">Gain</th><th></th></tr></thead><tbody>' + rows + "</tbody></table></div>" +
+      (r.gainYear < 0 ? '<p class="method-note" style="margin-top:10px">Your net result this year is a <strong>loss</strong> — in Mexico, listed-share losses can offset gains in the same year and carry forward up to 10 years. Keep the records.</p>' : "") +
+      "</div>";
   },
 
   /* basic ⇄ advanced switch for the investments tab */

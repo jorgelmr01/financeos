@@ -19,6 +19,7 @@ const Store = {
       expenses: [],   // {id, date, description, category, amount, currency, sig, source}
       budgets: {},    // { [category]: { amount, currency } }  — monthly limit per category
       goals: [],      // {id, name, target, saved, targetDate, currency} — savings goals / sinking funds
+      realized: [],   // {id, symbol, name, date, shares, sellPrice, costBasis, proceeds, gain, currency} — closed sales
       snapshots: [],  // [{d: ISO date, usd, liq, inv, debt} — net worth + composition in USD]
       learn: { scenarios: {}, sandbox: { best: 0, runs: 0 }, lessons: {} },
       settings: {
@@ -38,6 +39,7 @@ const Store = {
     this.state.settings.tax = Object.assign({ interest: 0, dividends: 0, capGains: 0, interestProvisional: 0, inflation: 4.5 }, (parsed.settings || {}).tax || {});
     if (!Array.isArray(this.state.snapshots)) this.state.snapshots = [];
     if (!Array.isArray(this.state.goals)) this.state.goals = [];
+    if (!Array.isArray(this.state.realized)) this.state.realized = [];
     if (!Array.isArray(this.state.expenses)) this.state.expenses = [];
     if (!this.state.budgets || typeof this.state.budgets !== "object") this.state.budgets = {};
     this.state.learn = Object.assign({ scenarios: {}, sandbox: {}, lessons: {} }, this.state.learn || {});
@@ -608,6 +610,59 @@ function computeTotals() {
     invested, marketValue, pnl: marketValue - invested,
     debt, creditLimit,
     assets, netWorth: assets - debt,
+  };
+}
+
+/* ---------- selling positions & realized gains ----------
+   A sale closes (part of) a position at a price: shares leave the holding, and
+   the realized gain — proceeds minus the average cost of those shares — is
+   recorded for the year's tax picture. Average-cost basis, which is how most
+   Mexican brokers report. Returns the realized record, or null if invalid. */
+function sellHolding(holdingId, sale) {
+  const h = Store.find("holdings", holdingId);
+  if (!h) return null;
+  const held = Number(h.shares) || 0;
+  const qty = Math.min(held, Number(sale.shares) || 0);
+  const price = Number(sale.price) || 0;
+  if (!(qty > 0) || !(price >= 0)) return null;
+  const basis = Number(h.costBasis) || 0;
+  const proceeds = qty * price;
+  const gain = proceeds - qty * basis;
+  const rec = {
+    id: uid(), symbol: h.symbol, name: h.name || h.symbol,
+    date: sale.date || toISO(todayMid()),
+    shares: qty, sellPrice: price, costBasis: basis,
+    proceeds: Math.round(proceeds * 100) / 100,
+    gain: Math.round(gain * 100) / 100,
+    currency: h.currency,
+  };
+  Store.state.realized.push(rec);
+  const left = Math.round((held - qty) * 1e6) / 1e6;
+  if (left > 0) Store.update("holdings", h.id, { shares: left });
+  else Store.remove("holdings", h.id);
+  Store.save();
+  return rec;
+}
+
+/* Realized-gains summary in the display currency. ISR: in Mexico, gains on
+   exchange-listed shares sold through a broker carry a flat 10% definitive tax
+   on the NET gain (losses offset gains) — the capGains rate in Settings. */
+function realizedSummary(year) {
+  const y = year || String(todayMid().getFullYear());
+  const rows = (Store.state.realized || []).slice().sort((a, b) => (a.date < b.date ? 1 : -1));
+  const inYear = rows.filter(r => String(r.date).slice(0, 4) === String(y));
+  const conv2 = r => conv(Number(r.gain) || 0, r.currency);
+  const gainYear = inYear.reduce((a, r) => a + conv2(r), 0);
+  const proceedsYear = inYear.reduce((a, r) => a + conv(Number(r.proceeds) || 0, r.currency), 0);
+  const rate = (Store.state.settings.tax && Number(Store.state.settings.tax.capGains)) || 0;
+  return {
+    year: y, rows: rows, count: inYear.length,
+    gainYear: Math.round(gainYear * 100) / 100,
+    proceedsYear: Math.round(proceedsYear * 100) / 100,
+    taxRate: rate,
+    // tax applies to the net gain only when it's positive; losses carry forward
+    taxDue: gainYear > 0 ? Math.round(gainYear * rate) / 100 : 0,
+    totalGain: Math.round(rows.reduce((a, r) => a + conv2(r), 0) * 100) / 100,
   };
 }
 

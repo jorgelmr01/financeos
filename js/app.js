@@ -347,6 +347,14 @@ const App = {
 
       case "add-holding": UI.holdingForm(); break;
       case "edit-holding": UI.holdingForm(Store.find("holdings", id)); break;
+      case "sell-holding": UI.sellForm(Store.find("holdings", id)); break;
+      case "del-realized":
+        UI.confirm("Delete this sale record?", "The realized gain leaves your tax summary. The position itself is not restored.", () => {
+          Store.remove("realized", id);
+          UI.toast("Sale record deleted");
+          App.render();
+        });
+        break;
       case "del-holding": {
         const h = Store.find("holdings", id);
         UI.confirm("Delete position?", "Remove " + esc(h.symbol) + " (" + fmtNum(h.shares) + " shares) from your portfolio?", () => {

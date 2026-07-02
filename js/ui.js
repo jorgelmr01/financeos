@@ -351,6 +351,31 @@ const UI = {
     });
   },
 
+  /* record a (partial) sale of a position → realized gain + smaller holding */
+  sellForm(h) {
+    if (!h) return;
+    const held = Number(h.shares) || 0;
+    const body = '<div class="f-grid">' +
+      this.field("Shares to sell", '<input name="shares" type="text" inputmode="decimal" class="fmt-num" required value="' + fmtNumInput(held) + '">', "You hold " + fmtNum(held)) +
+      this.field("Sale price / share (" + esc(h.currency) + ")", '<input name="price" type="text" inputmode="decimal" class="fmt-num" required value="' + (h.currentPrice != null ? fmtNumInput(h.currentPrice) : "") + '">', "Avg cost " + fmtMoneyIn(h.costBasis, h.currency)) +
+      this.field("Sale date", '<input name="date" type="date" value="' + toISO(todayMid()) + '">', null, true) +
+      "</div>" +
+      '<p class="modal-note" style="margin-top:10px">The realized gain (sale minus average cost) is recorded for your yearly tax picture. Selling everything removes the position.</p>';
+    this.openModal("Sell " + esc(h.symbol), body, {
+      submitLabel: "Record sale",
+      onSubmit(fd) {
+        const qty = parseNum(fd.get("shares")), price = parseNum(fd.get("price"));
+        if (!(qty > 0) || !(price >= 0)) { UI.toast("Enter the shares and the sale price", "error"); return; }
+        const rec = sellHolding(h.id, { shares: qty, price: price, date: fd.get("date") || undefined });
+        UI.closeModal();
+        if (rec) {
+          UI.toast("Sold " + fmtNum(rec.shares) + " " + rec.symbol + " · " + (rec.gain >= 0 ? "gain " : "loss ") + fmtMoneyIn(Math.abs(rec.gain), rec.currency, { compact: true }));
+          App.render();
+        }
+      },
+    });
+  },
+
   /* optional classification overrides for the advanced portfolio view. Blank =
      "Auto" (use the built-in dataset for known tickers). Shows what we detect. */
   _holdingClassFields(h) {

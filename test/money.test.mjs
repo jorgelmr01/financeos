@@ -26,7 +26,7 @@ vm.createContext(ctx);
 const bundle = [read("js/utils.js"), read("js/instruments.js"), read("js/budget.js"), read("js/statements.js"), read("js/store.js")].join("\n;\n") +
   "\n;globalThis.__api = { interestPerPeriod, nextInterestDate, interestScheduleLabel, interestPeriodDays," +
   " accruedInterest, holdingReturnRate, parseAmount, parseExpenseDate, expenseSig, canonicalCategory," +
-  " earningsBreakdown, allCategories, categoryMeta, effectiveBudgetForCategory, retirementProjection, retirementMonteCarlo, retirementBuckets, retirementBucketsMC, makeEquityMarket, mulberry32, MARKET, realInterestEst, monthlyInterestEst," +
+  " earningsBreakdown, sellHolding, realizedSummary, allCategories, categoryMeta, effectiveBudgetForCategory, retirementProjection, retirementMonteCarlo, retirementBuckets, retirementBucketsMC, makeEquityMarket, mulberry32, MARKET, realInterestEst, monthlyInterestEst," +
   " convBetween, sparkline, categorySeries, debtPayoff, detectRecurring, cashflowForecast, buroScore, investReadiness, irregularIncomePlan," +
   " classifyHolding, portfolioExposure, seriesReturns, annualizedVol, alignReturns, betaOf, correlationOf, periodsPerYear, weightedValueSeries, seriesReturnOver, finnhubSectorToGICS, countryToRegion, dividendSummary, drawdownInfo, fmtNumInput, parseNum, budgetSpendEstimate," +
   " toISO, parseISO, daysBetween, todayMid, icsForCards, Statements, INTEREST_FREQ, Store };";
@@ -200,6 +200,34 @@ group("Statements.parseSantander (OCR layout)", () => {
   eq(rows[0].amount, 135, "amount");
   eq(rows[0].description, "MERPAGO PERIFERICO", "reference code stripped");
   eq(rows[1].type, "payment", "PAGO POR TRANSFERENCIA → payment");
+});
+
+group("selling positions — realized gains & ISR", () => {
+  resetStore({
+    settings: { currency: "MXN", fx: null, tax: { capGains: 10 } },
+    accounts: [], cards: [], incomes: [], expenses: [], budgets: {}, snapshots: [], realized: [],
+    holdings: [{ id: "h1", symbol: "NAFTRAC", name: "NAFTRAC", shares: 100, costBasis: 50, currentPrice: 62, currency: "MXN" }],
+  });
+  // partial sale: 40 shares at 62 vs cost 50 -> gain 480, 60 shares remain
+  const rec = A.sellHolding("h1", { shares: 40, price: 62, date: "2026-03-10" });
+  approx(rec.gain, 480, 1e-9, "gain = (62 - 50) x 40");
+  approx(rec.proceeds, 2480, 1e-9, "proceeds = 62 x 40");
+  approx(A.Store.find("holdings", "h1").shares, 60, 1e-9, "the holding shrinks");
+  // selling more than held clamps to what is held, then removes the position
+  const rec2 = A.sellHolding("h1", { shares: 999, price: 45, date: "2026-06-01" });
+  approx(rec2.shares, 60, 1e-9, "an oversell clamps to the shares held");
+  approx(rec2.gain, -300, 1e-9, "a below-cost sale records a loss");
+  ok(!A.Store.find("holdings", "h1"), "selling everything closes the position");
+  // yearly summary + 10% ISR on the NET gain
+  const s = A.realizedSummary("2026");
+  eq(s.count, 2, "both sales fall in the year");
+  approx(s.gainYear, 180, 1e-9, "net gain = 480 - 300");
+  approx(s.taxDue, 18, 1e-9, "ISR = 10% of the net gain");
+  // a net-loss year owes nothing
+  A.Store.state.realized.push({ id: "x", symbol: "X", date: "2026-07-01", shares: 1, sellPrice: 1, costBasis: 2, proceeds: 1, gain: -500, currency: "MXN" });
+  ok(A.realizedSummary("2026").taxDue === 0, "a net loss owes zero ISR");
+  // invalid sales are rejected
+  ok(A.sellHolding("nope", { shares: 1, price: 1 }) == null, "unknown holding -> null");
 });
 
 group("custom categories + budget rollover", () => {
