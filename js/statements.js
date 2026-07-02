@@ -276,8 +276,13 @@ const Statements = {
   _PAYMENT_RE: /\bpago\b|gracias por su pago|thank you for your payment|\babono\b(?!\s*a\s*meses)|domiciliaci/i,
   _REFUND_RE: /reembolso|devoluci|bonificaci|refund|cr[eé]dito\b|ajuste a favor/i,
   _SKIP_RE: /saldo (al corte|anterior|del periodo)|balance forward|saldo total|monto a diferir|meses en autom[aá]tico|pago m[ií]nimo|^(iva|intereses?|ordinarios?|moratorios?|comisiones?|capital)$/i,
+  // bank fees & their IVA: real money you pay, but the statement counts them
+  // under "Comisiones/IVA", NOT "Nuevas transacciones" — so they must stay out
+  // of the purchase reconciliation while still importing as expenses.
+  _FEE_RE: /cuota anual|anualidad|iva aplicable|comisi[oó]n(es)? (por|de)|cargo por servicio/i,
   classify(desc, signedAmount, hasCR) {
     if (this._SKIP_RE.test(desc)) return "balance";
+    if (this._FEE_RE.test(desc)) return "fee";
     if (hasCR || this._PAYMENT_RE.test(desc)) return "payment";
     if (this._REFUND_RE.test(desc) || signedAmount < 0) return "refund";
     return "charge";
@@ -365,8 +370,10 @@ const Statements = {
   parseSantander(text) {
     const rows = [];
     const lines = text.split("\n");
-    // strict: require the $ + 2-decimal amount so OCR digit slips don't import as a wild number
-    const re = /(\d{1,2})-([A-Za-zÁÉÍÓÚáéíóú]{3,4})-(\d{4})(.*?)([-+]|\[\s*-\s*\])?\s*\$\s*([\d][\d,]*\.\d{2})\s*[\]|)]*$/;
+    // strict: require the money marker + 2-decimal amount so OCR digit slips
+    // don't import as a wild number. OCR reads the "$" as "S" or "§" on some
+    // scans (real example: "TCCF SANTA FE ... S 653.76"), so accept those too.
+    const re = /(\d{1,2})-([A-Za-zÁÉÍÓÚáéíóú]{3,4})-(\d{4})(.*?)([-+]|\[\s*-\s*\])?\s*[$S§]\s*([\d][\d,]*\.\d{2})\s*[\]|)]*$/;
     for (const ln of lines) {
       const m = ln.match(re);
       if (!m) continue;
@@ -518,19 +525,20 @@ const Statements = {
 
     if (viaOCR) warnings.push("Read from a scan with on-device OCR — double-check the amounts and dates before importing (you can edit any row below).");
 
-    // de-dupe rows within the statement (same date+desc+amount)
-    const seen = {};
-    // recognized Mexican issuers bill in pesos even when the layout is generic;
+    // NOTE: rows are deliberately NOT de-duplicated within a statement — two
+    // identical purchases on the same day (same shop, same price) are real and
+    // the printed total counts both. Cross-upload duplicates are still caught
+    // by commit()'s signature counting.
+    // Recognized Mexican issuers bill in pesos even when the layout is generic;
     // truly unknown statements use the user's display currency.
     const currency = this._MX_BANKS[bank] ? "MXN" : displayCurrency();
     const rows = [];
     raw.forEach(r => {
       if (r.type === "balance") return;                       // never a real expense
       r.description = this._tidyDesc(r.description);
-      const key = r.date + "|" + r.description.toLowerCase() + "|" + r.amount.toFixed(2);
-      if (seen[key]) return; seen[key] = 1;
       const isCharge = r.type === "charge";
       const isRefund = r.type === "refund";
+      const isFee = r.type === "fee";
       // expense amount: positive for spend, negative for refunds; payments excluded by default
       let amount = Math.abs(r.amount);
       if (isRefund) amount = -amount;
@@ -539,9 +547,9 @@ const Statements = {
         description: r.description.slice(0, 80),
         amount: Math.round(amount * 100) / 100,
         currency,
-        category: isCharge || isRefund ? this.guessCategory(r.description) : "Other",
-        type: r.type,                                         // charge | payment | refund
-        include: isCharge || isRefund,                        // payments off by default
+        category: isFee ? "Fees" : (isCharge || isRefund ? this.guessCategory(r.description) : "Other"),
+        type: r.type,                                         // charge | payment | refund | fee
+        include: isCharge || isRefund || isFee,               // payments off by default
       });
     });
 
@@ -563,7 +571,7 @@ const Statements = {
       amex: /Nuevas transacciones:?\s*\$?\s*([\d,]+\.\d{2})/i,
       klar: /Compras del periodo\s*\+?\s*\$?\s*([\d,]+\.\d{2})/i,
       openbank: /Cargos regulares[^$\n]*\$\s*([\d,]+\.\d{2})/i,
-      santander: /Total\s+cargos[^\d$\n]*\$?\s*([\d,]+\.\d{2})/i,
+      santander: /Total\s+(?:de\s+)?cargos[^\d\n]*?([\d][\d,]*\.\d{2})/i,
     };
     const re = pats[bank];
     if (!re) return null;

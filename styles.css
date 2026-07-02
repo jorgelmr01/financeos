@@ -2222,3 +2222,4 @@ body.light .sb-log-row { background: rgba(28, 38, 30, 0.04); }
 .cat-add-row select { width: 110px; }
 .cat-del { color: var(--text-mute); font-size: 14px; margin-left: 4px; }
 .cat-del:hover { color: var(--rose); }
+.stmt-tag.fee { background: rgba(230, 197, 112, 0.15); color: var(--gold); }

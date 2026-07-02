@@ -331,6 +331,36 @@ group("Statements.detectBank — the Mexican market", () => {
   ["bbva", "banorte", "nu", "stori", "hey"].forEach(b => ok(S._MX_BANKS[b] === 1, b + " maps to MXN"));
 });
 
+group("Statements — lessons from real statements (synthetic patterns)", () => {
+  const S = A.Statements;
+  // 1. bank fees & their IVA are NOT purchases: they import as Fees but stay
+  //    out of the "nuevas transacciones" reconciliation (real Amex layout)
+  eq(S.classify("CUOTA ANUAL MENSUALIDAD 01 DE 03", 500, false), "fee", "annual-fee installment is a fee");
+  eq(S.classify("IVA APLICABLE", 80, false), "fee", "the fee's IVA is a fee");
+  eq(S.classify("COMISION POR DISPOSICION", 120, false), "fee", "cash-advance fee is a fee");
+  eq(S.classify("TACOS EL GUERO", 120, false), "charge", "a normal merchant is still a charge");
+  const recon = S._reconcile("Nuevas transacciones: 300.00",
+    "amex", [{ type: "charge", amount: 300 }, { type: "fee", amount: 566.66 }]);
+  ok(recon.ok === true, "fees are excluded from the purchase reconciliation");
+
+  // 2. two identical purchases (same day, shop and price) are BOTH real — the
+  //    statement's printed total counts both, so parsing must keep both
+  const dupText = "Del 4 de Mayo al 3 de Junio de 2026\n" +
+    "31 de Mayo REST EL PATIO CIUDAD DE MEX 155.00\n" +
+    "31 de Mayo REST EL PATIO CIUDAD DE MEX 155.00";
+  eq(S.parseAmex(dupText).length, 2, "legit duplicate rows both survive");
+
+  // 3. scanned Santander: OCR reads the "$" as "S" (or "§") on some rows —
+  //    the money marker accepts them so the row isn't silently dropped
+  const sRows = S.parseSantander("05-May-2026 |06-May-2026 | CAFETERIA CENTRO OPQ 1210178U8 S 421.30");
+  eq(sRows.length, 1, "an S-misread money marker still parses");
+  approx(sRows[0].amount, 421.30, 1e-9, "with the right amount");
+
+  // 4. the printed total appears as "Total de cargos" (with "de") on scans
+  const t = S._chargeTotal("Total de cargos $ 2,318.40", "santander");
+  approx(t, 2318.40, 1e-9, "\"Total de cargos\" is recognized");
+});
+
 group("Statements._reconcile flags gross gaps, tolerates small ones", () => {
   const S = A.Statements;
   const rows = [{ type: "charge", amount: 100 }, { type: "charge", amount: 50 }, { type: "payment", amount: 999 }];

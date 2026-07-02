@@ -745,7 +745,8 @@ const UI = {
 
     const rowsHtml = parse.rows.map((r, i) => {
       const tag = r.type === "payment" ? '<span class="stmt-tag pay">payment</span>'
-                : r.type === "refund" ? '<span class="stmt-tag ref">refund</span>' : "";
+                : r.type === "refund" ? '<span class="stmt-tag ref">refund</span>'
+                : r.type === "fee" ? '<span class="stmt-tag fee">fee</span>' : "";
       const amtCls = r.amount < 0 ? " neg" : "";
       const dateLabel = (function () { const d = parseISO(r.date); return d ? fmtDateShort(d) : r.date; })();
       const disabled = (r.type === "payment");                  // category irrelevant for payments
