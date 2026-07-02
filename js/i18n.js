@@ -185,6 +185,9 @@ const I18N = {
     "Scenario": "Escenario", "Impact": "Impacto", "+ Asset": "+ Activo", "+ Liability": "+ Pasivo",
     "Asset class": "Clase de activo", "Current": "Actual", "Target": "Objetivo", "Drift": "Desviación",
     "To rebalance": "Para rebalancear", "Save targets": "Guardar objetivos",
+    "Portfolio checkup": "Chequeo del portafolio", "Fix first": "Arregla primero",
+    "Worth doing": "Vale la pena", "Idea": "Idea",
+    "Instruments that address this": "Instrumentos que lo atienden",
   },
 };
 

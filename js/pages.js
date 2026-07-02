@@ -760,13 +760,14 @@ const Pages = {
     if (App.portfolioMode === "advanced") {
       return toggle + stats +
         this._advExposure() +
+        this._advicePanel() +
         this._rebalancePanel() +
         this._advPerformanceMount() +
         this._advDividends() +
         this._advRiskMount() +
         alloc + table +
         this._realizedPanel() +
-        '<p class="method-note section">Advanced analytics are for information only — FinanceOS never tells you what to buy, sell or hold. Sector &amp; geography use a built-in classification of common instruments (with ETF look-through); edit any position to correct or fill it in. Risk &amp; performance use Yahoo Finance price history.</p>';
+        '<p class="method-note section">Sector &amp; geography use a built-in classification of common instruments (with ETF look-through); edit any position to correct or fill it in. Risk &amp; performance use Yahoo Finance price history. The checkup’s ideas are rule-based educational observations — not personalized investment advice.</p>';
     }
     return toggle + stats + alloc + table + this._realizedPanel();
   },
@@ -838,6 +839,34 @@ const Pages = {
       '<div class="exp-row"><span class="exp-name"><span class="dot" style="background:' + CHART_COLORS[i % CHART_COLORS.length] + '"></span>' +
       esc(x.name) + '</span><span class="exp-pct">' + x.pct.toFixed(1) + "%</span></div>").join("") + "</div>";
     return '<div class="exp-block"><div class="micro-label" style="margin-bottom:8px">' + title + "</div>" + bar + legend + "</div>";
+  },
+
+  /* ---- portfolio doctor: rule-based improvement ideas ---- */
+  _advicePanel() {
+    if (typeof portfolioAdvice !== "function") return "";
+    const ideas = portfolioAdvice();
+    const wer = weightedExpenseRatio();
+    if (!ideas.length && !wer) return "";
+    const SEV = { high: ["neg", "Fix first"], medium: ["gold", "Worth doing"], idea: ["", "Idea"] };
+    const cards = ideas.map(i => {
+      const cand = (i.candidates || []).map(c =>
+        '<span class="pd-cand">' + esc(c.symbol) + '<span class="pd-cand-sub">' + esc(c.name) + (c.er != null ? " · " + c.er + "%" : "") + "</span></span>").join("");
+      return '<div class="pd-card ' + i.sev + '">' +
+        '<div class="pd-head"><span class="pd-sev ' + SEV[i.sev][0] + '">' + SEV[i.sev][1] + "</span>" +
+        '<span class="pd-title">' + i.title + "</span></div>" +
+        '<p class="pd-body">' + i.body + "</p>" +
+        (cand ? '<div class="pd-cands"><span class="micro-label">Instruments that address this</span>' + cand + "</div>" : "") +
+      "</div>";
+    }).join("");
+    const werLine = wer
+      ? '<span class="panel-sub">' + (ideas.length ? ideas.length + " finding" + (ideas.length === 1 ? "" : "s") + " · " : "") +
+        "fund fees " + wer.pct.toFixed(2) + "%/yr ≈ " + fmtMoney(wer.annualCost, { compact: true }) + "/yr</span>"
+      : '<span class="panel-sub">' + ideas.length + " findings</span>";
+    return '<div class="panel section"><div class="panel-head"><div class="panel-title">Portfolio checkup' +
+      this._hint("Rule-based observations from published portfolio-construction principles: concentration limits, home bias, asset mix, fund overlap, fee drag and cash drag. The instruments named are common, low-cost examples from the app's dataset — they are educational starting points for your own research, not personalized recommendations. Nothing here knows your full situation, horizon or taxes.") + "</div>" +
+      werLine + "</div>" +
+      (cards || '<p class="method-note">No findings — the book is diversified, cheap and fully invested by these rules. Keep it boring.</p>') +
+      '<p class="method-note" style="margin-top:12px">Educational observations, not investment advice. Past performance isn’t predictive; do your own research or talk to an advisor before acting.</p></div>';
   },
 
   /* ---- rebalancing vs target allocation ---- */

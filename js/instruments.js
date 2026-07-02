@@ -28,35 +28,35 @@ const NASDAQ_SECTORS = { "Technology": 50, "Communication": 15, "Consumer Discre
    scale; normalized at use). Single stocks use a single `sector`/`region`. */
 const INSTRUMENTS = {
   // ---- US broad-market equity ETFs ----
-  "VOO": { name: "Vanguard S&P 500", assetClass: "Equity", sectors: SP500_SECTORS, regions: { "United States": 100 } },
-  "IVV": { name: "iShares Core S&P 500", assetClass: "Equity", sectors: SP500_SECTORS, regions: { "United States": 100 } },
-  "SPY": { name: "SPDR S&P 500", assetClass: "Equity", sectors: SP500_SECTORS, regions: { "United States": 100 } },
-  "VTI": { name: "Vanguard Total US Market", assetClass: "Equity", sectors: SP500_SECTORS, regions: { "United States": 100 } },
-  "ITOT": { name: "iShares Core Total US", assetClass: "Equity", sectors: SP500_SECTORS, regions: { "United States": 100 } },
-  "QQQ": { name: "Invesco QQQ (Nasdaq 100)", assetClass: "Equity", sectors: NASDAQ_SECTORS, regions: { "United States": 100 } },
-  "QQQM": { name: "Invesco Nasdaq 100", assetClass: "Equity", sectors: NASDAQ_SECTORS, regions: { "United States": 100 } },
-  "VUG": { name: "Vanguard Growth", assetClass: "Equity", sectors: { "Technology": 45, "Consumer Discretionary": 18, "Communication": 12, "Industrials": 8, "Health Care": 8, "Financials": 6, "Consumer Staples": 3 }, regions: { "United States": 100 } },
-  "VTV": { name: "Vanguard Value", assetClass: "Equity", sectors: { "Financials": 22, "Health Care": 18, "Industrials": 13, "Consumer Staples": 11, "Energy": 9, "Technology": 9, "Utilities": 7, "Consumer Discretionary": 5, "Materials": 4, "Communication": 2 }, regions: { "United States": 100 } },
+  "VOO": { er: 0.03, name: "Vanguard S&P 500", assetClass: "Equity", sectors: SP500_SECTORS, regions: { "United States": 100 } },
+  "IVV": { er: 0.03, name: "iShares Core S&P 500", assetClass: "Equity", sectors: SP500_SECTORS, regions: { "United States": 100 } },
+  "SPY": { er: 0.09, name: "SPDR S&P 500", assetClass: "Equity", sectors: SP500_SECTORS, regions: { "United States": 100 } },
+  "VTI": { er: 0.03, name: "Vanguard Total US Market", assetClass: "Equity", sectors: SP500_SECTORS, regions: { "United States": 100 } },
+  "ITOT": { er: 0.03, name: "iShares Core Total US", assetClass: "Equity", sectors: SP500_SECTORS, regions: { "United States": 100 } },
+  "QQQ": { er: 0.2, name: "Invesco QQQ (Nasdaq 100)", assetClass: "Equity", sectors: NASDAQ_SECTORS, regions: { "United States": 100 } },
+  "QQQM": { er: 0.15, name: "Invesco Nasdaq 100", assetClass: "Equity", sectors: NASDAQ_SECTORS, regions: { "United States": 100 } },
+  "VUG": { er: 0.04, name: "Vanguard Growth", assetClass: "Equity", sectors: { "Technology": 45, "Consumer Discretionary": 18, "Communication": 12, "Industrials": 8, "Health Care": 8, "Financials": 6, "Consumer Staples": 3 }, regions: { "United States": 100 } },
+  "VTV": { er: 0.04, name: "Vanguard Value", assetClass: "Equity", sectors: { "Financials": 22, "Health Care": 18, "Industrials": 13, "Consumer Staples": 11, "Energy": 9, "Technology": 9, "Utilities": 7, "Consumer Discretionary": 5, "Materials": 4, "Communication": 2 }, regions: { "United States": 100 } },
   // ---- international / global equity ETFs ----
-  "VXUS": { name: "Vanguard Total International", assetClass: "Equity", sectors: SP500_SECTORS, regions: { "Developed ex-US": 75, "Emerging Markets": 25 } },
-  "VEA": { name: "Vanguard Developed Markets", assetClass: "Equity", sectors: SP500_SECTORS, regions: { "Developed ex-US": 100 } },
-  "VWO": { name: "Vanguard Emerging Markets", assetClass: "Equity", sectors: { "Technology": 24, "Financials": 22, "Consumer Discretionary": 14, "Communication": 10, "Materials": 8, "Energy": 6, "Industrials": 6, "Consumer Staples": 6, "Health Care": 4 }, regions: { "Emerging Markets": 100 } },
-  "VT": { name: "Vanguard Total World", assetClass: "Equity", sectors: SP500_SECTORS, regions: { "United States": 60, "Developed ex-US": 28, "Emerging Markets": 12 } },
-  "ACWI": { name: "iShares MSCI ACWI", assetClass: "Equity", sectors: SP500_SECTORS, regions: { "United States": 62, "Developed ex-US": 26, "Emerging Markets": 12 } },
+  "VXUS": { er: 0.07, name: "Vanguard Total International", assetClass: "Equity", sectors: SP500_SECTORS, regions: { "Developed ex-US": 75, "Emerging Markets": 25 } },
+  "VEA": { er: 0.05, name: "Vanguard Developed Markets", assetClass: "Equity", sectors: SP500_SECTORS, regions: { "Developed ex-US": 100 } },
+  "VWO": { er: 0.08, name: "Vanguard Emerging Markets", assetClass: "Equity", sectors: { "Technology": 24, "Financials": 22, "Consumer Discretionary": 14, "Communication": 10, "Materials": 8, "Energy": 6, "Industrials": 6, "Consumer Staples": 6, "Health Care": 4 }, regions: { "Emerging Markets": 100 } },
+  "VT": { er: 0.07, name: "Vanguard Total World", assetClass: "Equity", sectors: SP500_SECTORS, regions: { "United States": 60, "Developed ex-US": 28, "Emerging Markets": 12 } },
+  "ACWI": { er: 0.32, name: "iShares MSCI ACWI", assetClass: "Equity", sectors: SP500_SECTORS, regions: { "United States": 62, "Developed ex-US": 26, "Emerging Markets": 12 } },
   // ---- Mexico ----
-  "NAFTRAC": { name: "iShares NAFTRAC (IPC)", assetClass: "Equity", sectors: { "Consumer Staples": 24, "Financials": 20, "Materials": 16, "Communication": 14, "Industrials": 12, "Consumer Discretionary": 8, "Real Estate": 6 }, regions: { "Mexico": 100 } },
+  "NAFTRAC": { er: 0.14, name: "iShares NAFTRAC (IPC)", assetClass: "Equity", sectors: { "Consumer Staples": 24, "Financials": 20, "Materials": 16, "Communication": 14, "Industrials": 12, "Consumer Discretionary": 8, "Real Estate": 6 }, regions: { "Mexico": 100 } },
   "MEXTRAC": { name: "Mexico equity", assetClass: "Equity", sectors: { "Consumer Staples": 24, "Financials": 20, "Materials": 16, "Communication": 14, "Industrials": 12, "Consumer Discretionary": 8, "Real Estate": 6 }, regions: { "Mexico": 100 } },
   // ---- bonds / income ----
-  "BND": { name: "Vanguard Total Bond", assetClass: "Bonds", regions: { "United States": 100 } },
-  "AGG": { name: "iShares Core US Bond", assetClass: "Bonds", regions: { "United States": 100 } },
-  "BNDX": { name: "Vanguard Intl Bond", assetClass: "Bonds", regions: { "Developed ex-US": 100 } },
-  "TLT": { name: "iShares 20+ Yr Treasury", assetClass: "Bonds", regions: { "United States": 100 } },
+  "BND": { er: 0.03, name: "Vanguard Total Bond", assetClass: "Bonds", regions: { "United States": 100 } },
+  "AGG": { er: 0.03, name: "iShares Core US Bond", assetClass: "Bonds", regions: { "United States": 100 } },
+  "BNDX": { er: 0.07, name: "Vanguard Intl Bond", assetClass: "Bonds", regions: { "Developed ex-US": 100 } },
+  "TLT": { er: 0.15, name: "iShares 20+ Yr Treasury", assetClass: "Bonds", regions: { "United States": 100 } },
   "CETETRC": { name: "CETES tracker", assetClass: "Bonds", regions: { "Mexico": 100 } },
   // ---- real estate / commodities / crypto ----
-  "VNQ": { name: "Vanguard Real Estate", assetClass: "Real Estate", regions: { "United States": 100 } },
-  "GLD": { name: "SPDR Gold", assetClass: "Commodities", regions: { "Global": 100 } },
-  "IAU": { name: "iShares Gold", assetClass: "Commodities", regions: { "Global": 100 } },
-  "BITO": { name: "ProShares Bitcoin", assetClass: "Crypto", regions: { "Global": 100 } },
+  "VNQ": { er: 0.13, name: "Vanguard Real Estate", assetClass: "Real Estate", regions: { "United States": 100 } },
+  "GLD": { er: 0.4, name: "SPDR Gold", assetClass: "Commodities", regions: { "Global": 100 } },
+  "IAU": { er: 0.25, name: "iShares Gold", assetClass: "Commodities", regions: { "Global": 100 } },
+  "BITO": { er: 0.95, name: "ProShares Bitcoin", assetClass: "Crypto", regions: { "Global": 100 } },
   "BTC": { name: "Bitcoin", assetClass: "Crypto", regions: { "Global": 100 } },
   "ETH": { name: "Ethereum", assetClass: "Crypto", regions: { "Global": 100 } },
   // ---- US large-cap single stocks ----
@@ -565,4 +565,132 @@ function stressTest(opts) {
       scen("All at once", equityHit + fxHit + propHit),
     ],
   };
+}
+
+/* ---------- portfolio doctor: rule-based improvement ideas ----------
+   Diagnoses the portfolio's weak attributes (concentration, geography, asset
+   mix, overlap, cost, idle cash) and names concrete instruments from the
+   curated dataset that would improve each one. Educational observations from
+   published rules of thumb — NOT personalized advice; the user decides. */
+function weightedExpenseRatio() {
+  let mv = 0, weighted = 0, known = 0;
+  (Store.state.holdings || []).forEach(h => {
+    const v = conv((Number(h.shares) || 0) * (Number(h.currentPrice) || 0), h.currency);
+    mv += v;
+    const info = INSTRUMENTS[String(h.symbol || "").toUpperCase()];
+    if (info && info.er != null) { weighted += v * info.er; known += v; }
+    else if (h.kind !== "etf") { known += v; }        // single stocks cost ~0 to hold
+  });
+  if (!(mv > 0)) return null;
+  return { pct: weighted / mv, coveragePct: known / mv * 100, annualCost: weighted / 100, marketValue: mv };
+}
+
+function portfolioAdvice() {
+  const s = Store.state;
+  const holdings = s.holdings || [];
+  const t = computeTotals();
+  const out = [];
+  if (!holdings.length) return out;
+  const e = portfolioExposure();
+  const mv = e.total || 1;
+  const pick = (syms) => syms.filter(x => INSTRUMENTS[x]).map(x => ({ symbol: x, name: INSTRUMENTS[x].name, er: INSTRUMENTS[x].er }));
+  const w = h => conv((Number(h.shares) || 0) * (Number(h.currentPrice) || 0), h.currency) / mv * 100;
+
+  // 1. single-position concentration (skip broad funds — that's their job)
+  holdings.forEach(h => {
+    const weight = w(h);
+    const info = INSTRUMENTS[String(h.symbol || "").toUpperCase()];
+    // broad = a multi-sector equity fund, or any diversified non-equity fund
+    // (a total-bond fund at 25% is an allocation choice, not concentration)
+    const isBroad = info && ((info.sectors && Object.keys(info.sectors).length > 4) || (info.assetClass && info.assetClass !== "Equity"));
+    if (weight > 20 && !isBroad) {
+      out.push({ sev: "high", key: "concentration",
+        title: esc(h.symbol) + " is " + weight.toFixed(0) + "% of your portfolio",
+        body: "A single " + (h.kind === "etf" ? "narrow fund" : "company") + " above ~20% means its bad year is YOUR bad year. Consider trimming toward a broad index core, or directing new money elsewhere until it dilutes.",
+        candidates: pick(["VTI", "VOO", "VT"]) });
+    }
+  });
+
+  // 2. sector concentration via look-through
+  if (e.topSector && e.topSector.pct > 40 && e.topSector.name !== "Unclassified") {
+    out.push({ sev: "high", key: "sector",
+      title: e.topSector.name + " is " + e.topSector.pct.toFixed(0) + "% of the book",
+      body: "One sector driving almost half the portfolio is a factor bet, not diversification. A value or total-market fund pulls the mix back toward the whole economy.",
+      candidates: pick(["VTV", "VTI", "VT"]) });
+  }
+
+  // 3. geography
+  const usPct = (e.byRegion.find(r => r.name === "United States") || {}).pct || 0;
+  const mxPct = (e.byRegion.find(r => r.name === "Mexico") || {}).pct || 0;
+  const intl = (e.byRegion.find(r => r.name === "Developed ex-US") || {}).pct || 0;
+  if (usPct > 85) {
+    out.push({ sev: "medium", key: "geo-us",
+      title: Math.round(usPct) + "% United States",
+      body: "Home-market concentration cuts both ways — the US has led for a decade, but a global sleeve smooths the decades when it doesn't. 10–30% international is the common institutional range.",
+      candidates: pick(["VXUS", "VEA", "VT"]) });
+  } else if (mxPct > 85) {
+    out.push({ sev: "medium", key: "geo-mx",
+      title: Math.round(mxPct) + "% Mexico",
+      body: "Your income, property and portfolio all riding the same economy is triple exposure to one country. A US or global index fund adds a currency hedge too (see the stress test).",
+      candidates: pick(["VOO", "VT", "ACWI"]) });
+  }
+
+  // 4. asset mix
+  const eqPct = (e.byAssetClass.find(c => c.name === "Equity") || {}).pct || 0;
+  const hasBonds = e.byAssetClass.some(c => c.name === "Bonds" && c.pct > 2);
+  if (eqPct > 95 && !hasBonds) {
+    out.push({ sev: "medium", key: "no-bonds",
+      title: "100% equities, no fixed income",
+      body: "Fine while young and accumulating — but a bond/CETES sleeve is what you rebalance FROM in a crash. Even 10% dry powder changes behavior. In Mexico, CETES via cetesdirecto is the zero-commission starting point.",
+      candidates: pick(["BND", "CETETRC", "AGG"]) });
+  }
+
+  // 5. overlap: multiple funds tracking the same large-cap US market
+  const heldSyms = holdings.map(h => String(h.symbol || "").toUpperCase());
+  const spLike = heldSyms.filter(x => ["VOO", "IVV", "SPY", "VTI", "ITOT"].indexOf(x) >= 0);
+  const qLike = heldSyms.filter(x => ["QQQ", "QQQM"].indexOf(x) >= 0);
+  if (spLike.length && qLike.length) {
+    out.push({ sev: "idea", key: "overlap",
+      title: spLike[0] + " + " + qLike[0] + " overlap heavily",
+      body: "The Nasdaq 100 is ~40% of the S&P 500 by weight — holding both is mostly a leveraged bet on the same mega-cap tech names, not diversification. Intentional tilt? Fine. Accidental? Consolidate.",
+      candidates: [] });
+  }
+  if (spLike.length > 1) {
+    out.push({ sev: "idea", key: "dup",
+      title: spLike.join(" + ") + " track the same index",
+      body: "Two S&P 500 funds is one fund with extra statements. Keep the cheaper one and point new money there.",
+      candidates: pick(spLike.slice().sort((a, b) => (INSTRUMENTS[a].er || 9) - (INSTRUMENTS[b].er || 9)).slice(0, 1)) });
+  }
+
+  // 6. cost drag
+  const wer = weightedExpenseRatio();
+  if (wer && wer.pct > 0.25) {
+    const expensive = holdings
+      .map(h => ({ h: h, info: INSTRUMENTS[String(h.symbol || "").toUpperCase()] }))
+      .filter(x => x.info && x.info.er > 0.25)
+      .map(x => x.h.symbol);
+    out.push({ sev: "medium", key: "cost",
+      title: "Weighted expense ratio " + wer.pct.toFixed(2) + "%",
+      body: "Fees compound against you exactly like returns compound for you" + (expensive.length ? " — " + expensive.join(", ") + " carry the bulk of it" : "") + ". Broad index funds under 0.10% deliver the same market.",
+      candidates: pick(["VTI", "VOO", "BND"]) });
+  }
+
+  // 7. idle brokerage cash
+  if (t.investCash > 0 && t.marketValue > 0 && t.investCash / (t.marketValue + t.investCash) > 0.10) {
+    out.push({ sev: "idea", key: "cash-drag",
+      title: fmtMoney(t.investCash, { compact: true }) + " sitting idle in brokerage cash",
+      body: "Over 10% of the account uninvested is a silent drag — inflation taxes it daily. If it's not your emergency fund, put it on a schedule (monthly buys) or park it in CETES while it waits.",
+      candidates: pick(["CETETRC", "VTI"]) });
+  }
+
+  // 8. everything classified? nudge, since every rule above depends on it
+  if (e.unclassifiedPct > 15) {
+    out.push({ sev: "idea", key: "unclassified",
+      title: Math.round(e.unclassifiedPct) + "% of the book is unclassified",
+      body: "The ideas above only see what's classified. Set the asset class, sector and region on those positions (or add a free Finnhub key) and this checkup gets sharper.",
+      candidates: [] });
+  }
+
+  const rank = { high: 0, medium: 1, idea: 2 };
+  return out.sort((a, b) => rank[a.sev] - rank[b.sev]);
 }

@@ -26,7 +26,7 @@ vm.createContext(ctx);
 const bundle = [read("js/utils.js"), read("js/instruments.js"), read("js/budget.js"), read("js/statements.js"), read("js/store.js")].join("\n;\n") +
   "\n;globalThis.__api = { interestPerPeriod, nextInterestDate, interestScheduleLabel, interestPeriodDays," +
   " accruedInterest, holdingReturnRate, parseAmount, parseExpenseDate, expenseSig, canonicalCategory," +
-  " earningsBreakdown, sellHolding, realizedSummary, amortizeLoan, xirr, portfolioXirrFlows, riskAdjusted, rebalancePlan, currencyExposure, stressTest, computeTotals, allCategories, categoryMeta, effectiveBudgetForCategory, retirementProjection, retirementMonteCarlo, retirementBuckets, retirementBucketsMC, makeEquityMarket, mulberry32, MARKET, realInterestEst, monthlyInterestEst," +
+  " earningsBreakdown, sellHolding, realizedSummary, amortizeLoan, xirr, portfolioXirrFlows, riskAdjusted, rebalancePlan, currencyExposure, stressTest, portfolioAdvice, weightedExpenseRatio, INSTRUMENTS, computeTotals, allCategories, categoryMeta, effectiveBudgetForCategory, retirementProjection, retirementMonteCarlo, retirementBuckets, retirementBucketsMC, makeEquityMarket, mulberry32, MARKET, realInterestEst, monthlyInterestEst," +
   " convBetween, sparkline, categorySeries, debtPayoff, detectRecurring, cashflowForecast, buroScore, investReadiness, irregularIncomePlan," +
   " classifyHolding, portfolioExposure, seriesReturns, annualizedVol, alignReturns, betaOf, correlationOf, periodsPerYear, weightedValueSeries, seriesReturnOver, finnhubSectorToGICS, countryToRegion, dividendSummary, drawdownInfo, fmtNumInput, parseNum, budgetSpendEstimate," +
   " toISO, parseISO, daysBetween, todayMid, icsForCards, Statements, INTEREST_FREQ, Store };";
@@ -255,6 +255,49 @@ group("risk-adjusted returns — Sharpe & Sortino", () => {
   ok(rc.sharpe < ra.sharpe, "chop is punished");
   ok(rc.sortino != null && rc.vol > ra.vol, "and shows up as volatility");
   ok(A.riskAdjusted(up.slice(0, 4), 52, 7.5) == null, "too little data → null");
+});
+
+group("portfolio checkup — rule-based improvement ideas", () => {
+  const H = (sym, mvUSD, kind) => ({ id: sym, symbol: sym, kind: kind || "etf", shares: 1, currentPrice: mvUSD, costBasis: mvUSD, currency: "USD", purchaseDate: "2025-01-01" });
+  const base = { settings: { currency: "USD", fx: null, tax: {} }, accounts: [], cards: [], incomes: [], expenses: [], budgets: {}, snapshots: [], realized: [], assets: [], liabilities: [] };
+  // a concentrated, US-only, all-equity, overlapping, pricey book → many findings
+  resetStore(Object.assign({}, base, { holdings: [
+    H("VOO", 3000), H("QQQ", 3000),                      // overlap + QQQ er 0.20
+    H("NVDA", 4000, "stock"),                            // 40% single stock
+  ]}));
+  let keys = A.portfolioAdvice().map(i => i.key);
+  ok(keys.indexOf("concentration") >= 0, "flags a 40% single position");
+  ok(keys.indexOf("geo-us") >= 0, "flags 100% US");
+  ok(keys.indexOf("no-bonds") >= 0, "flags all-equity");
+  ok(keys.indexOf("overlap") >= 0, "flags S&P + Nasdaq overlap");
+  ok(keys.indexOf("sector") >= 0, "flags the tech concentration NVDA+QQQ create");
+  // severity ordering: high before idea
+  const ideas = A.portfolioAdvice();
+  ok(ideas[0].sev === "high", "worst findings lead");
+  ideas.forEach(i => ok(Array.isArray(i.candidates), "every finding carries (possibly empty) candidates"));
+  // candidates come from the dataset with names
+  const conc = ideas.find(i => i.key === "concentration");
+  ok(conc.candidates.length > 0 && conc.candidates[0].name, "concentration suggests broad funds by name");
+
+  // a boring, diversified, cheap book → almost nothing to say
+  resetStore(Object.assign({}, base, { holdings: [
+    H("VT", 6000), H("BND", 2500), H("VXUS", 1500),
+  ]}));
+  keys = A.portfolioAdvice().map(i => i.key);
+  ok(keys.indexOf("concentration") < 0 && keys.indexOf("geo-us") < 0 && keys.indexOf("no-bonds") < 0 && keys.indexOf("overlap") < 0,
+    "a diversified cheap book raises none of the big flags");
+
+  // weighted expense ratio math: VOO 0.03 on 3k + QQQ 0.20 on 3k + stock 0 on 4k
+  resetStore(Object.assign({}, base, { holdings: [H("VOO", 3000), H("QQQ", 3000), H("NVDA", 4000, "stock")] }));
+  const wer = A.weightedExpenseRatio();
+  approx(wer.pct, (3000 * 0.03 + 3000 * 0.20) / 10000, 1e-9, "weighted er across the whole book");
+  approx(wer.annualCost, (3000 * 0.03 + 3000 * 0.20) / 100, 1e-6, "annual fee cost in currency");
+  ok(A.INSTRUMENTS.VOO.er === 0.03 && A.INSTRUMENTS.QQQM.er === 0.15, "dataset carries expense ratios");
+
+  // empty book → no advice, no crash
+  resetStore(base);
+  eq(A.portfolioAdvice().length, 0, "no holdings → no findings");
+  ok(A.weightedExpenseRatio() == null, "no holdings → no expense ratio");
 });
 
 group("rebalancing & stress testing the balance sheet", () => {
