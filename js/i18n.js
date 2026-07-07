@@ -214,6 +214,8 @@ const I18N = {
     "Start": "Inicio", "Saved": "Ahorro", "Financial": "Financiero",
     "Property": "Inmuebles", "Events": "Eventos", "Tax": "Impuesto",
     "Purchase (house, car…)": "Compra (casa, coche…)",
+    "One-time expense / purchase (house, car, trip…)": "Gasto único / compra (casa, coche, viaje…)",
+    "Add a one-time expense or event in": "Agregar un gasto único o evento en",
     "New salary (exact amount)": "Nuevo sueldo (monto exacto)",
     "Salary raise (%)": "Aumento de sueldo (%)",
     "New spending level": "Nuevo nivel de gasto",

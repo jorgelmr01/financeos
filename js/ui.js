@@ -402,10 +402,10 @@ const UI = {
     const y0 = todayMid().getFullYear();
     const kind = e.kind || "purchase";
     const isLevelKind = k => k === "salary" || k === "spending";
-    const kinds = [["purchase", "Purchase (house, car…)"], ["salary", "New salary (exact amount)"], ["raise", "Salary raise (%)"], ["spending", "New spending level"], ["windfall", "Windfall (bonus, sale, inheritance)"]];
+    const kinds = [["purchase", "One-time expense / purchase (house, car, trip…)"], ["salary", "New salary (exact amount)"], ["raise", "Salary raise (%)"], ["spending", "New spending level"], ["windfall", "Windfall (bonus, sale, inheritance)"]];
     const body = '<div class="f-grid">' +
       this.field("Type", '<select name="kind" id="plan-kind">' + kinds.map(k => '<option value="' + k[0] + '"' + (kind === k[0] ? " selected" : "") + ">" + k[1] + "</option>").join("") + "</select>") +
-      this.field("Year", '<input name="year" type="number" min="' + (y0 + 1) + '" max="' + (y0 + 40) + '" step="1" required value="' + (e.year || y0 + 4) + '">') +
+      this.field("Year", '<input name="year" type="number" min="' + (y0 + 1) + '" max="' + (y0 + 90) + '" step="1" required value="' + (e.year || y0 + 4) + '">') +
       this.field("Name", '<input name="name" maxlength="40" value="' + esc(e.name || "") + '" placeholder="Casa CDMX, coche, bono…">', null, true) +
       this.field("Amount", '<input name="amount" type="text" inputmode="decimal" class="fmt-num" value="' + (!isLevelKind(kind) && e.amount != null && e.amount !== 0 ? fmtNumInput(e.amount) : "") + '">', "For purchases & windfalls", false, "plan-amount-field") +
       this.field("Monthly amount", '<input name="monthly" type="text" inputmode="decimal" class="fmt-num" value="' + (isLevelKind(kind) && e.amount != null && e.amount !== 0 ? fmtNumInput(e.amount) : "") + '">', "Your net take-home becomes exactly this, from that year on", false, "plan-mo-field") +

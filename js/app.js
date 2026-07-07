@@ -372,6 +372,9 @@ const App = {
         break;
 
       case "add-plan": UI.planForm(); break;
+      // "+" on a ledger row: a one-time (CAPEX-style) expense pre-pinned to
+      // that year — planForm defaults to a consumption purchase
+      case "add-plan-year": UI.planForm({ year: parseInt(id, 10) }); break;
       // record the open/closed state so slider re-renders don't collapse the
       // table; the browser handles the actual <details> toggle natively
       case "toggle-wplan-detail": this.wplanOpen = !this.wplanOpen; break;

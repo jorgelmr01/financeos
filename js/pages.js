@@ -601,7 +601,8 @@ const Pages = {
         '<td class="num">' + (r.prop !== 0 ? fmtMoney(r.prop, { compact: true }) : "—") + "</td>" +
         '<td class="num' + (r.loans > 0 ? " neg" : "") + '">' + (r.loans > 0 ? fmtMoney(-r.loans, { compact: true }) : "—") + "</td>" +
         '<td class="num"><strong>' + fmtMoney(r.netWorth, { compact: true }) + "</strong></td>" +
-        '<td class="wp-ev">' + r.events.map(e => esc(e.name)).join(", ") + "</td></tr>";
+        '<td class="wp-ev">' + r.events.map(e => esc(e.name)).join(", ") +
+          ' <button class="icon-btn wp-add" data-action="add-plan-year" data-id="' + r.year + '" title="' + tr("Add a one-time expense or event in") + " " + r.year + '">+</button></td></tr>';
     }).join("");
     const table = '<details class="wp-detail"' + (App.wplanOpen ? " open" : "") + '><summary data-action="toggle-wplan-detail">Year-by-year detail</summary>' +
       '<div style="overflow-x:auto;margin-top:8px"><table class="tbl wp-tbl"><thead><tr>' +
