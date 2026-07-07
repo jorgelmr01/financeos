@@ -312,6 +312,60 @@ group("wealth projection — life events, raises, loan payoffs", () => {
   ok(sim.rows[0].shortfall, "cash going negative is flagged, not hidden");
 });
 
+group("wealth projection — exact salary & spending levels pinned to a year", () => {
+  const y0 = new Date().getFullYear();
+  const mk = (mm) => y0 + "-" + String(mm).padStart(2, "0") + "-05";
+  const base = {
+    settings: { currency: "MXN", fx: null, tax: { inflation: 0 } },
+    accounts: [{ id: "a", type: "savings", balance: 1000000, currency: "MXN" }],
+    cards: [], holdings: [], budgets: {}, snapshots: [], realized: [], assets: [], liabilities: [], flows: [],
+    incomes: [{ id: "i", name: "Salario", amount: 50000, amountType: "net", taxRate: 0, currency: "MXN", frequency: "monthly", payDay: 1 }],
+    expenses: [1, 2, 3].map((m, i) => ({ id: "e" + i, date: mk(m), amount: 30000, category: "Housing", currency: "MXN" })),
+  };
+
+  // "in year 2 my salary becomes exactly 100k/mo, then grows 0%" — the amount
+  // is pinned, not multiplied, and the event's own growth rate takes over
+  resetStore(JSON.parse(JSON.stringify(base)));
+  A.Store.state.plan = [{ id: "s", kind: "salary", year: y0 + 2, amount: 100000, pct: 0, currency: "MXN", name: "Nuevo empleo" }];
+  let sim = A.wealthProjection({ years: 4, retPct: 0, propPct: 0, inflationPct: 0, incomeGrowthPct: 10 });
+  approx(sim.rows[0].salary, 660000, 2000, "year 1 keeps the baseline 10% growth");
+  approx(sim.rows[1].salary, 1200000, 1, "the event year pays EXACTLY the new salary");
+  approx(sim.rows[2].salary, 1200000, 1, "pct 0 freezes growth from then on");
+  approx(sim.rows[3].salary, 1200000, 1, "…for good");
+  ok(sim.rows[1].events.some(e => e.kind === "salary"), "the event is marked in its year");
+
+  // pct null → the baseline growth keeps running after the pin
+  A.Store.state.plan = [{ id: "s", kind: "salary", year: y0 + 2, amount: 100000, pct: null, currency: "MXN", name: "Nuevo empleo" }];
+  sim = A.wealthProjection({ years: 3, retPct: 0, propPct: 0, inflationPct: 0, incomeGrowthPct: 10 });
+  approx(sim.rows[1].salary, 1200000, 1, "pinned in its year");
+  approx(sim.rows[2].salary, 1320000, 2, "then baseline 10% growth resumes");
+
+  // …and a custom growth rate from the event wins over the baseline
+  A.Store.state.plan = [{ id: "s", kind: "salary", year: y0 + 2, amount: 100000, pct: 5, currency: "MXN" }];
+  sim = A.wealthProjection({ years: 3, retPct: 0, propPct: 0, inflationPct: 0, incomeGrowthPct: 10 });
+  approx(sim.rows[2].salary, 1260000, 2, "the event's own 5% growth replaces the baseline");
+
+  // "from year 2 I spend exactly 20k/mo" — the level is pinned, then inflates
+  A.Store.state.plan = [{ id: "g", kind: "spending", year: y0 + 2, amount: 20000, currency: "MXN", name: "Vida austera" }];
+  sim = A.wealthProjection({ years: 4, retPct: 0, propPct: 0, inflationPct: 10, incomeGrowthPct: 0 });
+  approx(sim.rows[1].spend, 240000, 1, "the event year spends EXACTLY the new level");
+  approx(sim.rows[2].spend, 264000, 2, "then it grows with inflation");
+  ok(sim.rows[0].spend > 300000, "the year before still spends the old (inflated) base");
+  ok(sim.rows[1].events.some(e => e.kind === "spending"), "the event is marked in its year");
+
+  // the user's exact story: burn everything by year 2, then a new salary —
+  // the ledger follows: down to ~0, then climbing again
+  resetStore(JSON.parse(JSON.stringify(base)));
+  A.Store.state.plan = [
+    { id: "b", kind: "purchase", year: y0 + 2, amount: 1480000, currency: "MXN", asset: false, name: "MBA" },
+    { id: "s", kind: "salary", year: y0 + 3, amount: 150000, pct: 5, currency: "MXN", name: "Post-MBA" },
+  ];
+  sim = A.wealthProjection({ years: 5, retPct: 0, propPct: 0, inflationPct: 0, incomeGrowthPct: 0 });
+  ok(Math.abs(sim.rows[1].fin) < 20000, "wealth burns to ~zero in the purchase year");
+  approx(sim.rows[2].salary, 1800000, 1, "the new salary starts the year after");
+  ok(sim.rows[4].netWorth > sim.rows[1].netWorth + 2000000, "and the rebuild is visible in the ledger");
+});
+
 group("lifetime model — financed purchases, retirement, taxes, estate", () => {
   const y0 = new Date().getFullYear();
   const mk = (mm) => y0 + "-" + String(mm).padStart(2, "0") + "-05";

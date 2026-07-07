@@ -19,6 +19,7 @@ const App = {
   buro: null,          // self-reported inputs for the credit-score simulator
   irreg: null,         // inputs for the irregular-income planner
   wplan: null,         // wealth-projection assumptions (lazy-init)
+  wplanOpen: false,    // whether the projection's year-by-year table is expanded
 
   PAGE_META: {
     overview:   { title: "Today",        actions: "" },
@@ -28,6 +29,7 @@ const App = {
     earnings:   { title: "Income",       actions: '<button class="btn primary" data-action="add-income">+ Add income stream</button>' },
     budget:     { title: "Budget",       actions: '<button class="btn" data-action="expense-template">↓ Template</button><button class="btn" data-action="expense-import">↑ Upload</button><button class="btn primary" data-action="add-expense">+ Add expense</button>' },
     retirement: { title: "Retirement",   actions: '<button class="btn" data-action="retire-reset">↺ Use my net worth</button>' },
+    projection: { title: "Projection",   actions: '<button class="btn primary" data-action="add-plan">+ Life event</button>' },
     milestones: { title: "Milestones",   actions: "" },
     learn:      { title: "Learn",        actions: "" },
     guide:      { title: "Guide",        actions: "" },
@@ -370,6 +372,9 @@ const App = {
         break;
 
       case "add-plan": UI.planForm(); break;
+      // record the open/closed state so slider re-renders don't collapse the
+      // table; the browser handles the actual <details> toggle natively
+      case "toggle-wplan-detail": this.wplanOpen = !this.wplanOpen; break;
       case "edit-plan": UI.planForm(Store.find("plan", id)); break;
       case "del-plan": Store.remove("plan", id); this.render(); break;
 

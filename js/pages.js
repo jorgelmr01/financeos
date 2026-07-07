@@ -439,42 +439,43 @@ const Pages = {
         "</div>" +
         statement +
       "</div>" +
-      this._stressPanel() +
-      this._wealthPlanPanel();
+      this._stressPanel();
   },
 
-  /* ---------- lifetime wealth projection with planned life events ---------- */
-  _wealthPlanPanel() {
+  /* ================= PROJECTION — a dedicated page for the lifetime
+     wealth model: assumptions, life events, chart and year-by-year detail */
+  projection() {
     if (typeof wealthProjection !== "function") return "";
     const t = computeTotals();
-    if (!(Math.abs(t.netWorth) > 0)) return "";
-    if (!App.wplan) {
-      const infl = (Store.state.settings.tax && Number(Store.state.settings.tax.inflation)) || 4.5;
-      const by = Number(Store.state.settings.birthYear) || 0;
-      const age = by > 1900 ? todayMid().getFullYear() - by : 30;
-      App.wplan = { age: age, toAge: Math.max(age + 10, 90), retireAge: 65, pensionPct: 0,
-        ret: 8, propG: infl, incomeG: 2, eqShare: 70, propCarry: 1, estateCost: 3, inflation: infl };
+    if (!(Math.abs(t.netWorth) > 0) && !(Store.state.plan || []).length) {
+      return '<div class="section"><div class="empty"><div class="empty-glyph">' + icon("growth") + "</div>" +
+        "<h3>Nothing to project yet</h3><p>Add your accounts, income and recent spending first — the projection builds a year-by-year model of your whole financial life: salary changes, purchases, loans, taxes, retirement and estate.</p>" +
+        '<button class="btn primary" data-action="nav" data-page="accounts">Go to accounts</button></div></div>';
     }
+    return this._wplanAssumptions() + this._wplanEvents() +
+      '<div class="panel section"><div class="panel-head"><div class="panel-title">Your life, year by year' +
+      this._hint("Deterministic on purpose — the Retirement page handles market randomness; this shows the shape of a life under your assumptions. Every slider and event updates it live.") + "</div></div>" +
+      '<div id="wplan-out">' + this._wealthPlanOut() + "</div></div>";
+  },
+
+  _wplanInit() {
+    if (App.wplan) return;
+    const infl = (Store.state.settings.tax && Number(Store.state.settings.tax.inflation)) || 4.5;
+    const by = Number(Store.state.settings.birthYear) || 0;
+    const age = by > 1900 ? todayMid().getFullYear() - by : 30;
+    App.wplan = { age: age, toAge: Math.max(age + 10, 90), retireAge: 65, pensionPct: 0,
+      ret: 8, propG: infl, incomeG: 2, eqShare: 70, propCarry: 1, estateCost: 3, inflation: infl };
+  },
+
+  _wplanAssumptions() {
+    this._wplanInit();
     const w = App.wplan;
     const slider = (key, label, val, min, max, step, suffix) =>
       '<div class="r-row"><label>' + label +
         '<span class="r-val-wrap"><input class="wp-num" data-wk="' + key + '" type="text" inputmode="decimal" value="' + val + '" aria-label="' + label + '"><span class="r-suffix">' + suffix + "</span></span></label>" +
         '<input class="wp-input" data-wk="' + key + '" type="range" min="' + min + '" max="' + max + '" step="' + step + '" value="' + val + '"></div>';
-    const events = (Store.state.plan || []).slice().sort((a, b) => a.year - b.year);
-    const KIND = { purchase: ["bag", "Purchase"], raise: ["growth", "Raise"], windfall: ["gift", "Windfall"] };
-    const evRows = events.map(e => {
-      const meta = KIND[e.kind] || KIND.purchase;
-      const detail = e.kind === "raise" ? (Number(e.pct) > 0 ? "+" : "") + e.pct + "% salary"
-        : fmtMoneyIn(e.amount, e.currency, { compact: true }) +
-          (e.kind === "purchase" ? (e.financed ? " · financed " + (e.downPct || 20) + "% down @ " + (e.loanRate || 0) + "% · " + (e.termYears || 20) + "y" : "") + (e.asset ? " · becomes an asset" : " · consumption") : "");
-      return '<div class="bs-row"><span class="bs-name">' + icon(meta[0], "ic-cat") + esc(e.name || meta[1]) +
-        '<span class="bs-kind">' + e.year + " · " + meta[1] + " · " + detail + "</span></span>" +
-        '<span class="bs-actions"><button class="icon-btn" data-action="edit-plan" data-id="' + e.id + '" title="Edit">' + icon("edit") + "</button>" +
-        '<button class="icon-btn danger" data-action="del-plan" data-id="' + e.id + '" title="Delete">' + icon("x") + "</button></span></div>";
-    }).join("");
-    return '<div class="panel section"><div class="panel-head"><div class="panel-title">Lifetime wealth plan' +
-      this._hint("Your whole balance sheet, year by year, for an entire life: financial assets compound with the Mexican tax drag on REAL returns (interest ISR on the non-equity share, 10% bursátil on the equity share, both only above inflation), property appreciates net of its carry cost (predial + upkeep), loans amortize away (a payoff frees its payment into savings), salary grows and STOPS at your retirement age (optionally replaced by a pension), and your planned life events land in their year — including purchases financed with a new loan. It ends with the estate: in Mexico, inheritances to direct heirs are ISR-exempt via testamento; what drags is settlement costs (notary, probate), which you can set below. Deterministic on purpose — the Retirement page handles market randomness; this shows the shape of a life.") + "</div>" +
-      '<span class="panel-sub"><button class="btn small ghost" data-action="add-plan">+ Life event</button></span></div>' +
+    return '<div class="panel section"><div class="panel-head"><div class="panel-title">Model assumptions' +
+      this._hint("Your whole balance sheet, year by year, for an entire life: financial assets compound with the Mexican tax drag on REAL returns (interest ISR on the non-equity share, 10% bursátil on the equity share, both only above inflation), property appreciates net of its carry cost (predial + upkeep), loans amortize away (a payoff frees its payment into savings), salary grows and STOPS at your retirement age (optionally replaced by a pension), and your planned life events land in their year — including purchases financed with a new loan. It ends with the estate: in Mexico, inheritances to direct heirs are ISR-exempt via testamento; what drags is settlement costs (notary, probate), which you can set below.") + "</div></div>" +
       '<div class="sb-alloc-head"><span class="micro-label">Your life</span></div>' +
       '<div class="r-grid">' +
         slider("age", "Your age today", w.age, 15, 90, 1, " yr") +
@@ -490,10 +491,30 @@ const Pages = {
         slider("propCarry", "Property carry cost", w.propCarry, 0, 4, 0.25, "%") +
         slider("incomeG", "Baseline salary growth", w.incomeG, 0, 10, 0.5, "%") +
         slider("estateCost", "Estate settlement costs", w.estateCost, 0, 15, 0.5, "%") +
-      "</div>" +
-      (evRows ? '<div style="margin-top:14px">' + evRows + "</div>"
-        : '<p class="method-note" style="margin-top:12px">No life events yet — add the house you plan to buy in 2030 (financed, with its down payment and mortgage), the car in 2031, the raise you expect, and see what they do to a lifetime.</p>') +
-      '<div id="wplan-out">' + this._wealthPlanOut() + "</div></div>";
+      "</div></div>";
+  },
+
+  _wplanEvents() {
+    const events = (Store.state.plan || []).slice().sort((a, b) => a.year - b.year);
+    const KIND = { purchase: ["bag", "Purchase"], salary: ["wallet", "New salary"], raise: ["growth", "Raise"], spending: ["bag", "New spending"], windfall: ["gift", "Windfall"] };
+    const evRows = events.map(e => {
+      const meta = KIND[e.kind] || KIND.purchase;
+      const detail = e.kind === "raise" ? (Number(e.pct) > 0 ? "+" : "") + e.pct + "% salary"
+        : e.kind === "salary" ? fmtMoneyIn(e.amount, e.currency, { compact: true }) + "/mo net" + (e.pct != null && e.pct !== "" ? " · then " + (Number(e.pct) >= 0 ? "+" : "") + e.pct + "%/yr" : "")
+        : e.kind === "spending" ? fmtMoneyIn(e.amount, e.currency, { compact: true }) + "/mo total spending"
+        : fmtMoneyIn(e.amount, e.currency, { compact: true }) +
+          (e.kind === "purchase" ? (e.financed ? " · financed " + (e.downPct || 20) + "% down @ " + (e.loanRate || 0) + "% · " + (e.termYears || 20) + "y" : "") + (e.asset ? " · becomes an asset" : " · consumption") : "");
+      return '<div class="bs-row"><span class="bs-name">' + icon(meta[0], "ic-cat") + esc(e.name || meta[1]) +
+        '<span class="bs-kind">' + e.year + " · " + meta[1] + " · " + detail + "</span></span>" +
+        '<span class="bs-actions"><button class="icon-btn" data-action="edit-plan" data-id="' + e.id + '" title="Edit">' + icon("edit") + "</button>" +
+        '<button class="icon-btn danger" data-action="del-plan" data-id="' + e.id + '" title="Delete">' + icon("x") + "</button></span></div>";
+    }).join("");
+    return '<div class="panel section"><div class="panel-head"><div class="panel-title">Life events' +
+      this._hint("The script of your life, one event per line: pin your salary to an exact amount from a given year (with its own growth from then on), plan a % raise, set a whole new spending level, schedule a purchase — cash or financed with a down payment and an auto-modeled loan — or drop in a windfall. Each event lands in its year and reshapes everything after it.") + "</div>" +
+      '<span class="panel-sub"><button class="btn small ghost" data-action="add-plan">+ Life event</button></span></div>' +
+      (evRows ? "<div>" + evRows + "</div>"
+        : '<p class="method-note">No life events yet — pin your salary to an exact amount from 2028, add the house you plan to buy in 2030 (financed, with its down payment and mortgage), the car in 2031, and see what they do to a lifetime.</p>') +
+      "</div>";
   },
 
   _wealthPlanOut() {
@@ -548,6 +569,7 @@ const Pages = {
     const zero = lo < 0 ? '<line x1="0" y1="' + Y(0).toFixed(1) + '" x2="' + W + '" y2="' + Y(0).toFixed(1) + '" stroke="var(--rose)" stroke-width="1" stroke-dasharray="4 4" opacity="0.7"/>' : "";
     const hits = this._chartHits(rows.map(r => ({
       tip: r.year + (r.age != null ? " · age " + r.age : "") + " · <strong>" + fmtMoney(r.netWorth, { compact: true }) + "</strong>" +
+        "<br>income " + fmtMoney(r.salary, { compact: true }) + " · spend " + fmtMoney(r.spend, { compact: true }) +
         "<br>fin " + fmtMoney(r.fin, { compact: true }) + " · prop " + fmtMoney(r.prop, { compact: true }) + (r.loans > 0 ? " · debt " + fmtMoney(-r.loans, { compact: true }) : "") +
         (r.tax > 0 ? " · tax " + fmtMoney(r.tax, { compact: true }) : "") +
         (r.events.length ? "<br>" + r.events.map(e => esc(e.name) + " (" + esc(e.detail) + ")").join(", ") : ""),
@@ -564,7 +586,31 @@ const Pages = {
         (shortYear ? '<span class="neg">cash runs negative in ' + shortYear.year + (shortYear.age != null ? " (age " + shortYear.age + ")" : "") + "</span>"
           : "gold dots = life events" + (retIdx >= 0 ? " · blue line = retirement" : "")) +
       "</span><span>" + last.year + (last.age != null ? " · " + last.age : "") + "</span></div>";
-    return stats + chart +
+    // the ledger of a life: every year self-contained — what you start with,
+    // what comes in, what goes out, what's left
+    const detailRows = rows.map((r, i) => {
+      const startNW = i === 0 ? sim.start : rows[i - 1].netWorth;
+      return "<tr" + (r.shortfall ? ' class="wp-short"' : "") + ">" +
+        "<td>" + r.year + (r.age != null ? ' <span class="bs-kind">· ' + r.age + "</span>" : "") + "</td>" +
+        '<td class="num">' + fmtMoney(startNW, { compact: true }) + "</td>" +
+        '<td class="num">' + fmtMoney(r.salary, { compact: true }) + "</td>" +
+        '<td class="num">' + fmtMoney(r.spend, { compact: true }) + "</td>" +
+        '<td class="num">' + (r.tax > 0 ? fmtMoney(r.tax, { compact: true }) : "—") + "</td>" +
+        '<td class="num ' + (r.surplus >= 0 ? "pos" : "neg") + '">' + fmtMoney(r.surplus, { sign: true, compact: true }) + "</td>" +
+        '<td class="num' + (r.fin < 0 ? " neg" : "") + '">' + fmtMoney(r.fin, { compact: true }) + "</td>" +
+        '<td class="num">' + (r.prop !== 0 ? fmtMoney(r.prop, { compact: true }) : "—") + "</td>" +
+        '<td class="num' + (r.loans > 0 ? " neg" : "") + '">' + (r.loans > 0 ? fmtMoney(-r.loans, { compact: true }) : "—") + "</td>" +
+        '<td class="num"><strong>' + fmtMoney(r.netWorth, { compact: true }) + "</strong></td>" +
+        '<td class="wp-ev">' + r.events.map(e => esc(e.name)).join(", ") + "</td></tr>";
+    }).join("");
+    const table = '<details class="wp-detail"' + (App.wplanOpen ? " open" : "") + '><summary data-action="toggle-wplan-detail">Year-by-year detail</summary>' +
+      '<div style="overflow-x:auto;margin-top:8px"><table class="tbl wp-tbl"><thead><tr>' +
+      "<th>Year</th>" +
+      '<th class="num">Start</th><th class="num">Income</th><th class="num">Spending</th><th class="num">Tax</th><th class="num">Saved</th>' +
+      '<th class="num">Financial</th><th class="num">Property</th><th class="num">Debt</th><th class="num">Net worth</th><th>Events</th>' +
+      "</tr></thead><tbody>" + detailRows + "</tbody></table></div>" +
+      '<p class="method-note" style="margin-top:8px">Start is last year’s net worth. Saved = income − spending (purchases, down payments and windfalls land in their year but are events, not spending). Financial is cash + investments net of card debt; Debt is loan balances.</p></details>';
+    return stats + chart + table +
       '<p class="method-note" style="margin-top:10px">Nominal unless marked. Investment returns pay the Mexican tax drag yearly on their REAL (above-inflation) component — blended from your Settings rates by the equity share (' +
       fmtMoney(sim.taxPaid, { compact: true }) + " of lifetime tax in this run). Existing loan payments live inside today’s spending (a payoff frees them); financed purchases add their down payment now and their new loan’s payments on top of spending until it dies. Property pays its carry cost every year. Estate: direct heirs are ISR-exempt in Mexico — settlement costs are the drag, and a testamento is the cheapest estate planning there is.</p>";
   },

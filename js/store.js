@@ -1360,13 +1360,27 @@ function wealthProjection(opts) {
 
   const rows = [], payoffs = [];
   let endedPayments = 0, taxPaid = 0;
+  let g = incG;                 // baseline salary growth — a "set salary" event may change it
+  let spendLevel = baseSpend;   // inflates yearly — a "set spending" event pins a new level
   for (let i = 1; i <= N; i++) {
     const year = y0 + i;
     const age = ageNow != null ? ageNow + i : null;
     const yearEvents = [];
 
-    // salary path: baseline growth, event raises, then retirement replaces it
-    salary *= (1 + incG);
+    // salary path: a "set salary" event pins an exact new amount this year
+    // (optionally with its own growth rate from then on); otherwise baseline
+    // growth applies. Then event raises, then retirement replaces it.
+    const salEv = events.filter(e => e.kind === "salary" && Number(e.year) === year);
+    if (salEv.length) {
+      salEv.forEach(e => {
+        salary = conv(Number(e.amount) || 0, e.currency) * 12;   // stored as monthly net
+        const hasG = e.pct != null && e.pct !== "" && isFinite(Number(e.pct));
+        if (hasG) g = Number(e.pct) / 100;
+        yearEvents.push({ kind: "salary", name: e.name || "New salary", detail: Math.round(salary / 12) + "/mo" + (hasG ? " · then " + (Number(e.pct) >= 0 ? "+" : "") + Number(e.pct) + "%/yr" : "") });
+      });
+    } else {
+      salary *= (1 + g);
+    }
     events.filter(e => e.kind === "raise" && Number(e.year) === year).forEach(e => {
       const pct = Number(e.pct) || 0;
       salary *= (1 + pct / 100);
@@ -1412,9 +1426,17 @@ function wealthProjection(opts) {
     });
     const loanBal = loans.reduce((a, l) => a + l.bal, 0);
 
-    // spending: inflation-grown base, minus freed original-loan payments, plus
-    // the new plan-loans' payments and the property carry cost (predial, upkeep)
-    const spend = Math.max(0, baseSpend * Math.pow(1 + infl, i) - endedPayments) + extraPayments + prop * propCarry;
+    // spending: inflation-grown level — a "set spending" event pins a new level
+    // this year (the new number is the WHOLE truth, so past loan-payoff credits
+    // reset) — minus freed original-loan payments, plus the new plan-loans'
+    // payments and the property carry cost (predial, upkeep)
+    spendLevel *= (1 + infl);
+    events.filter(e => e.kind === "spending" && Number(e.year) === year).forEach(e => {
+      spendLevel = conv(Number(e.amount) || 0, e.currency) * 12;   // stored as monthly
+      endedPayments = 0;
+      yearEvents.push({ kind: "spending", name: e.name || "New spending", detail: Math.round(spendLevel / 12) + "/mo" });
+    });
+    const spend = Math.max(0, spendLevel - endedPayments) + extraPayments + prop * propCarry;
     const surplus = income - spend;
 
     // financial assets: compound, then pay Mexican tax on the REAL return —

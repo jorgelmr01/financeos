@@ -35,10 +35,12 @@ const I18N = {
       const keys = Object.keys(this.dict)
         .sort((a, b) => b.length - a.length)
         .map(k => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-      this._regex = new RegExp(">(" + keys.join("|") + ")<", "g");
+      // the optional trailing space covers panel titles that end in a hint
+      // button (_hint prepends one): ">Stress test <button…" still translates
+      this._regex = new RegExp(">(" + keys.join("|") + ")( ?)<", "g");
     }
     const dict = this.dict;
-    return html.replace(this._regex, (m, p) => ">" + (dict[p] || p) + "<");
+    return html.replace(this._regex, (m, p, sp) => ">" + (dict[p] || p) + sp + "<");
   },
 
   /* the static sidebar is plain HTML — translate its labels in place.
@@ -206,6 +208,27 @@ const I18N = {
     "Peak wealth": "Riqueza máxima", "Estate to heirs": "Herencia a herederos",
     "Down payment %": "Enganche %", "Loan rate % (APR)": "Tasa del crédito % (APR)",
     "Term (years)": "Plazo (años)", "Assumptions": "Supuestos",
+    "Projection": "Proyección", "Model assumptions": "Supuestos del modelo",
+    "Life events": "Eventos de vida", "Your life, year by year": "Tu vida, año por año",
+    "Year-by-year detail": "Detalle año por año",
+    "Start": "Inicio", "Saved": "Ahorro", "Financial": "Financiero",
+    "Property": "Inmuebles", "Events": "Eventos", "Tax": "Impuesto",
+    "Purchase (house, car…)": "Compra (casa, coche…)",
+    "New salary (exact amount)": "Nuevo sueldo (monto exacto)",
+    "Salary raise (%)": "Aumento de sueldo (%)",
+    "New spending level": "Nuevo nivel de gasto",
+    "Windfall (bonus, sale, inheritance)": "Ingreso extraordinario (bono, venta, herencia)",
+    "Monthly amount": "Monto mensual",
+    "New monthly net salary": "Nuevo sueldo neto mensual",
+    "New monthly spending": "Nuevo gasto mensual",
+    "Then grows per year": "Después crece anual",
+    "Salary changes by this % from that year on": "El sueldo cambia este % a partir de ese año",
+    "Optional — leave empty to keep the baseline salary growth from the sliders": "Opcional — déjalo vacío para conservar el crecimiento salarial base de los controles",
+    "Your net take-home becomes exactly this, from that year on": "Tu ingreso neto mensual se vuelve exactamente esto a partir de ese año",
+    "Your TOTAL spending becomes this, from that year on (then grows with inflation)": "Tu gasto TOTAL se vuelve esto a partir de ese año (después crece con la inflación)",
+    "Nothing to project yet": "Nada que proyectar todavía",
+    "Go to accounts": "Ir a cuentas",
+    "New salary": "Nuevo sueldo", "New spending": "Nuevo gasto",
   },
 };
 
