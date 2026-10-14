@@ -276,6 +276,12 @@ const I18N = {
     "{n} logged months": "{n} meses registrados",
     "{n}-month average": "promedio de {n} meses",
     "no data yet": "sin datos aún",
+    // one-time hits in the runway
+    "One-time hits in this window": "Eventos únicos en este periodo",
+    "Counted in January of their year — the money has to be there early.": "Se cuentan en enero de su año — el dinero debe estar disponible desde temprano.",
+    "Edit in Projection →": "Editar en Proyección →",
+    "Windfall": "Ingreso extraordinario",
+    "One-time expense": "Gasto único",
   },
 };
 

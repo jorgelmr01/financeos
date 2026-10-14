@@ -27,7 +27,7 @@ const bundle = [read("js/utils.js"), read("js/instruments.js"), read("js/budget.
   "\n;globalThis.__api = { interestPerPeriod, nextInterestDate, interestScheduleLabel, interestPeriodDays," +
   " accruedInterest, holdingReturnRate, parseAmount, parseExpenseDate, expenseSig, canonicalCategory," +
   " earningsBreakdown, sellHolding, realizedSummary, amortizeLoan, xirr, portfolioXirrFlows, riskAdjusted, rebalancePlan, currencyExposure, stressTest, portfolioAdvice, weightedExpenseRatio, INSTRUMENTS, accountXirr, contributionSeries, Report, fromUSD, wealthProjection, computeTotals, allCategories, categoryMeta, effectiveBudgetForCategory, retirementProjection, retirementMonteCarlo, retirementBuckets, retirementBucketsMC, makeEquityMarket, mulberry32, MARKET, realInterestEst, monthlyInterestEst," +
-  " convBetween, sparkline, categorySeries, debtPayoff, detectRecurring, cashflowForecast, buroScore, investReadiness, irregularIncomePlan, spendingPace, runwayToDate, monthlyTotals," +
+  " convBetween, sparkline, categorySeries, debtPayoff, detectRecurring, cashflowForecast, buroScore, investReadiness, irregularIncomePlan, spendingPace, runwayToDate, monthlyTotals, runwayOneTimeHits," +
   " classifyHolding, portfolioExposure, seriesReturns, annualizedVol, alignReturns, betaOf, correlationOf, periodsPerYear, weightedValueSeries, seriesReturnOver, finnhubSectorToGICS, countryToRegion, dividendSummary, drawdownInfo, fmtNumInput, parseNum, budgetSpendEstimate, CURRENCY_CODES, CURRENCY_LOCALE, FALLBACK_FX, COUNTRY_PRESETS, countryPreset, applyCountryPreset, monthNameShort, fmtDate, fmtDateShort, fmtNum, activeLocale," +
   " toISO, parseISO, daysBetween, todayMid, icsForCards, Statements, INTEREST_FREQ, Store };";
 vm.runInContext(bundle, ctx, { filename: "bundle.js" });
@@ -1156,6 +1156,63 @@ group("finish-line runway — will the money last until the target?", () => {
   // invalid targets
   ok(A.runwayToDate(A.toISO(new Date(t.getFullYear(), t.getMonth() - 1, 1))) === null, "past target → null");
   ok(A.runwayToDate("not-a-date") === null, "garbage target → null");
+});
+
+group("runway one-time hits — tuition and windfalls from the life plan", () => {
+  const t = A.todayMid();
+  const pad = n => String(n).padStart(2, "0");
+  const y = t.getFullYear(), m = t.getMonth();
+  const targetISO = A.toISO(new Date(y, m + 20, 1));
+  const base = {
+    settings: { currency: "USD", fx: null, tax: {} },
+    accounts: [{ id: "c", type: "checking", balance: 60000, currency: "USD" }],
+    cards: [], holdings: [], monthlyTotals: [], incomes: [], expenses: [],
+  };
+  const tuitionYear = y + 1;
+
+  // a tuition bill next year dents the projection
+  resetStore(Object.assign({}, base, {
+    plan: [{ id: "p1", kind: "purchase", year: tuitionYear, name: "MBA tuition", amount: 40000, currency: "USD" }],
+  }));
+  const hits = A.runwayOneTimeHits(targetISO);
+  eq(hits.length, 1, "picks up the tuition event");
+  eq(hits[0].mk, tuitionYear + "-01", "counted in January of its year");
+  approx(hits[0].amount, -40000, 0.01, "purchase subtracts");
+  const r = A.runwayToDate(targetISO, { spend: 2000, buffer: 0 });
+  approx(r.endBalance, 60000 - 40000 - 2000 * r.nMonths, 1, "ending balance reflects the tuition hit");
+  ok(r.maxSpend < (60000 - 40000) / r.nMonths + 1, "max spend accounts for the hit");
+
+  // a windfall adds
+  resetStore(Object.assign({}, base, {
+    plan: [{ id: "w1", kind: "windfall", year: tuitionYear, name: "Signing bonus", amount: 10000, currency: "USD" }],
+  }));
+  const r2 = A.runwayToDate(targetISO, { spend: 2000, buffer: 0 });
+  approx(r2.endBalance, 60000 + 10000 - 2000 * r2.nMonths, 1, "windfall adds to the ending balance");
+
+  // financed purchase counts only the down payment
+  resetStore(Object.assign({}, base, {
+    plan: [{ id: "p2", kind: "purchase", year: tuitionYear, name: "Condo", amount: 200000, currency: "USD", financed: true, downPct: 20 }],
+  }));
+  const hits3 = A.runwayOneTimeHits(targetISO);
+  approx(hits3[0].amount, -40000, 0.01, "financed purchase counts only the 20% down payment");
+
+  // past-year events and events beyond the finish line are ignored; raises aren't lump sums
+  resetStore(Object.assign({}, base, {
+    plan: [
+      { id: "p3", kind: "purchase", year: y - 1, name: "Old car", amount: 20000, currency: "USD" },
+      { id: "p4", kind: "purchase", year: y + 10, name: "Far house", amount: 20000, currency: "USD" },
+      { id: "r1", kind: "raise", year: tuitionYear, pct: 10, name: "Raise" },
+    ],
+  }));
+  eq(A.runwayOneTimeHits(targetISO).length, 0, "ignores past years, far-future years and non-lump kinds");
+
+  // this year's event lands in the current month, not last January
+  resetStore(Object.assign({}, base, {
+    plan: [{ id: "p5", kind: "purchase", year: y, name: "Tuition now", amount: 5000, currency: "USD" }],
+  }));
+  const hits5 = A.runwayOneTimeHits(targetISO);
+  eq(hits5.length, 1, "this-year event is kept");
+  ok(hits5[0].mk >= y + "-" + pad(m + 1), "placed no earlier than the current month (" + hits5[0].mk + ")");
 });
 
 group("spending pace — one number a month is enough", () => {

@@ -1283,6 +1283,11 @@ button, a, .nav-item, .tool-btn, .icon-btn, .swatch { -webkit-tap-highlight-colo
 .rw-chart { margin: 2px 0 14px; }
 .rw-chart .spark { width: 100%; height: 44px; }
 .rw-chart-labels { display: flex; justify-content: space-between; color: var(--text-mute); font-size: 12px; margin-top: 4px; }
+.rw-hits { margin: 0 0 14px; }
+.rw-hit { display: flex; gap: 10px; font-size: 13px; padding: 3px 0; color: var(--text-mute); }
+.rw-hit .neg { color: var(--rose); font-weight: 600; }
+.rw-hit .pos { color: var(--mint); font-weight: 600; }
+.rw-hits-note { color: var(--text-mute); font-size: 12px; margin-top: 6px; }
 .empty-tip { color: var(--text-mute); font-size: 12.5px; margin-top: 18px; }
 .empty-tip a { color: var(--mint); text-decoration: none; }
 .empty-tip a:hover { text-decoration: underline; }

@@ -2009,6 +2009,17 @@ const Pages = {
     const endLabel = r.runsOut
       ? tr("runs out") + " " + monthNameShort(parseISO(r.runsOut + "-01").getMonth())
       : fmtMoney(r.endBalance, { compact: true }) + " " + tr("at finish");
+    // one-time hits picked up automatically from the Projection life events
+    const hitsHtml = r.hits.length
+      ? '<div class="rw-hits"><div class="micro-label">' + tr("One-time hits in this window") + "</div>" +
+        r.hits.map(h =>
+          '<div class="rw-hit"><span class="' + (h.amount < 0 ? "neg" : "pos") + '">' +
+          (h.amount < 0 ? "− " : "+ ") + fmtMoney(Math.abs(h.amount), { compact: true }) + "</span>" +
+          "<span>" + esc(h.name) + " · " + h.label + "</span></div>"
+        ).join("") +
+        '<div class="rw-hits-note">' + tr("Counted in January of their year — the money has to be there early.") + "</div>" +
+        '<button class="btn small ghost" data-action="nav" data-page="projection" style="margin-top:8px">' + tr("Edit in Projection →") + "</button></div>"
+      : "";
     return '<div class="panel section"><div class="panel-head"><div class="panel-title">' + tr("Runway") + " · " + esc(label) +
       ' <span class="panel-sub">' + dateStr + " · " + r.nMonths + " " + tr("months") + "</span></div>" +
       '<div class="rw-actions"><button class="btn small ghost" data-action="log-month-total">' + tr("+ Log month total") + "</button>" +
@@ -2016,6 +2027,7 @@ const Pages = {
       '<div class="rw-headline ' + tone + '">' + headline + "</div>" +
       '<div class="rw-chart">' + sparkline(r.months.map(m => m.balance), { w: 260, h: 44 }) +
       '<div class="rw-chart-labels"><span>' + fmtMoney(r.liquid, { compact: true }) + " " + tr("today") + "</span><span>" + endLabel + "</span></div></div>" +
+      hitsHtml +
       '<div class="grid cols-3">' +
       '<div class="stat"><span class="micro-label">' + tr("Monthly pace") + '</span><div class="stat-value">' + fmtMoney(r.spendUsed, { compact: true }) + '</div><div class="stat-note">' + esc(r.pace.label) + (st.runwaySpend != null ? " · " + tr("your override") : "") + "</div></div>" +
       '<div class="stat"><span class="micro-label">' + tr("Max spend / mo") + '</span><div class="stat-value">' + fmtMoney(r.maxSpend, { compact: true }) + '</div><div class="stat-note">' + tr("to finish with") + " " + fmtMoney(r.buffer, { compact: true }) + "</div></div>" +

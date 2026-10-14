@@ -74,7 +74,7 @@ Flip the Budget page to **Trends** for a WHOOP-style historic view: this month m
 
 ### Runway to a finish line
 
-Set a target date — graduation, a sabbatical, any finish line — in **Budget → Set your finish line** (or the Runway panel), and FinanceOS projects your liquid assets month-by-month until that date, using your measured spending pace and income streams. You get a plain-English verdict ("On track — $X left at graduation" / "Running short — money runs out in March"), the **maximum you can spend per month** to land exactly on your safety buffer, and an optional **manual spending override** to model what-ifs ("what if I cut $300/mo?"). If the pace ever fails, a warning appears in your Today feed.
+Set a target date — graduation, a sabbatical, any finish line — in **Budget → Set your finish line** (or the Runway panel), and FinanceOS projects your liquid assets month-by-month until that date, using your measured spending pace and income streams. **One-time life events from the Projection tab** (tuition bills, windfalls…) are picked up automatically and counted in January of their year — a financed purchase counts only its down payment. You get a plain-English verdict ("On track — $X left at graduation" / "Running short — money runs out in March"), the **maximum you can spend per month** to land exactly on your safety buffer, and an optional **manual spending override** to model what-ifs ("what if I cut $300/mo?"). If the pace ever fails, a warning appears in your Today feed.
 
 ### Monthly totals — budgeting without transactions
 

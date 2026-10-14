@@ -509,6 +509,44 @@ function spendingPace() {
   return { monthly: 0, months: 0, basis: "none", label: _t("no data yet") };
 }
 
+/* One-time future hits inside the runway window, read straight from the
+   Projection tab's life events — no extra setup. Purchases subtract (a
+   financed purchase counts only its down payment — that's the cash that
+   leaves your liquid assets); windfalls add. Counted in January of their
+   year (or the current month, if that January already passed): the money
+   has to be there early. Salary/raise/spending events change ongoing
+   levels and stay in the Projection tab — the runway models income from
+   the Income tab instead. */
+function runwayOneTimeHits(targetISO) {
+  const s = Store.state;
+  const dc = displayCurrency();
+  const startMk = monthKeyOf(toISO(todayMid()));
+  const endMk = monthKeyOf(targetISO);
+  const hits = [];
+  (s.plan || []).forEach(ev => {
+    if (!ev || (ev.kind !== "purchase" && ev.kind !== "windfall")) return;
+    const y = parseInt(ev.year, 10);
+    if (!isFinite(y)) return;
+    if (y < todayMid().getFullYear()) return; // past years are done deals — already in today's balance
+    let mk = y + "-01";
+    if (mk < startMk) mk = startMk; // this year's hit lands in the current month
+    if (mk > endMk) return;
+    const amt = conv(Number(ev.amount) || 0, ev.currency || dc);
+    if (!(amt > 0)) return;
+    let signed = ev.kind === "windfall" ? amt : -amt;
+    if (ev.kind === "purchase" && ev.financed) {
+      signed = -amt * (Math.min(100, Math.max(0, Number(ev.downPct) || 0)) / 100);
+    }
+    hits.push({
+      mk: mk, label: monthLabel(mk),
+      name: ev.name || _t(ev.kind === "windfall" ? "Windfall" : "One-time expense"),
+      amount: signed,
+    });
+  });
+  hits.sort((a, b) => a.mk < b.mk ? -1 : 1);
+  return hits;
+}
+
 /* Project liquid assets (checking + savings) month-by-month from now until
    targetISO ("YYYY-MM-DD"). opts: { spend } overrides the auto pace,
    { buffer } is the cushion to keep at the target (default 0).
@@ -539,6 +577,11 @@ function runwayToDate(targetISO, opts) {
   for (let mk = startMk, i = 0; mk <= endMk && i < 120; mk = monthAdd(mk, 1), i++) mks.push(mk);
   if (!mks.length) return null;
 
+  // one-time hits (tuition, windfalls…) from the Projection life events
+  const hits = runwayOneTimeHits(targetISO);
+  const hitsByMk = {};
+  hits.forEach(h => { hitsByMk[h.mk] = (hitsByMk[h.mk] || 0) + h.amount; });
+
   const project = (spend) => {
     let bal = liquid;
     const rows = [];
@@ -552,7 +595,7 @@ function runwayToDate(targetISO, opts) {
       (s.incomes || []).forEach(inc => {
         incomeOccurrences(inc, from, mEnd).forEach(() => { income += conv(netPerDeposit(inc), inc.currency); });
       });
-      bal += income - spend;
+      bal += income - spend + (hitsByMk[mk] || 0);
       if (bal < 0 && !runsOut) runsOut = mk;
       rows.push({ mk: mk, label: monthLabel(mk), income: income, spend: spend, balance: bal });
     });
@@ -572,6 +615,7 @@ function runwayToDate(targetISO, opts) {
     months: base.rows, endBalance: base.end, runsOut: base.runsOut,
     maxSpend: lo, pace: pace, spendUsed: spendBase, buffer: buffer,
     liquid: liquid, target: targetISO, nMonths: base.rows.length,
+    hits: hits,
   };
 }
 
