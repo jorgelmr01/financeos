@@ -1828,6 +1828,7 @@ const Pages = {
       "</div>";
     const tools =
       '<div class="budget-controls-right">' +
+        '<button class="btn small ghost" data-action="log-month-total">' + tr("+ Log month total") + "</button>" +
         '<button class="btn small ghost" data-action="set-budgets">Set budgets</button>' +
         '<button class="btn small ghost" data-action="expense-import">↑ Upload sheet</button>' +
         '<button class="btn small" data-action="statement-import">' + icon("card") + ' Import PDF</button>' +
@@ -1961,9 +1962,65 @@ const Pages = {
         '<div class="budget-foot"><button class="btn small ghost danger-ghost" data-action="clear-expenses">Clear all expenses</button></div>' +
       "</div>";
 
-    return controls + hero + stats +
+    return controls + this._runwayPanel() + hero + stats +
       '<div class="grid cols-2 stack-wide section" style="align-items:start">' + catPanel + insightPanel + "</div>" +
       this._recurringPanel() + this._irregularPanel() + bucketPanel + listPanel;
+  },
+
+  /* Finish-line runway: will the current spending pace last until the target
+     date? Prompts to set it up, or shows the month-by-month projection with
+     the maximum sustainable monthly spend. */
+  _runwayPanel() {
+    const st = Store.state.settings;
+    const target = st.runwayTarget;
+    const label = (st.runwayLabel || "").trim() || tr("your finish line");
+
+    if (!target || !parseISO(target) || parseISO(target) <= todayMid()) {
+      return '<div class="panel section"><div class="panel-head"><div class="panel-title">' + tr("Runway to your finish line") + "</div></div>" +
+        '<div style="color:var(--text-mute);font-size:13.5px;max-width:560px">' + tr("Set a date — graduation, a sabbatical, any finish line — and FinanceOS projects whether your spending pace gets you there, and the most you can spend per month to make it.") +
+        '</div><div class="empty-actions" style="justify-content:flex-start;margin:12px 0 0">' +
+        '<button class="btn primary small" data-action="runway-settings">' + tr("Set your finish line →") + "</button></div></div>";
+    }
+
+    const r = runwayToDate(target, { buffer: st.runwayBuffer, spend: st.runwaySpend });
+    if (!r) return "";
+    const tDate = parseISO(target);
+    const dateStr = monthNameShort(tDate.getMonth()) + " " + tDate.getFullYear();
+
+    // no spending data and no override → ask for one number, not transactions
+    if (r.pace.basis === "none" && st.runwaySpend == null) {
+      return '<div class="panel section"><div class="panel-head"><div class="panel-title">' + tr("Runway") + " · " + esc(label) +
+        ' <span class="panel-sub">' + dateStr + "</span></div>" +
+        '<div class="rw-actions"><button class="btn small ghost" data-action="runway-settings">' + tr("Adjust plan") + "</button></div></div>" +
+        '<div style="color:var(--text-mute);font-size:13.5px;max-width:560px">' + tr("One number is enough to start: log what you spent last month and FinanceOS builds your pace from there — no transaction-by-transaction logging needed.") +
+        '</div><div class="empty-actions" style="justify-content:flex-start;margin:12px 0 0">' +
+        '<button class="btn primary small" data-action="log-month-total">' + tr("+ Log month total") + "</button></div></div>";
+    }
+
+    let headline, tone;
+    if (r.runsOut) {
+      const d = parseISO(r.runsOut + "-01");
+      headline = tr("Running short — money runs out") + " <strong>" + monthNameShort(d.getMonth()) + " " + d.getFullYear() + "</strong>" + tr(", before ") + esc(label);
+      tone = "neg";
+    } else {
+      headline = tr("On track —") + " <strong>" + fmtMoney(r.endBalance) + "</strong> " + tr("left at") + " " + esc(label);
+      tone = "pos";
+    }
+    const endLabel = r.runsOut
+      ? tr("runs out") + " " + monthNameShort(parseISO(r.runsOut + "-01").getMonth())
+      : fmtMoney(r.endBalance, { compact: true }) + " " + tr("at finish");
+    return '<div class="panel section"><div class="panel-head"><div class="panel-title">' + tr("Runway") + " · " + esc(label) +
+      ' <span class="panel-sub">' + dateStr + " · " + r.nMonths + " " + tr("months") + "</span></div>" +
+      '<div class="rw-actions"><button class="btn small ghost" data-action="log-month-total">' + tr("+ Log month total") + "</button>" +
+      '<button class="btn small ghost" data-action="runway-settings">' + tr("Adjust plan") + "</button></div></div>" +
+      '<div class="rw-headline ' + tone + '">' + headline + "</div>" +
+      '<div class="rw-chart">' + sparkline(r.months.map(m => m.balance), { w: 260, h: 44 }) +
+      '<div class="rw-chart-labels"><span>' + fmtMoney(r.liquid, { compact: true }) + " " + tr("today") + "</span><span>" + endLabel + "</span></div></div>" +
+      '<div class="grid cols-3">' +
+      '<div class="stat"><span class="micro-label">' + tr("Monthly pace") + '</span><div class="stat-value">' + fmtMoney(r.spendUsed, { compact: true }) + '</div><div class="stat-note">' + esc(r.pace.label) + (st.runwaySpend != null ? " · " + tr("your override") : "") + "</div></div>" +
+      '<div class="stat"><span class="micro-label">' + tr("Max spend / mo") + '</span><div class="stat-value">' + fmtMoney(r.maxSpend, { compact: true }) + '</div><div class="stat-note">' + tr("to finish with") + " " + fmtMoney(r.buffer, { compact: true }) + "</div></div>" +
+      '<div class="stat"><span class="micro-label">' + tr("Liquid today") + '</span><div class="stat-value">' + fmtMoney(r.liquid, { compact: true }) + '</div><div class="stat-note">' + tr("checking + savings") + "</div></div>" +
+      "</div></div>";
   },
 
   /* irregular-income planner — budget to the lean month, smooth the rest */

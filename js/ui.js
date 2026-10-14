@@ -716,6 +716,74 @@ const UI = {
     });
   },
 
+  /* Log one month's total spending — no categories, no transactions.
+     One number a month is enough to track pace and feed the runway planner. */
+  monthTotalForm() {
+    const cur = displayCurrency();
+    const thisMonth = toISO(todayMid()).slice(0, 7);
+    const body = '<div class="f-grid">' +
+      this.field(tr("Month"), '<input name="month" type="month" required value="' + thisMonth + '">',
+        tr("Which month this total covers"), true) +
+      this.field(tr("Total spent"), '<input name="amount" type="number" inputmode="decimal" min="0" step="0.01" required placeholder="2,400">',
+        tr("Everything you spent that month — one number, no breakdown needed"), true) +
+      this.field(tr("Currency"), this.currencySelect("currency", cur), null, true) +
+      this.field(tr("Note (optional)"), '<input name="note" maxlength="60" placeholder="e.g. includes the ski trip">', null, true) +
+      "</div>";
+    this.openModal(tr("Log month total"), body, {
+      submitLabel: tr("Save"),
+      onSubmit(fd) {
+        const month = (fd.get("month") || "").slice(0, 7);
+        const amount = parseFloat(fd.get("amount"));
+        if (!/^\d{4}-\d{2}$/.test(month) || !(amount >= 0)) { UI.toast(tr("Enter a month and a total"), { type: "error" }); return; }
+        const entry = {
+          id: uid(), month: month, amount: amount,
+          currency: fd.get("currency") || displayCurrency(),
+          note: (fd.get("note") || "").trim(),
+        };
+        // one total per month — re-logging replaces
+        const ix = (Store.state.monthlyTotals || []).findIndex(t => t.month === month);
+        if (ix >= 0) Store.state.monthlyTotals[ix] = Object.assign(Store.state.monthlyTotals[ix], entry, { id: Store.state.monthlyTotals[ix].id });
+        else Store.add("monthlyTotals", entry);
+        Store.save();
+        UI.toast(tr("Month logged"));
+        UI.closeModal();
+        App.render();
+      },
+    });
+  },
+
+  /* Finish-line settings for the runway planner. */
+  runwayForm() {
+    const st = Store.state.settings;
+    const pace = spendingPace();
+    const body = '<div class="f-grid">' +
+      this.field(tr("Finish line"), '<input name="runwayLabel" maxlength="40" value="' + esc(st.runwayLabel || "") + '" placeholder="MBA graduation">',
+        tr("What are you making your money last until?"), true) +
+      this.field(tr("Target date"), '<input name="runwayTarget" type="date" value="' + esc(st.runwayTarget || "") + '">',
+        tr("The date your money needs to reach — e.g. graduation day"), true) +
+      this.field(tr("Safety buffer"), '<input name="runwayBuffer" type="number" inputmode="decimal" min="0" step="100" value="' + (st.runwayBuffer || "") + '" placeholder="0">',
+        tr("Cushion to keep at the finish line, in") + " " + displayCurrency(), true) +
+      this.field(tr("Monthly spending (optional)"),
+        '<input name="runwaySpend" type="number" inputmode="decimal" min="0" step="10" value="' + (st.runwaySpend != null ? st.runwaySpend : "") + '" placeholder="' + (pace.monthly > 0 ? "auto: " + fmtMoney(pace.monthly, { compact: true }) + "/mo" : "auto") + '">',
+        tr("Leave blank to use your measured pace") + (pace.monthly > 0 ? " (" + esc(pace.label) + ")" : "") + ". " + tr("Set it to model a what-if."), true) +
+      "</div>";
+    this.openModal(tr("Runway plan"), body, {
+      submitLabel: tr("Save plan"),
+      onSubmit(fd) {
+        Store.state.settings.runwayLabel = (fd.get("runwayLabel") || "").trim();
+        Store.state.settings.runwayTarget = (fd.get("runwayTarget") || "").trim();
+        const buf = parseFloat(fd.get("runwayBuffer"));
+        Store.state.settings.runwayBuffer = isFinite(buf) && buf >= 0 ? buf : 0;
+        const sp = parseFloat(fd.get("runwaySpend"));
+        Store.state.settings.runwaySpend = isFinite(sp) && sp >= 0 ? sp : null;
+        Store.save();
+        UI.toast(tr("Plan saved"));
+        UI.closeModal();
+        App.render();
+      },
+    });
+  },
+
   pinForm() {
     if (!cryptoAvailable()) {
       UI.toast("PIN lock needs a secure context — open the app via https:// or localhost");

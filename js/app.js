@@ -463,6 +463,8 @@ const App = {
         break;
 
       case "set-budgets": UI.budgetsForm(); break;
+      case "log-month-total": UI.monthTotalForm(); break;
+      case "runway-settings": UI.runwayForm(); break;
 
       case "clear-expenses":
         UI.confirm("Clear all expenses?", "Every imported and manually-added expense will be removed. Your budgets and everything else stay. This can't be undone.", () => {

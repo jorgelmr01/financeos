@@ -17,6 +17,7 @@ const Store = {
       holdings: [],   // {id, symbol, name, kind, shares, costBasis, currentPrice, divPerShare, accountId, purchaseDate, currency}
       incomes: [],    // {id, name, category, amount, amountType, taxRate, accountId, frequency, payDay, startDate, currency}
       expenses: [],   // {id, date, description, category, amount, currency, sig, source}
+      monthlyTotals: [], // {id, month:"2026-10", amount, currency, note} — quick-logged monthly spend, no categories needed
       budgets: {},    // { [category]: { amount, currency } }  — monthly limit per category
       goals: [],      // {id, name, target, saved, targetDate, currency} — savings goals / sinking funds
       realized: [],   // {id, symbol, name, date, shares, sellPrice, costBasis, proceeds, gain, currency} — closed sales
@@ -32,6 +33,10 @@ const Store = {
         tax: { interest: 0, dividends: 0, capGains: 0, interestProvisional: 0, inflation: 4.5 },
         autoInterest: true,       // credit interest to balances on its schedule
         finnhubKey: "", lastQuoteSync: null,
+        runwayTarget: "",         // "YYYY-MM-DD" — finish line for the runway planner (e.g. graduation)
+        runwayLabel: "",          // "MBA graduation"
+        runwayBuffer: 0,          // cushion to keep at the finish line
+        runwaySpend: null,        // manual monthly spend override (null = auto pace)
       },
     };
   },
@@ -49,6 +54,7 @@ const Store = {
     if (!Array.isArray(this.state.plan)) this.state.plan = [];
     if (!Array.isArray(this.state.liabilities)) this.state.liabilities = [];
     if (!Array.isArray(this.state.expenses)) this.state.expenses = [];
+    if (!Array.isArray(this.state.monthlyTotals)) this.state.monthlyTotals = [];
     if (!this.state.budgets || typeof this.state.budgets !== "object") this.state.budgets = {};
     this.state.learn = Object.assign({ scenarios: {}, sandbox: {}, lessons: {} }, this.state.learn || {});
     this.state.learn.sandbox = Object.assign({ best: 0, runs: 0 }, this.state.learn.sandbox || {});
@@ -218,6 +224,7 @@ const Store = {
       holdings: Array.isArray(data.holdings) ? data.holdings : d.holdings,
       incomes: Array.isArray(data.incomes) ? data.incomes : d.incomes,
       expenses: Array.isArray(data.expenses) ? data.expenses : d.expenses,
+      monthlyTotals: Array.isArray(data.monthlyTotals) ? data.monthlyTotals : d.monthlyTotals,
       budgets: (data.budgets && typeof data.budgets === "object") ? data.budgets : d.budgets,
       snapshots: Array.isArray(data.snapshots) ? data.snapshots : d.snapshots,
       learn: (data.learn && typeof data.learn === "object") ? data.learn : d.learn,
@@ -520,6 +527,7 @@ const Store = {
       incomes: P.incomes,
       snapshots: P.snapshots,
       expenses: P.expenses,
+      monthlyTotals: [],
       budgets: P.budgets,
       flows: P.flows,
       plan: P.plan,
@@ -893,6 +901,21 @@ function collectAlerts() {
       });
     }
   });
+  /* finish-line runway: warn when the spending pace runs out before the target */
+  if (s.settings.runwayTarget && typeof runwayToDate === "function") {
+    try {
+      const r = runwayToDate(s.settings.runwayTarget, { buffer: s.settings.runwayBuffer, spend: s.settings.runwaySpend });
+      if (r && r.runsOut) {
+        const d = parseISO(r.runsOut + "-01");
+        alerts.push({
+          level: "danger",
+          text: "<strong>" + esc(s.settings.runwayLabel || "Runway") + "</strong> — money runs out " + monthNameShort(d.getMonth()) + " " + d.getFullYear(),
+          meta: "Pace " + fmtMoney(r.spendUsed, { compact: true }) + "/mo · max " + fmtMoney(r.maxSpend, { compact: true }) + "/mo to make it",
+          when: 50,
+        });
+      }
+    } catch (e) { /* planner needs data; stay quiet */ }
+  }
   // budget overspending this month (Budget feature; functions live in budget.js)
   if (typeof categoryTotalsSorted === "function" && (s.expenses || []).length) {
     const cm = toISO(todayMid()).slice(0, 7);

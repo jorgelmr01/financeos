@@ -27,7 +27,7 @@ const bundle = [read("js/utils.js"), read("js/instruments.js"), read("js/budget.
   "\n;globalThis.__api = { interestPerPeriod, nextInterestDate, interestScheduleLabel, interestPeriodDays," +
   " accruedInterest, holdingReturnRate, parseAmount, parseExpenseDate, expenseSig, canonicalCategory," +
   " earningsBreakdown, sellHolding, realizedSummary, amortizeLoan, xirr, portfolioXirrFlows, riskAdjusted, rebalancePlan, currencyExposure, stressTest, portfolioAdvice, weightedExpenseRatio, INSTRUMENTS, accountXirr, contributionSeries, Report, fromUSD, wealthProjection, computeTotals, allCategories, categoryMeta, effectiveBudgetForCategory, retirementProjection, retirementMonteCarlo, retirementBuckets, retirementBucketsMC, makeEquityMarket, mulberry32, MARKET, realInterestEst, monthlyInterestEst," +
-  " convBetween, sparkline, categorySeries, debtPayoff, detectRecurring, cashflowForecast, buroScore, investReadiness, irregularIncomePlan," +
+  " convBetween, sparkline, categorySeries, debtPayoff, detectRecurring, cashflowForecast, buroScore, investReadiness, irregularIncomePlan, spendingPace, runwayToDate, monthlyTotals," +
   " classifyHolding, portfolioExposure, seriesReturns, annualizedVol, alignReturns, betaOf, correlationOf, periodsPerYear, weightedValueSeries, seriesReturnOver, finnhubSectorToGICS, countryToRegion, dividendSummary, drawdownInfo, fmtNumInput, parseNum, budgetSpendEstimate, CURRENCY_CODES, CURRENCY_LOCALE, FALLBACK_FX, COUNTRY_PRESETS, countryPreset, applyCountryPreset, monthNameShort, fmtDate, fmtDateShort, fmtNum, activeLocale," +
   " toISO, parseISO, daysBetween, todayMid, icsForCards, Statements, INTEREST_FREQ, Store };";
 vm.runInContext(bundle, ctx, { filename: "bundle.js" });
@@ -1113,6 +1113,83 @@ group("cashflow forecast — will I make it to payday?", () => {
   ok(f.minDate instanceof Date || typeof f.minDate === "object", "reports when the trough lands");
   // every projected balance point is a finite number (no NaN leaking into the chart)
   ok(f.points.every(p => isFinite(p.bal)), "no NaN balances in the projection");
+});
+
+group("finish-line runway — will the money last until the target?", () => {
+  const t = A.todayMid();
+  const pad = n => String(n).padStart(2, "0");
+  const mkPlus = k => { const d = new Date(t.getFullYear(), t.getMonth() + k, 1); return d.getFullYear() + "-" + pad(d.getMonth() + 1); };
+  const targetISO = A.toISO(new Date(t.getFullYear(), t.getMonth() + 20, 1)); // 20 months out → 21 projected months
+  const base = {
+    settings: { currency: "USD", fx: null, tax: {} },
+    accounts: [{ id: "c", type: "checking", balance: 50000, currency: "USD" }],
+    cards: [], holdings: [], monthlyTotals: [],
+  };
+
+  // on track: income covers spend, healthy liquid buffer
+  resetStore(Object.assign({}, base, {
+    incomes: [{ id: "i", name: "Stipend", amount: 3000, currency: "USD", frequency: "monthly", payDay: 1 }],
+  }));
+  const ok1 = A.runwayToDate(targetISO, { spend: 2000, buffer: 0 });
+  ok(ok1 && !ok1.runsOut, "no runsOut when income covers the pace");
+  ok(ok1.endBalance > 50000, "ends above where it started (" + Math.round(ok1.endBalance) + ")");
+  ok(ok1.maxSpend > 2000, "max sustainable spend exceeds the current pace (" + Math.round(ok1.maxSpend) + ")");
+  ok(ok1.nMonths >= 20, "projects every month to the target (" + ok1.nMonths + ")");
+  ok(ok1.months.every(m => isFinite(m.balance)), "no NaN balances in the ledger");
+
+  // runs out: no income, spend drains a small buffer
+  resetStore(Object.assign({}, base, {
+    accounts: [{ id: "c", type: "checking", balance: 5000, currency: "USD" }],
+    incomes: [],
+  }));
+  const bad = A.runwayToDate(targetISO, { spend: 2000, buffer: 0 });
+  eq(bad.runsOut, mkPlus(2), "runs out in the 3rd month (5000 → 3000 → 1000 → −1000)");
+  approx(bad.maxSpend, 5000 / bad.nMonths, 0.5, "max spend stretches the buffer across every month");
+  ok(bad.endBalance < 0, "ending balance is negative at the failing pace");
+
+  // buffer: max spend leaves exactly the cushion
+  const buf = A.runwayToDate(targetISO, { spend: 2000, buffer: 5000 });
+  const check = A.runwayToDate(targetISO, { spend: buf.maxSpend, buffer: 5000 });
+  approx(check.endBalance, 5000, 1, "spending the max lands on the buffer");
+  ok(buf.maxSpend < ok1.maxSpend, "a buffer lowers the max spend");
+
+  // invalid targets
+  ok(A.runwayToDate(A.toISO(new Date(t.getFullYear(), t.getMonth() - 1, 1))) === null, "past target → null");
+  ok(A.runwayToDate("not-a-date") === null, "garbage target → null");
+});
+
+group("spending pace — one number a month is enough", () => {
+  // prefers quick-logged monthly totals
+  resetStore({
+    settings: { currency: "USD", fx: null, tax: {} },
+    accounts: [], cards: [], holdings: [], incomes: [], expenses: [],
+    monthlyTotals: [
+      { id: "a", month: "2026-07", amount: 2000, currency: "USD" },
+      { id: "b", month: "2026-08", amount: 2200, currency: "USD" },
+      { id: "c", month: "2026-09", amount: 2400, currency: "USD" },
+    ],
+  });
+  const p = A.spendingPace();
+  eq(p.basis, "logged", "logged totals win over categorized expenses");
+  approx(p.monthly, 2200, 0.01, "pace = average of the last 3 logged months");
+  eq(A.monthlyTotals()[0].month, "2026-07", "monthlyTotals() sorts oldest first");
+
+  // falls back to categorized expenses with a single logged month
+  resetStore({
+    settings: { currency: "USD", fx: null, tax: {} },
+    accounts: [], cards: [], holdings: [], incomes: [],
+    monthlyTotals: [{ id: "a", month: "2026-09", amount: 9999, currency: "USD" }],
+    expenses: [
+      { id: "e1", date: "2026-07-05", amount: 1500, description: "X", category: "Groceries", currency: "USD" },
+      { id: "e2", date: "2026-08-05", amount: 1700, description: "X", category: "Groceries", currency: "USD" },
+    ],
+  });
+  const p2 = A.spendingPace();
+  eq(p2.basis, "expenses", "one logged month isn't enough — falls back to expense history");
+
+  // nothing at all
+  resetStore({ settings: { currency: "USD", fx: null, tax: {} }, accounts: [], cards: [], holdings: [], incomes: [], expenses: [], monthlyTotals: [] });
+  eq(A.spendingPace().basis, "none", "no data → 'none', the UI prompts for one number");
 });
 
 group("credit-score simulator — Buró proxy", () => {

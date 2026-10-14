@@ -1274,6 +1274,15 @@ button, a, .nav-item, .tool-btn, .icon-btn, .swatch { -webkit-tap-highlight-colo
 }
 .empty-country select:focus { outline: none; border-color: var(--mint); }
 .empty-country .hint { color: var(--text-mute); font-size: 12px; margin-top: 8px; }
+
+/* ---------- finish-line runway panel ---------- */
+.rw-actions { display: flex; gap: 8px; margin-left: auto; }
+.rw-headline { font-size: 16px; margin: 4px 0 12px; }
+.rw-headline.pos strong { color: var(--mint); }
+.rw-headline.neg strong { color: var(--rose); }
+.rw-chart { margin: 2px 0 14px; }
+.rw-chart .spark { width: 100%; height: 44px; }
+.rw-chart-labels { display: flex; justify-content: space-between; color: var(--text-mute); font-size: 12px; margin-top: 4px; }
 .empty-tip { color: var(--text-mute); font-size: 12.5px; margin-top: 18px; }
 .empty-tip a { color: var(--mint); text-decoration: none; }
 .empty-tip a:hover { text-decoration: underline; }

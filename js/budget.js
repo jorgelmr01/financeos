@@ -473,6 +473,108 @@ function cashflowForecast(days) {
   return { points: points, events: events, start: points[0].bal, end: bal, min: min, minDate: minDate, horizon: horizon, dailyBurn: dailyBurn, hasData: events.length > 0 || dailyBurn > 0 };
 }
 
+/* ---------- spending pace & finish-line runway ----------
+   For people who don't log every transaction: spendingPace() estimates the
+   monthly burn from (1) quick-logged monthly totals, else (2) the trailing
+   average of complete months from categorized expenses. runwayToDate()
+   projects liquid assets month-by-month to a target date (e.g. graduation)
+   and finds the maximum sustainable monthly spend. All amounts are in the
+   display currency. The monthly pace already includes bills and card
+   payments (it's measured from actual spending), so they aren't modeled
+   separately here — only income streams are added explicitly. */
+
+function monthlyTotals() {
+  return (Store.state.monthlyTotals || []).slice()
+    .sort((a, b) => String(a.month) < String(b.month) ? -1 : 1);
+}
+
+/* i18n-safe translate (the test bundle has no i18n.js) */
+function _t(s) { return (typeof tr === "function") ? tr(s) : s; }
+
+function spendingPace() {
+  const dc = displayCurrency();
+  // 1) quick-logged monthly totals — one number per month, no categories needed
+  const totals = monthlyTotals().slice(-3);
+  if (totals.length >= 2) {
+    const vals = totals.map(t => conv(Number(t.amount) || 0, t.currency || dc));
+    const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+    return { monthly: avg, months: totals.length, basis: "logged", label: _t("{n} logged months").replace("{n}", totals.length) };
+  }
+  // 2) trailing complete months from categorized expenses
+  const months = budgetSeries(null).filter(m => m.hasData && m.complete).slice(-3);
+  if (months.length >= 1) {
+    const avg = months.reduce((a, m) => a + (Number(m.spend) || 0), 0) / months.length;
+    return { monthly: avg, months: months.length, basis: "expenses", label: _t("{n}-month average").replace("{n}", months.length) };
+  }
+  return { monthly: 0, months: 0, basis: "none", label: _t("no data yet") };
+}
+
+/* Project liquid assets (checking + savings) month-by-month from now until
+   targetISO ("YYYY-MM-DD"). opts: { spend } overrides the auto pace,
+   { buffer } is the cushion to keep at the target (default 0).
+   Returns the monthly ledger, ending balance, the first month the balance
+   goes negative (if any), and the max monthly spend that lands exactly on
+   the buffer (via bisection). */
+function runwayToDate(targetISO, opts) {
+  opts = opts || {};
+  const s = Store.state;
+  const dc = displayCurrency();
+  const target = parseISO(targetISO);
+  const today = todayMid();
+  if (!target || isNaN(target.getTime()) || target <= today) return null;
+
+  let liquid = 0;
+  (s.accounts || []).forEach(a => {
+    if (a.type === "checking" || a.type === "savings") liquid += conv(Number(a.balance) || 0, a.currency);
+  });
+
+  const pace = spendingPace();
+  const spendBase = opts.spend != null && isFinite(opts.spend) && Number(opts.spend) >= 0
+    ? Number(opts.spend) : pace.monthly;
+  const buffer = Math.max(0, Number(opts.buffer) || 0);
+
+  const startMk = monthKeyOf(toISO(today));
+  const endMk = monthKeyOf(targetISO);
+  const mks = [];
+  for (let mk = startMk, i = 0; mk <= endMk && i < 120; mk = monthAdd(mk, 1), i++) mks.push(mk);
+  if (!mks.length) return null;
+
+  const project = (spend) => {
+    let bal = liquid;
+    const rows = [];
+    let runsOut = null;
+    mks.forEach(mk => {
+      const p = mk.split("-").map(Number);
+      const mStart = new Date(p[0], p[1] - 1, 1);
+      const mEnd = new Date(p[0], p[1], 0);
+      const from = mStart > today ? mStart : today;
+      let income = 0;
+      (s.incomes || []).forEach(inc => {
+        incomeOccurrences(inc, from, mEnd).forEach(() => { income += conv(netPerDeposit(inc), inc.currency); });
+      });
+      bal += income - spend;
+      if (bal < 0 && !runsOut) runsOut = mk;
+      rows.push({ mk: mk, label: monthLabel(mk), income: income, spend: spend, balance: bal });
+    });
+    return { rows: rows, end: bal, runsOut: runsOut };
+  };
+
+  const base = project(spendBase);
+  // max sustainable monthly spend: grow the bracket, then bisect
+  let lo = 0, hi = Math.max(spendBase, 1), guard = 0;
+  while (project(hi).end >= buffer && guard++ < 200) hi *= 2;
+  for (let i = 0; i < 50; i++) {
+    const mid = (lo + hi) / 2;
+    if (project(mid).end >= buffer) lo = mid; else hi = mid;
+  }
+
+  return {
+    months: base.rows, endBalance: base.end, runsOut: base.runsOut,
+    maxSpend: lo, pace: pace, spendUsed: spendBase, buffer: buffer,
+    liquid: liquid, target: targetISO, nMonths: base.rows.length,
+  };
+}
+
 /* Estimate a Buró de Crédito–style score (400–850) from the factors that move
    real credit scores, so a beginner can see what helps and what hurts. This is
    an educational PROXY — the official Buró model is private and uses more data.

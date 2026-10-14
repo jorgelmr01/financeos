@@ -72,6 +72,14 @@ You then get a **spending-health score (0–100)** built from your savings rate,
 
 Flip the Budget page to **Trends** for a WHOOP-style historic view: this month measured against your **trailing 3-month average** (spending, savings rate, score), **monthly spending and score charts** (with average and budget reference lines), a **savings-rate line**, the **categories you're spending more/less on** versus your recent baseline, and **streaks** (months saving in a row, months with every budget met, best savings month).
 
+### Runway to a finish line
+
+Set a target date — graduation, a sabbatical, any finish line — in **Budget → Set your finish line** (or the Runway panel), and FinanceOS projects your liquid assets month-by-month until that date, using your measured spending pace and income streams. You get a plain-English verdict ("On track — $X left at graduation" / "Running short — money runs out in March"), the **maximum you can spend per month** to land exactly on your safety buffer, and an optional **manual spending override** to model what-ifs ("what if I cut $300/mo?"). If the pace ever fails, a warning appears in your Today feed.
+
+### Monthly totals — budgeting without transactions
+
+Don't want to log (or import) every expense? **Budget → + Log month total** records one number per month ("October: $2,400"). Two logged months are enough for FinanceOS to measure your spending pace and power the runway projection — no categories, no transactions, 30 seconds a month.
+
 ## Taxes
 
 Declare each income stream as **gross** (with an effective withholding rate) or **net** — projections, timeline and charts always show what actually lands. Global rates for **interest, dividends, and capital gains** live in Settings and flow through every projection in the app.
