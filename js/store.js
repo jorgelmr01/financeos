@@ -27,7 +27,7 @@ const Store = {
       snapshots: [],  // [{d: ISO date, usd, liq, inv, debt} — net worth + composition in USD]
       learn: { scenarios: {}, sandbox: { best: 0, runs: 0 }, lessons: {} },
       settings: {
-        currency: "USD", privacy: false, pinEnabled: false, lastExport: null, theme: "dark",
+        currency: "USD", country: "", privacy: false, pinEnabled: false, lastExport: null, theme: "dark",
         fx: null,                 // {base:'USD', rates:{...units per USD}, asOf}
         tax: { interest: 0, dividends: 0, capGains: 0, interestProvisional: 0, inflation: 4.5 },
         autoInterest: true,       // credit interest to balances on its schedule
@@ -245,7 +245,8 @@ const Store = {
     const fx = this.state && this.state.settings.fx;
     if (!force && fx && fx.asOf && daysBetween(parseISO(fx.asOf), todayMid()) < 1) return false;
     try {
-      const r = await fetch("https://api.frankfurter.dev/v1/latest?base=USD&symbols=MXN,EUR,GBP");
+      const syms = CURRENCY_CODES.filter(c => c !== "USD").join(",");
+      const r = await fetch("https://api.frankfurter.dev/v1/latest?base=USD&symbols=" + syms);
       if (!r.ok) throw new Error("HTTP " + r.status);
       const j = await r.json();
       if (j && j.rates) {
@@ -494,121 +495,239 @@ const Store = {
     return { credited: creditedDisp, count: count };
   },
 
+  /* Sample datasets are country-flavored: the MX profile keeps the original
+     Mexico dataset; INTL is a neutral USD dataset for everywhere else.
+     Picked from settings.country at load time. */
   loadSample() {
     const t = todayMid();
     const iso = toISO(t);
     const monthAgo = toISO(new Date(t.getFullYear(), t.getMonth() - 1, t.getDate()));
-    const acc1 = uid(), acc2 = uid(), acc3 = uid(), acc4 = uid(), acc5 = uid();
     const termStart = toISO(new Date(t.getFullYear(), t.getMonth(), t.getDate() - 30));
+    const A = [uid(), uid(), uid(), uid(), uid()];
+    const P = (this.state && this.state.settings && this.state.settings.country === "MX")
+      ? SAMPLE_PROFILE_MX(A, iso, monthAgo, termStart, t)
+      : SAMPLE_PROFILE_INTL(A, iso, monthAgo, termStart, t);
     const settings = Object.assign(this.defaults().settings, this.state ? this.state.settings : {});
-    settings.tax = { interest: 5, dividends: 10, capGains: 10, interestProvisional: 0.5, inflation: 4.5 };
+    settings.tax = Object.assign({}, P.tax);
+    settings.currency = P.cur;
+    settings.onboardDone = true;
     this.state = {
       settings: settings,
       learn: this.state && this.state.learn ? this.state.learn : { scenarios: {}, sandbox: { best: 0, runs: 0 } },
-      accounts: [
-        { id: acc1, name: "Everyday Checking", institution: "BBVA", type: "checking", balance: 18450.22, apy: 0, balanceAsOf: iso, currency: "MXN" },
-        { id: acc2, name: "High-Yield Savings", institution: "Nu", type: "savings", balance: 92000, apy: 9.25, balanceAsOf: monthAgo, currency: "MXN", interestFreq: "daily", interestDay: 31 },
-        { id: acc3, name: "Emergency Fund", institution: "Openbank", type: "savings", balance: 45000, apy: 7.5, balanceAsOf: monthAgo, currency: "MXN", interestFreq: "quarterly", interestDay: 15 },
-        { id: acc4, name: "Brokerage Cash", institution: "GBM+", type: "investment", balance: 1200, apy: 0, balanceAsOf: iso, currency: "USD" },
-        { id: acc5, name: "CETES 91 días", institution: "Cetesdirecto", type: "investment", balance: 50000, apy: 10.2, balanceAsOf: termStart, currency: "MXN", interestFreq: "term", interestEveryDays: 91, interestStart: termStart },
-      ],
-      cards: [
-        { id: uid(), name: "Platinum Rewards", issuer: "American Express", limit: 85000, balance: 21340.5, cutDay: 14, payDay: 4, apr: 39.9, color: "c-forest", currency: "MXN" },
-        { id: uid(), name: "Cashback Visa", issuer: "Santander", limit: 40000, balance: 31200, cutDay: 25, payDay: 15, apr: 45.2, color: "c-ocean", currency: "MXN" },
-      ],
-      holdings: [
-        { id: uid(), symbol: "VOO", name: "Vanguard S&P 500 ETF", kind: "etf", shares: 14, costBasis: 412.3, currentPrice: 472.1, divPerShare: 6.97, accountId: acc4, purchaseDate: "2025-03-10", currency: "USD" },
-        { id: uid(), symbol: "AAPL", name: "Apple Inc.", kind: "stock", shares: 25, costBasis: 178.5, currentPrice: 224.4, divPerShare: 1.04, accountId: acc4, purchaseDate: "2025-01-22", currency: "USD" },
-        { id: uid(), symbol: "QQQM", name: "Invesco Nasdaq 100 ETF", kind: "etf", shares: 30, costBasis: 168.2, currentPrice: 195.6, divPerShare: 1.18, accountId: acc4, purchaseDate: "2025-06-02", currency: "USD" },
-        { id: uid(), symbol: "NVDA", name: "NVIDIA Corp.", kind: "stock", shares: 10, costBasis: 118.9, currentPrice: 104.3, divPerShare: 0.04, accountId: acc4, purchaseDate: "2025-11-14", currency: "USD" },
-      ],
-      incomes: [
-        { id: uid(), name: "Salary — Acme Corp", category: "Salary", amount: 36000, amountType: "gross", taxRate: 21, accountId: acc1, frequency: "quincena", payDay: 15, startDate: "2025-01-15", currency: "MXN" },
-        { id: uid(), name: "Freelance retainer", category: "Freelance", amount: 9500, amountType: "net", taxRate: 0, accountId: acc1, frequency: "monthly", payDay: 1, startDate: "2025-04-01", currency: "MXN" },
-        { id: uid(), name: "Apartment rent (tenant)", category: "Rent", amount: 7800, amountType: "gross", taxRate: 10, accountId: acc2, frequency: "monthly", payDay: 5, startDate: "2025-02-05", currency: "MXN" },
-      ],
-      snapshots: (() => {
-        // synthetic 90-day history ending near today's value, so the chart has something to show
-        const out = [];
-        let v = 21500;
-        for (let i = 90; i >= 1; i--) {
-          const d = new Date(t.getFullYear(), t.getMonth(), t.getDate() - i);
-          v *= 1 + 0.0012 + Math.sin(i / 7) * 0.004;
-          out.push({ d: toISO(d), usd: Math.round(v * 100) / 100 });
-        }
-        return out;
-      })(),
-      expenses: (() => {
-        // 5 months of demo spending (current month is partial) so the Budget
-        // score, complete-month default, trends, movers and streaks all light up
-        const out = [];
-        const day = (mOff, dom) => toISO(new Date(t.getFullYear(), t.getMonth() - mOff, dom));
-        const add = (mOff, dom, desc, cat, amt) => out.push({ id: uid(), date: day(mOff, dom), description: desc, category: cat, amount: amt, currency: "MXN", source: "sample" });
-        // m=0 current (partial), 1=last, 2,3,4 = older complete months
-        for (let m = 0; m <= 4; m++) {
-          add(m, 2, "Apartment rent", "Housing", 11500);
-          add(m, 3, "CFE electricity", "Utilities", 640 + m * 20);
-          add(m, 4, "Internet — Totalplay", "Utilities", 599);
-          add(m, 13, "Netflix", "Subscriptions", 219);
-          add(m, 13, "Spotify", "Subscriptions", 129);
-          add(m, 16, "Gym", "Health", 650);
-        }
-        // variable categories with month-to-month movement (index = months ago)
-        const groceries = [2980, 3120, 3380, 3650, 3050];
-        const dining = [1190, 1480, 1400, 1240, 980];
-        const transport = [1190, 1050, 1320, 980, 1110];
-        const shopping = [0, 1800, 0, 1450, 3200];
-        const travel = [0, 3850, 0, 0, 5200];               // occasional spikes
-        const health = [430, 380, 1240, 290, 360];
-        const entertainment = [320, 540, 280, 760, 410];
-        for (let m = 0; m <= 4; m++) {
-          add(m, 6, "Walmart", "Groceries", Math.round(groceries[m] * 0.55));
-          add(m, 19, "Soriana", "Groceries", Math.round(groceries[m] * 0.45));
-          if (dining[m]) { add(m, 11, "Restaurante", "Dining", Math.round(dining[m] * 0.7)); add(m, 18, "Café & pan", "Dining", Math.round(dining[m] * 0.3)); }
-          if (transport[m]) { add(m, 9, "Gasolina", "Transport", Math.round(transport[m] * 0.7)); add(m, 8, "Uber", "Transport", Math.round(transport[m] * 0.3)); }
-          if (shopping[m]) add(m, 14, "Amazon MX / Liverpool", "Shopping", shopping[m]);
-          if (travel[m]) add(m, 16, "Vuelo — Volaris", "Travel", travel[m]);
-          if (health[m]) add(m, 20, "Farmacia", "Health", health[m]);
-          if (entertainment[m]) add(m, 10, "Cinépolis", "Entertainment", entertainment[m]);
-        }
-        // keep the partial current month light (only a few days elapsed feel)
-        return out.filter(e => !(monthKeyOf(e.date) === monthKeyOf(toISO(t)) && parseISO(e.date) > t)).map(e => {
-          if (typeof expenseSig === "function") e.sig = expenseSig(e);
-          return e;
-        });
-      })(),
-      budgets: {
-        Groceries: { amount: 4500, currency: "MXN" },
-        Dining: { amount: 1500, currency: "MXN" },
-        Transport: { amount: 1500, currency: "MXN" },
-        Shopping: { amount: 2000, currency: "MXN" },
-        Entertainment: { amount: 800, currency: "MXN" },
-      },
-      flows: (function () {
-        const d = (mOff, dd) => toISO(new Date(t.getFullYear(), t.getMonth() - mOff, dd));
-        return [
-          { id: uid(), kind: "deposit", amount: 6500, currency: "USD", date: d(14, 10), note: "opening deposit" },
-          { id: uid(), kind: "deposit", amount: 6000, currency: "USD", date: d(8, 5), note: "bonus" },
-          { id: uid(), kind: "deposit", amount: 5000, currency: "USD", date: d(3, 5), note: "monthly savings sweep" },
-          { id: uid(), kind: "withdrawal", amount: 800, currency: "USD", date: d(1, 20), note: "trip" },
-        ];
-      })(),
-      plan: [
-        { id: uid(), kind: "raise", year: t.getFullYear() + 2, pct: 15, name: "Promoción esperada" },
-        { id: uid(), kind: "purchase", year: t.getFullYear() + 4, amount: 3400000, currency: "MXN", asset: true, financed: true, downPct: 25, loanRate: 10.5, termYears: 20, name: "Casa nueva (crédito)" },
-        { id: uid(), kind: "purchase", year: t.getFullYear() + 6, amount: 420000, currency: "MXN", asset: true, name: "Coche nuevo" },
-      ],
-      assets: [
-        { id: uid(), name: "Departamento CDMX", kind: "property", value: 2850000, currency: "MXN" },
-        { id: uid(), name: "Auto — Mazda 3", kind: "vehicle", value: 265000, currency: "MXN" },
-      ],
-      liabilities: [
-        { id: uid(), name: "Hipoteca depa", kind: "mortgage", balance: 1680000, apr: 10.4, payment: 19800, currency: "MXN" },
-      ],
+      accounts: P.accounts,
+      cards: P.cards,
+      holdings: P.holdings,
+      incomes: P.incomes,
+      snapshots: P.snapshots,
+      expenses: P.expenses,
+      budgets: P.budgets,
+      flows: P.flows,
+      plan: P.plan,
+      assets: P.assets,
+      liabilities: P.liabilities,
     };
     this.save();
   },
 };
+
+/* Shared builders for the sample datasets (demo data only). */
+
+function _sampleSnapshots(t, startUSD) {
+  const out = [];
+  let v = startUSD;
+  for (let i = 90; i >= 1; i--) {
+    const d = new Date(t.getFullYear(), t.getMonth(), t.getDate() - i);
+    v *= 1 + 0.0012 + Math.sin(i / 7) * 0.004;
+    out.push({ d: toISO(d), usd: Math.round(v * 100) / 100 });
+  }
+  return out;
+}
+
+function _sampleExpenses(t, P) {
+  // 5 months of demo spending (current month is partial) so the Budget
+  // score, complete-month default, trends, movers and streaks all light up
+  const out = [];
+  const day = (mOff, dom) => toISO(new Date(t.getFullYear(), t.getMonth() - mOff, dom));
+  const add = (mOff, dom, desc, cat, amt) => out.push({ id: uid(), date: day(mOff, dom), description: desc, category: cat, amount: amt, currency: P.cur, source: "sample" });
+  // m=0 current (partial), 1=last, 2,3,4 = older complete months
+  for (let m = 0; m <= 4; m++) P.fixed.forEach(f => add(m, f[0], f[1], f[2], typeof f[3] === "function" ? f[3](m) : f[3]));
+  // variable categories with month-to-month movement (index = months ago)
+  const v = P.variable, S = P.stores;
+  for (let m = 0; m <= 4; m++) {
+    add(m, 6, S.groceries[0], "Groceries", Math.round(v.groceries[m] * 0.55));
+    add(m, 19, S.groceries[1], "Groceries", Math.round(v.groceries[m] * 0.45));
+    if (v.dining[m]) { add(m, 11, S.dining[0], "Dining", Math.round(v.dining[m] * 0.7)); add(m, 18, S.dining[1], "Dining", Math.round(v.dining[m] * 0.3)); }
+    if (v.transport[m]) { add(m, 9, S.transport[0], "Transport", Math.round(v.transport[m] * 0.7)); add(m, 8, S.transport[1], "Transport", Math.round(v.transport[m] * 0.3)); }
+    if (v.shopping[m]) add(m, 14, S.shopping, "Shopping", v.shopping[m]);
+    if (v.travel[m]) add(m, 16, S.travel, "Travel", v.travel[m]);
+    if (v.health[m]) add(m, 20, S.health, "Health", v.health[m]);
+    if (v.entertainment[m]) add(m, 10, S.entertainment, "Entertainment", v.entertainment[m]);
+  }
+  // keep the partial current month light (only a few days elapsed feel)
+  return out.filter(e => !(monthKeyOf(e.date) === monthKeyOf(toISO(t)) && parseISO(e.date) > t)).map(e => {
+    if (typeof expenseSig === "function") e.sig = expenseSig(e);
+    return e;
+  });
+}
+
+function _sampleFlows(t) {
+  const d = (mOff, dd) => toISO(new Date(t.getFullYear(), t.getMonth() - mOff, dd));
+  return [
+    { id: uid(), kind: "deposit", amount: 6500, currency: "USD", date: d(14, 10), note: "opening deposit" },
+    { id: uid(), kind: "deposit", amount: 6000, currency: "USD", date: d(8, 5), note: "bonus" },
+    { id: uid(), kind: "deposit", amount: 5000, currency: "USD", date: d(3, 5), note: "monthly savings sweep" },
+    { id: uid(), kind: "withdrawal", amount: 800, currency: "USD", date: d(1, 20), note: "trip" },
+  ];
+}
+
+function _sampleHoldings(acc4) {
+  return [
+    { id: uid(), symbol: "VOO", name: "Vanguard S&P 500 ETF", kind: "etf", shares: 14, costBasis: 412.3, currentPrice: 472.1, divPerShare: 6.97, accountId: acc4, purchaseDate: "2025-03-10", currency: "USD" },
+    { id: uid(), symbol: "AAPL", name: "Apple Inc.", kind: "stock", shares: 25, costBasis: 178.5, currentPrice: 224.4, divPerShare: 1.04, accountId: acc4, purchaseDate: "2025-01-22", currency: "USD" },
+    { id: uid(), symbol: "QQQM", name: "Invesco Nasdaq 100 ETF", kind: "etf", shares: 30, costBasis: 168.2, currentPrice: 195.6, divPerShare: 1.18, accountId: acc4, purchaseDate: "2025-06-02", currency: "USD" },
+    { id: uid(), symbol: "NVDA", name: "NVIDIA Corp.", kind: "stock", shares: 10, costBasis: 118.9, currentPrice: 104.3, divPerShare: 0.04, accountId: acc4, purchaseDate: "2025-11-14", currency: "USD" },
+  ];
+}
+
+/* Mexico profile — the original dataset, verbatim. */
+function SAMPLE_PROFILE_MX(A, iso, monthAgo, termStart, t) {
+  const cur = "MXN";
+  return {
+    cur: cur,
+    tax: { interest: 5, dividends: 10, capGains: 10, interestProvisional: 0.5, inflation: 4.5 },
+    accounts: [
+      { id: A[0], name: "Everyday Checking", institution: "BBVA", type: "checking", balance: 18450.22, apy: 0, balanceAsOf: iso, currency: cur },
+      { id: A[1], name: "High-Yield Savings", institution: "Nu", type: "savings", balance: 92000, apy: 9.25, balanceAsOf: monthAgo, currency: cur, interestFreq: "daily", interestDay: 31 },
+      { id: A[2], name: "Emergency Fund", institution: "Openbank", type: "savings", balance: 45000, apy: 7.5, balanceAsOf: monthAgo, currency: cur, interestFreq: "quarterly", interestDay: 15 },
+      { id: A[3], name: "Brokerage Cash", institution: "GBM+", type: "investment", balance: 1200, apy: 0, balanceAsOf: iso, currency: "USD" },
+      { id: A[4], name: "CETES 91 d\u00edas", institution: "Cetesdirecto", type: "investment", balance: 50000, apy: 10.2, balanceAsOf: termStart, currency: cur, interestFreq: "term", interestEveryDays: 91, interestStart: termStart },
+    ],
+    cards: [
+      { id: uid(), name: "Platinum Rewards", issuer: "American Express", limit: 85000, balance: 21340.5, cutDay: 14, payDay: 4, apr: 39.9, color: "c-forest", currency: cur },
+      { id: uid(), name: "Cashback Visa", issuer: "Santander", limit: 40000, balance: 31200, cutDay: 25, payDay: 15, apr: 45.2, color: "c-ocean", currency: cur },
+    ],
+    holdings: _sampleHoldings(A[3]),
+    incomes: [
+      { id: uid(), name: "Salary \u2014 Acme Corp", category: "Salary", amount: 36000, amountType: "gross", taxRate: 21, accountId: A[0], frequency: "quincena", payDay: 15, startDate: "2025-01-15", currency: cur },
+      { id: uid(), name: "Freelance retainer", category: "Freelance", amount: 9500, amountType: "net", taxRate: 0, accountId: A[0], frequency: "monthly", payDay: 1, startDate: "2025-04-01", currency: cur },
+      { id: uid(), name: "Apartment rent (tenant)", category: "Rent", amount: 7800, amountType: "gross", taxRate: 10, accountId: A[1], frequency: "monthly", payDay: 5, startDate: "2025-02-05", currency: cur },
+    ],
+    snapshots: _sampleSnapshots(t, 21500),
+    expenses: _sampleExpenses(t, {
+      cur: cur,
+      fixed: [
+        [2, "Apartment rent", "Housing", 11500],
+        [3, "CFE electricity", "Utilities", m => 640 + m * 20],
+        [4, "Internet \u2014 Totalplay", "Utilities", 599],
+        [13, "Netflix", "Subscriptions", 219],
+        [13, "Spotify", "Subscriptions", 129],
+        [16, "Gym", "Health", 650],
+      ],
+      variable: {
+        groceries: [2980, 3120, 3380, 3650, 3050],
+        dining: [1190, 1480, 1400, 1240, 980],
+        transport: [1190, 1050, 1320, 980, 1110],
+        shopping: [0, 1800, 0, 1450, 3200],
+        travel: [0, 3850, 0, 0, 5200],
+        health: [430, 380, 1240, 290, 360],
+        entertainment: [320, 540, 280, 760, 410],
+      },
+      stores: {
+        groceries: ["Walmart", "Soriana"], dining: ["Restaurante", "Caf\u00e9 & pan"],
+        transport: ["Gasolina", "Uber"], shopping: "Amazon MX / Liverpool",
+        travel: "Vuelo \u2014 Volaris", health: "Farmacia", entertainment: "Cin\u00e9polis",
+      },
+    }),
+    budgets: {
+      Groceries: { amount: 4500, currency: cur }, Dining: { amount: 1500, currency: cur },
+      Transport: { amount: 1500, currency: cur }, Shopping: { amount: 2000, currency: cur },
+      Entertainment: { amount: 800, currency: cur },
+    },
+    flows: _sampleFlows(t),
+    plan: [
+      { id: uid(), kind: "raise", year: t.getFullYear() + 2, pct: 15, name: "Promoci\u00f3n esperada" },
+      { id: uid(), kind: "purchase", year: t.getFullYear() + 4, amount: 3400000, currency: cur, asset: true, financed: true, downPct: 25, loanRate: 10.5, termYears: 20, name: "Casa nueva (cr\u00e9dito)" },
+      { id: uid(), kind: "purchase", year: t.getFullYear() + 6, amount: 420000, currency: cur, asset: true, name: "Coche nuevo" },
+    ],
+    assets: [
+      { id: uid(), name: "Departamento CDMX", kind: "property", value: 2850000, currency: cur },
+      { id: uid(), name: "Auto \u2014 Mazda 3", kind: "vehicle", value: 265000, currency: cur },
+    ],
+    liabilities: [
+      { id: uid(), name: "Hipoteca depa", kind: "mortgage", balance: 1680000, apr: 10.4, payment: 19800, currency: cur },
+    ],
+  };
+}
+
+/* International profile — neutral USD dataset for every other country. */
+function SAMPLE_PROFILE_INTL(A, iso, monthAgo, termStart, t) {
+  const cur = "USD";
+  return {
+    cur: cur,
+    tax: { interest: 0, dividends: 15, capGains: 15, interestProvisional: 0, inflation: 2.5 },
+    accounts: [
+      { id: A[0], name: "Everyday Checking", institution: "Chase", type: "checking", balance: 1050.40, apy: 0, balanceAsOf: iso, currency: cur },
+      { id: A[1], name: "High-Yield Savings", institution: "Marcus", type: "savings", balance: 5200, apy: 4.10, balanceAsOf: monthAgo, currency: cur, interestFreq: "daily", interestDay: 31 },
+      { id: A[2], name: "Emergency Fund", institution: "Ally", type: "savings", balance: 2600, apy: 3.80, balanceAsOf: monthAgo, currency: cur, interestFreq: "quarterly", interestDay: 15 },
+      { id: A[3], name: "Brokerage Cash", institution: "Schwab", type: "investment", balance: 1200, apy: 0, balanceAsOf: iso, currency: cur },
+      { id: A[4], name: "T-Bill 91 days", institution: "TreasuryDirect", type: "investment", balance: 2800, apy: 4.30, balanceAsOf: termStart, currency: cur, interestFreq: "term", interestEveryDays: 91, interestStart: termStart },
+    ],
+    cards: [
+      { id: uid(), name: "Platinum Rewards", issuer: "American Express", limit: 12000, balance: 3210.75, cutDay: 14, payDay: 4, apr: 24.99, color: "c-forest", currency: cur },
+      { id: uid(), name: "Cashback Visa", issuer: "Chase", limit: 8000, balance: 4120, cutDay: 25, payDay: 15, apr: 27.49, color: "c-ocean", currency: cur },
+    ],
+    holdings: _sampleHoldings(A[3]),
+    incomes: [
+      { id: uid(), name: "Salary \u2014 Acme Corp", category: "Salary", amount: 4150, amountType: "gross", taxRate: 24, accountId: A[0], frequency: "biweekly", payDay: 15, startDate: "2025-01-06", currency: cur },
+      { id: uid(), name: "Freelance retainer", category: "Freelance", amount: 550, amountType: "net", taxRate: 0, accountId: A[0], frequency: "monthly", payDay: 1, startDate: "2025-04-01", currency: cur },
+      { id: uid(), name: "Rental income", category: "Rent", amount: 450, amountType: "net", taxRate: 0, accountId: A[1], frequency: "monthly", payDay: 5, startDate: "2025-02-05", currency: cur },
+    ],
+    snapshots: _sampleSnapshots(t, 48500),
+    expenses: _sampleExpenses(t, {
+      cur: cur,
+      fixed: [
+        [2, "Apartment rent", "Housing", 1850],
+        [3, "Electricity", "Utilities", m => 82 + m * 2],
+        [4, "Internet", "Utilities", 70],
+        [13, "Netflix", "Subscriptions", 17],
+        [13, "Spotify", "Subscriptions", 12],
+        [16, "Gym", "Health", 45],
+      ],
+      variable: {
+        groceries: [520, 545, 590, 640, 535],
+        dining: [210, 260, 245, 215, 170],
+        transport: [180, 160, 200, 150, 170],
+        shopping: [0, 320, 0, 260, 560],
+        travel: [0, 680, 0, 0, 920],
+        health: [75, 65, 210, 50, 60],
+        entertainment: [55, 95, 50, 130, 70],
+      },
+      stores: {
+        groceries: ["Whole Foods", "Trader Joe\u2019s"], dining: ["Restaurant", "Coffee & bakery"],
+        transport: ["Gas", "Uber"], shopping: "Amazon",
+        travel: "Flight \u2014 Delta", health: "Pharmacy", entertainment: "Cinema",
+      },
+    }),
+    budgets: {
+      Groceries: { amount: 600, currency: cur }, Dining: { amount: 250, currency: cur },
+      Transport: { amount: 220, currency: cur }, Shopping: { amount: 300, currency: cur },
+      Entertainment: { amount: 120, currency: cur },
+    },
+    flows: _sampleFlows(t),
+    plan: [
+      { id: uid(), kind: "raise", year: t.getFullYear() + 2, pct: 10, name: "Expected promotion" },
+      { id: uid(), kind: "purchase", year: t.getFullYear() + 4, amount: 485000, currency: cur, asset: true, financed: true, downPct: 20, loanRate: 6.8, termYears: 30, name: "New house (mortgage)" },
+      { id: uid(), kind: "purchase", year: t.getFullYear() + 6, amount: 32000, currency: cur, asset: true, name: "New car" },
+    ],
+    assets: [
+      { id: uid(), name: "Condo", kind: "property", value: 420000, currency: cur },
+      { id: uid(), name: "Car \u2014 Mazda 3", kind: "vehicle", value: 18500, currency: cur },
+    ],
+    liabilities: [
+      { id: uid(), name: "Condo mortgage", kind: "mortgage", balance: 310000, apr: 6.7, payment: 2050, currency: cur },
+    ],
+  };
+}
 
 /* ---------- derived totals (all converted to the display currency) ---------- */
 

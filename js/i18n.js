@@ -231,6 +231,15 @@ const I18N = {
     "Nothing to project yet": "Nada que proyectar todavía",
     "Go to accounts": "Ir a cuentas",
     "New salary": "Nuevo sueldo", "New spending": "Nuevo gasto",
+    // country presets & first-run
+    "Country": "País", "Choose…": "Elegir…",
+    "Where are you?": "¿Dónde estás?",
+    "Sets your currency, language and typical tax rates in one tap.": "Configura tu moneda, idioma e impuestos típicos con un toque.",
+    "Country settings applied": "Configuración de país aplicada",
+    "review and Save": "revisa y Guarda",
+    "United States": "Estados Unidos", "Canada": "Canadá",
+    "United Kingdom": "Reino Unido", "Deutschland": "Alemania",
+    "Tax on interest %": "Impuesto sobre intereses %",
   },
 };
 

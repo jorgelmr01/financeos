@@ -609,13 +609,35 @@ const UI = {
   settingsForm() {
     const st = Store.state.settings;
     const tax = st.tax || { interest: 0, dividends: 0, capGains: 0 };
+    const country = st.country || "";
+    const preset = countryPreset(country);
+    // legacy installs predate the country setting — keep the Mexico-flavored
+    // fields they were built around until a country is chosen
+    const isMX = country === "MX" || (!country && (displayCurrency() === "MXN" || (tax.interestProvisional || 0) > 0));
     const fxNote = st.fx && st.fx.asOf
-      ? "Live ECB rates as of " + fmtDate(parseISO(st.fx.asOf)) + " · 1 USD = " + fmtNum(st.fx.rates.MXN, 2) + " MXN · " + fmtNum(st.fx.rates.EUR, 3) + " EUR"
+      ? "Live ECB rates as of " + fmtDate(parseISO(st.fx.asOf)) + " · 1 USD = " + fmtNum((st.fx.rates[displayCurrency()] || 1), 2) + " " + displayCurrency()
       : "Using built-in fallback rates — refresh from the ⋯ menu when online";
+    const intLabel = isMX ? "Annual ISR on interest %" : "Tax on interest %";
+    const intHint = isMX
+      ? "In Mexico interest is paid gross and you settle this in your April return — and only on the real interest (above inflation), never withheld at source"
+      : "Applied to interest earned in projections — set your marginal rate, or 0 to ignore";
+    const divHint = isMX
+      ? "withholding rate — withheld at source (definitive 10% in Mexico)"
+      : "Withholding rate applied to dividends in projections";
+    const inflHint = isMX
+      ? "Used for taxable real interest (nominal − inflation) and the Retirement calculator's today's-pesos values. A rational long-run Mexico figure is ≈4–4.5%"
+      : "Used for real-interest math and the Retirement calculator's today's-money values";
     const body =
       '<div class="f-grid">' +
+      this.field("Country",
+        '<select name="country" id="settings-country">' +
+          '<option value="">' + tr("Choose…") + "</option>" +
+          COUNTRY_PRESETS.map(p => '<option value="' + p.code + '"' + (country === p.code ? " selected" : "") + ">" + tr(p.name) + "</option>").join("") +
+        "</select>" +
+        '<div class="hint" id="country-note"' + (preset ? "" : ' style="display:none"') + ">" + (preset ? esc(preset.note) : "") + "</div>",
+        "One tap sets your display currency, language and typical tax rates below — fine-tune anything afterwards. Rates are common starting points, not tax advice.", true) +
       this.field("Language",
-        '<select name="lang">' +
+        '<select name="lang" id="settings-lang">' +
           '<option value="auto"' + (!st.lang || st.lang === "auto" ? " selected" : "") + ">" + tr("Auto (browser)") + "</option>" +
           '<option value="es"' + (st.lang === "es" ? " selected" : "") + ">Español</option>" +
           '<option value="en"' + (st.lang === "en" ? " selected" : "") + ">English</option>" +
@@ -624,12 +646,12 @@ const UI = {
       this.field("Finnhub API key (optional)",
         '<input name="finnhubKey" value="' + esc(st.finnhubKey || "") + '" placeholder="works without one — Yahoo fallback" autocomplete="off">',
         "“Update prices” works with no key via Yahoo (through a public CORS proxy, which sees only the ticker symbols). A free finnhub.io key adds a direct, faster source for stock quotes — and powers the Advanced portfolio view: it auto-classifies single stocks by sector &amp; country and pulls each one's market beta. Stored only in this browser.", true) +
-      this.field("Annual ISR on interest %", '<input name="taxInterest" type="number" step="0.1" min="0" max="99" value="' + (tax.interest || "") + '" placeholder="0">', "In Mexico interest is paid gross and you settle this in your April return — and only on the real interest (above inflation), never withheld at source") +
-      this.field("Provisional ISR on capital %", '<input name="taxIntProvisional" type="number" step="0.01" min="0" max="20" value="' + (tax.interestProvisional || "") + '" placeholder="0.5">', "Small advance (≈0.5%, set yearly by the Ley de Ingresos) the bank withholds on your capital; it's a credit against the annual ISR above") +
-      this.field("Inflation assumption %", '<input name="inflation" type="number" step="0.1" min="0" max="50" value="' + (tax.inflation != null ? tax.inflation : "") + '" placeholder="4.5">', "Used for taxable real interest (nominal − inflation) and the Retirement calculator's today's-pesos values. A rational long-run Mexico figure is ≈4–4.5%") +
-      this.field("Tax on dividends %", '<input name="taxDividends" type="number" step="0.1" min="0" max="99" value="' + (tax.dividends || "") + '" placeholder="0">', "withholding rate — withheld at source (definitive 10% in Mexico)") +
+      this.field(intLabel, '<input name="taxInterest" type="number" step="0.1" min="0" max="99" value="' + (tax.interest || "") + '" placeholder="0">', intHint) +
+      this.field("Provisional ISR on capital %", '<input name="taxIntProvisional" type="number" step="0.01" min="0" max="20" value="' + (tax.interestProvisional || "") + '" placeholder="0.5">', "Small advance (≈0.5%, set yearly by the Ley de Ingresos) the bank withholds on your capital; it's a credit against the annual ISR above", false, "f-provisional") +
+      this.field("Inflation assumption %", '<input name="inflation" type="number" step="0.1" min="0" max="50" value="' + (tax.inflation != null ? tax.inflation : "") + '" placeholder="4.5">', inflHint) +
+      this.field("Tax on dividends %", '<input name="taxDividends" type="number" step="0.1" min="0" max="99" value="' + (tax.dividends || "") + '" placeholder="0">', divHint) +
       this.field("Tax on capital gains %", '<input name="taxCapGains" type="number" step="0.1" min="0" max="99" value="' + (tax.capGains || "") + '" placeholder="0">', "applied to projected gains") +
-      this.field("Risk-free rate %", '<input name="riskFree" type="number" step="0.1" min="0" max="30" value="' + (st.riskFreePct != null ? st.riskFreePct : "") + '" placeholder="7.5">', "For Sharpe/Sortino — think CETES 28d") +
+      this.field("Risk-free rate %", '<input name="riskFree" type="number" step="0.1" min="0" max="30" value="' + (st.riskFreePct != null ? st.riskFreePct : "") + '" placeholder="7.5">', isMX ? "For Sharpe/Sortino — think CETES 28d" : "For Sharpe/Sortino — think short-term government bills") +
       this.field("Auto-credit interest",
         '<label class="switch-row"><input type="checkbox" name="autoInterest"' + (st.autoInterest !== false ? " checked" : "") + '> ' +
         "Add interest to balances on its schedule</label>",
@@ -640,6 +662,13 @@ const UI = {
       submitLabel: "Save settings",
       onSubmit(fd) {
         Store.state.settings.finnhubKey = (fd.get("finnhubKey") || "").trim();
+        const newCountry = fd.get("country") || "";
+        // a newly chosen country brings its display currency with it
+        if (newCountry && newCountry !== country) {
+          const p = countryPreset(newCountry);
+          if (p) Store.state.settings.currency = p.currency;
+        }
+        Store.state.settings.country = newCountry;
         Store.state.settings.tax = {
           interest: parseFloat(fd.get("taxInterest")) || 0,
           interestProvisional: parseFloat(fd.get("taxIntProvisional")) || 0,
@@ -651,6 +680,8 @@ const UI = {
         Store.state.settings.lang = fd.get("lang") || "auto";
         const rfv = parseFloat(fd.get("riskFree"));
         Store.state.settings.riskFreePct = isFinite(rfv) ? rfv : null;
+        // a new country may bring a new display currency / language
+        if (typeof App !== "undefined") App.renderCurrencySelect();
         I18N.refresh();
         Store.save();
         Store.settleInterest();          // apply immediately if just turned on
@@ -658,6 +689,30 @@ const UI = {
         UI.closeModal();
         App.render();
       },
+    });
+    /* live behaviors inside the modal */
+    const provRow = document.getElementById("f-provisional");
+    if (provRow && !isMX) provRow.style.display = "none";
+    const countrySel = document.getElementById("settings-country");
+    if (countrySel) countrySel.addEventListener("change", () => {
+      const p = countryPreset(countrySel.value);
+      const note = document.getElementById("country-note");
+      if (note) {
+        if (p) { note.textContent = p.note; note.style.display = ""; }
+        else { note.textContent = ""; note.style.display = "none"; }
+      }
+      if (!p) return;
+      const form = document.getElementById("modal-form");
+      const set = (name, v) => { const el = form.querySelector('[name="' + name + '"]'); if (el) el.value = v; };
+      set("taxInterest", p.tax.interest || "");
+      set("taxIntProvisional", p.tax.interestProvisional || "");
+      set("inflation", p.inflation);
+      set("taxDividends", p.tax.dividends || "");
+      set("taxCapGains", p.tax.capGains || "");
+      const langSel = document.getElementById("settings-lang");
+      if (langSel) langSel.value = p.lang;
+      if (provRow) provRow.style.display = p.code === "MX" ? "" : "none";
+      UI.toast(tr("Country settings applied") + " — " + tr("review and Save"));
     });
   },
 

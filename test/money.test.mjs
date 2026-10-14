@@ -28,7 +28,7 @@ const bundle = [read("js/utils.js"), read("js/instruments.js"), read("js/budget.
   " accruedInterest, holdingReturnRate, parseAmount, parseExpenseDate, expenseSig, canonicalCategory," +
   " earningsBreakdown, sellHolding, realizedSummary, amortizeLoan, xirr, portfolioXirrFlows, riskAdjusted, rebalancePlan, currencyExposure, stressTest, portfolioAdvice, weightedExpenseRatio, INSTRUMENTS, accountXirr, contributionSeries, Report, fromUSD, wealthProjection, computeTotals, allCategories, categoryMeta, effectiveBudgetForCategory, retirementProjection, retirementMonteCarlo, retirementBuckets, retirementBucketsMC, makeEquityMarket, mulberry32, MARKET, realInterestEst, monthlyInterestEst," +
   " convBetween, sparkline, categorySeries, debtPayoff, detectRecurring, cashflowForecast, buroScore, investReadiness, irregularIncomePlan," +
-  " classifyHolding, portfolioExposure, seriesReturns, annualizedVol, alignReturns, betaOf, correlationOf, periodsPerYear, weightedValueSeries, seriesReturnOver, finnhubSectorToGICS, countryToRegion, dividendSummary, drawdownInfo, fmtNumInput, parseNum, budgetSpendEstimate," +
+  " classifyHolding, portfolioExposure, seriesReturns, annualizedVol, alignReturns, betaOf, correlationOf, periodsPerYear, weightedValueSeries, seriesReturnOver, finnhubSectorToGICS, countryToRegion, dividendSummary, drawdownInfo, fmtNumInput, parseNum, budgetSpendEstimate, CURRENCY_CODES, CURRENCY_LOCALE, FALLBACK_FX, COUNTRY_PRESETS, countryPreset, applyCountryPreset, monthNameShort, fmtDate, fmtDateShort, fmtNum, activeLocale," +
   " toISO, parseISO, daysBetween, todayMid, icsForCards, Statements, INTEREST_FREQ, Store };";
 vm.runInContext(bundle, ctx, { filename: "bundle.js" });
 const A = ctx.__api;
@@ -1399,6 +1399,76 @@ group("risk math — returns, volatility, beta", () => {
   // periods/year inferred from spacing
   eq(A.periodsPerYear(pts([1, 2, 3, 4])), 252, "daily spacing → 252");
   eq(A.periodsPerYear([{ t: 0, c: 1 }, { t: 7 * 86400000, c: 1 }, { t: 14 * 86400000, c: 1 }, { t: 21 * 86400000, c: 1 }]), 52, "weekly spacing → 52");
+});
+
+
+/* ================= country presets, currencies, locale formatting ================= */
+group("country presets", () => {
+  eq(A.COUNTRY_PRESETS.length, 7, "seven country presets ship");
+  const mx = A.countryPreset("MX");
+  ok(mx && mx.currency === "MXN" && mx.lang === "es", "MX preset: MXN + Spanish");
+  const us = A.countryPreset("US");
+  ok(us && us.currency === "USD" && us.tax.dividends === 15, "US preset: USD, 15% dividends");
+  eq(A.countryPreset("XX"), null, "unknown country -> null");
+  // every preset currency is a supported FX currency
+  A.COUNTRY_PRESETS.forEach(p => {
+    ok(A.CURRENCY_CODES.includes(p.currency), "preset currency supported: " + p.code + "/" + p.currency);
+  });
+});
+
+group("applyCountryPreset", () => {
+  resetStore({ settings: { currency: "USD", lang: "auto", tax: {}, autoInterest: true, fx: null } });
+  eq(A.applyCountryPreset("US"), true, "applies known preset");
+  eq(A.Store.state.settings.currency, "USD", "US -> USD display");
+  eq(A.Store.state.settings.lang, "en", "US -> English UI");
+  eq(A.Store.state.settings.tax.dividends, 15, "US dividend tax applied");
+  eq(A.Store.state.settings.tax.inflation, 2.5, "US inflation assumption applied");
+  // explicit language choice is never overridden
+  resetStore({ settings: { currency: "USD", lang: "es", tax: {}, autoInterest: true, fx: null } });
+  A.applyCountryPreset("US");
+  eq(A.Store.state.settings.lang, "es", "explicit language choice preserved");
+  eq(A.applyCountryPreset("XX"), false, "unknown preset -> false, nothing touched");
+});
+
+group("currency coverage", () => {
+  eq(A.CURRENCY_CODES.length, 30, "30 supported currencies");
+  A.CURRENCY_CODES.forEach(c => {
+    ok(A.CURRENCY_LOCALE[c], "locale mapped: " + c);
+    ok(A.FALLBACK_FX[c] > 0, "offline fallback rate present: " + c);
+  });
+  // conversion sanity on fallback rates: 100 USD -> EUR at 0.92
+  A.Store.state.settings.fx = null;
+  const eur = A.convBetween(100, "USD", "EUR");
+  approx(eur, 92, 0.001, "100 USD -> EUR via fallback");
+  const mxn = A.convBetween(100, "USD", "MXN");
+  approx(mxn, 1820, 0.001, "100 USD -> MXN via fallback");
+  // unknown pair never silently becomes 1:1
+  const jpy = A.convBetween(1, "USD", "JPY");
+  ok(jpy > 100, "USD->JPY uses the fallback rate, not 1");
+});
+
+group("locale-aware formatting", () => {
+  eq(A.activeLocale(), "en-US", "default locale is en-US (no I18N in sandbox)");
+  eq(A.monthNameShort(0), "Jan", "January short name");
+  eq(A.monthNameShort(11), "Dec", "December short name");
+  eq(A.fmtDate(A.parseISO("2026-01-15")), "Jan 15, 2026", "fmtDate renders locale month");
+  eq(A.fmtDateShort(A.parseISO("2026-12-24")), "Dec 24", "fmtDateShort renders locale month");
+  eq(A.fmtNum(1234567.891, 2), "1,234,567.89", "fmtNum groups with locale separators");
+});
+
+group("loadSample profiles", () => {
+  resetStore({ settings: { currency: "MXN", country: "MX", lang: "es", tax: {}, autoInterest: true, fx: null } });
+  A.Store.loadSample();
+  ok(A.Store.state.accounts.some(a => a.currency === "MXN"), "MX profile uses MXN accounts");
+  ok(A.Store.state.accounts.some(a => /CETES/.test(a.name)), "MX profile keeps the CETES account");
+  eq(A.Store.state.settings.tax.interestProvisional, 0.5, "MX profile tax preset applied");
+
+  resetStore({ settings: { currency: "USD", country: "US", lang: "en", tax: {}, autoInterest: true, fx: null } });
+  A.Store.loadSample();
+  ok(A.Store.state.accounts.every(a => a.currency === "USD"), "INTL profile is all-USD");
+  ok(!A.Store.state.accounts.some(a => /CETES/.test(a.name || "")), "INTL profile has no CETES account");
+  ok(A.Store.state.expenses.length > 40, "INTL profile generates expense history");
+  ok(A.Store.state.expenses.every(e => e.currency === "USD" && e.sig), "expenses carry currency + dedup signature");
 });
 
 /* ---- report ---- */

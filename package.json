@@ -1,0 +1,1 @@
+{"description":"FinanceOS — your complete financial command center. Local-first personal finance.","devDependencies":{"@capacitor/cli":"^7.2.0","@capacitor/core":"^7.2.0","@capacitor/ios":"^7.2.0"},"name":"financeos","private":true,"scripts":{"open:ios":"npx cap open ios","sync":"npx cap sync","sync:ios":"npx cap sync ios"},"version":"1.0.0"}

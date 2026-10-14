@@ -203,7 +203,7 @@ const App = {
       const ok = await Store.unlock(pin);
       if (ok) {
         root.innerHTML = "";
-        document.getElementById("currency-select").value = Store.state.settings.currency;
+        App.renderCurrencySelect();
         this.settleInterest();
         this.render();
         Store.refreshFx().then(changed => { if (changed) this.render(); });
@@ -510,12 +510,14 @@ const App = {
           UI.confirm("Load sample data?", "This replaces your current data with a demo dataset. Export first if you want a backup.", () => {
             Store.loadSample();
             Store.settleInterest();
+            App.renderCurrencySelect();
             UI.toast("Sample data loaded — explore away");
             App.render();
           });
         } else {
           Store.loadSample();
           Store.settleInterest();
+          App.renderCurrencySelect();
           UI.toast("Sample data loaded — explore away");
           this.render();
         }
@@ -575,11 +577,26 @@ const App = {
     }
   },
 
+  /* Populate the sidebar display-currency dropdown from CURRENCY_CODES,
+     with each currency's native symbol for quick recognition. */
+  renderCurrencySelect() {
+    const sel = document.getElementById("currency-select");
+    if (!sel || typeof CURRENCY_CODES === "undefined") return;
+    sel.innerHTML = CURRENCY_CODES.map(c => {
+      let sym = "";
+      try {
+        const part = new Intl.NumberFormat((typeof CURRENCY_LOCALE !== "undefined" && CURRENCY_LOCALE[c]) || "en-US",
+          { style: "currency", currency: c }).formatToParts(0).find(p => p.type === "currency");
+        sym = part ? " " + part.value : "";
+      } catch (e) { /* engine without this currency — code alone is fine */ }
+      return '<option value="' + c + '">' + c + esc(sym) + "</option>";
+    }).join("");
+    if (Store.state) sel.value = Store.state.settings.currency;
+  },
+
   async init() {
     const res = await Store.load();
-    if (Store.state) {
-      document.getElementById("currency-select").value = Store.state.settings.currency;
-    }
+    this.renderCurrencySelect();
     // saved data existed but couldn't be read — warn instead of silently resetting
     if (Store.loadFailed) {
       setTimeout(() => UI.toast("Couldn't read your saved data — it may be corrupted. Import your last .json backup from the ⋯ menu.", { type: "error", duration: 12000 }), 600);
@@ -754,6 +771,15 @@ const App = {
         Store.state.settings.currency = e.target.value;
         Store.save();
         this.render();
+      }
+      /* first-run country picker (welcome empty state): one tap configures
+         currency, language and typical tax figures for the user's country */
+      if (e.target.id === "onboard-country" && e.target.value) {
+        if (applyCountryPreset(e.target.value)) {
+          this.renderCurrencySelect();
+          UI.toast(tr("Country settings applied"));
+          this.render();
+        }
       }
       if (e.target.id === "budget-month") {
         this.budgetMonth = e.target.value;

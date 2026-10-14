@@ -151,7 +151,7 @@ function monthKeyOf(dateISO) { return String(dateISO || "").slice(0, 7); }
 function monthLabel(mk) {
   const p = String(mk).split("-");
   if (p.length < 2) return mk;
-  return MONTHS_SHORT[(+p[1]) - 1] + " " + p[0];
+  return monthNameShort((+p[1]) - 1) + " " + p[0];
 }
 
 function expenseMonths() {
@@ -256,7 +256,7 @@ function monthAdd(mk, delta) {
 
 function monthShort(mk) {
   const p = String(mk).split("-");
-  return MONTHS_SHORT[(+p[1]) - 1] + (p[1] === "01" || +p[1] === 1 ? " ’" + String(p[0]).slice(2) : "");
+  return monthNameShort((+p[1]) - 1) + (p[1] === "01" || +p[1] === 1 ? " ’" + String(p[0]).slice(2) : "");
 }
 
 /* One row per month from first activity to the current month (gaps filled with 0). */

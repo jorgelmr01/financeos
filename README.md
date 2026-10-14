@@ -45,7 +45,7 @@ Your data still lives only on the device, in that browser's storage — installi
 
 ## Multi-currency & live data
 
-- Every account, card, position and income stream carries its **own currency** (USD/MXN/EUR/GBP) — mix Mexican bank accounts with US stocks freely.
+- Every account, card, position and income stream carries its **own currency** — mix Mexican bank accounts with US stocks freely. 30 currencies supported: USD, EUR, GBP, MXN, CAD, BRL, CHF, JPY, CNY, INR, KRW, AUD, NZD, SGD, HKD, SEK, NOK, DKK, PLN, CZK, HUF, RON, BGN, ILS, ZAR, TRY, THB, PHP, MYR, ISK.
 - Totals convert to your display currency using **daily ECB exchange rates** (Frankfurter API, no key needed), refreshed automatically with an offline fallback.
 - **Live stock/ETF prices and annual dividends with no API key**: "↻ Update prices" pulls quotes and the actual dividend payments of the trailing 12 months (Yahoo Finance data via a public CORS proxy — it sees only ticker symbols, never your finances). Works for ETFs and stocks alike. An optional free [Finnhub](https://finnhub.io/register) key adds a direct quote source.
 - Net worth history is snapshotted daily in USD, so switching display currency never distorts the chart.
@@ -76,6 +76,8 @@ Flip the Budget page to **Trends** for a WHOOP-style historic view: this month m
 
 Declare each income stream as **gross** (with an effective withholding rate) or **net** — projections, timeline and charts always show what actually lands. Global rates for **interest, dividends, and capital gains** live in Settings and flow through every projection in the app.
 
+**Country presets** (Settings → Country, or the "Where are you?" picker on first launch) configure your display currency, interface language and typical tax figures in one tap — United States, México, Canada, United Kingdom, España, Deutschland and Brasil included. Rates are common starting points, clearly labeled; adjust them to your situation.
+
 ## Keeping your finances safe
 
 - **Local-first**: data never leaves the browser (`localStorage`, key `financeos_v1`).
@@ -89,7 +91,7 @@ Two hand-tuned themes, toggled with the ☀/☾ button in the sidebar: **"ledger
 
 ## Notes
 
-- The currency switch (USD/MXN/EUR/GBP) changes display formatting and the USD conversion used for percentiles; it does not convert your balances.
+- The currency switch changes display formatting and the USD conversion used for percentiles; it does not convert your balances. Numbers and dates follow your interface language (English / Español).
 - Global percentiles are rough, motivational estimates interpolated from public datasets (UBS/Credit Suisse Global Wealth Report, World Inequality Database, ~2024).
 - Built with vanilla HTML/CSS/JS — no dependencies, no build step.
 - The money-critical logic (interest schedules, amount/date parsing, dedup, statement parsing & reconciliation) has a headless test suite: run `node test/money.test.mjs`. In a finance app the one bug you can't ship is a wrong number.

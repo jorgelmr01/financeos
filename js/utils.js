@@ -59,8 +59,81 @@ function esc(s) {
     .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
-const CURRENCY_LOCALE = { USD: "en-US", MXN: "es-MX", EUR: "de-DE", GBP: "en-GB" };
-const CURRENCY_CODES = ["USD", "MXN", "EUR", "GBP"];
+/* Locale per currency, for Intl formatting. Displayed with the code
+   ("USD 6.97") when it differs from the display currency, since several
+   currencies share the same symbol. */
+const CURRENCY_LOCALE = {
+  USD: "en-US", EUR: "de-DE", GBP: "en-GB", MXN: "es-MX", CAD: "en-CA",
+  BRL: "pt-BR", CHF: "de-CH", CNY: "zh-CN", JPY: "ja-JP", INR: "en-IN",
+  KRW: "ko-KR", AUD: "en-AU", NZD: "en-NZ", SGD: "en-SG", HKD: "zh-HK",
+  SEK: "sv-SE", NOK: "nb-NO", DKK: "da-DK", PLN: "pl-PL", CZK: "cs-CZ",
+  HUF: "hu-HU", ILS: "he-IL", ZAR: "en-ZA", TRY: "tr-TR", THB: "th-TH",
+  PHP: "en-PH", MYR: "ms-MY", RON: "ro-RO", BGN: "bg-BG", ISK: "is-IS",
+};
+/* Every currency here is served by the ECB daily feed (via Frankfurter), so
+   rates refresh automatically. Display order: most-used first. */
+const CURRENCY_CODES = [
+  "USD", "EUR", "GBP", "MXN", "CAD", "BRL",
+  "CHF", "JPY", "CNY", "INR", "KRW", "AUD", "NZD", "SGD", "HKD",
+  "SEK", "NOK", "DKK", "PLN", "CZK", "HUF", "RON", "BGN",
+  "ILS", "ZAR", "TRY", "THB", "PHP", "MYR", "ISK",
+];
+
+/* ---------- country presets ----------
+   One tap configures currency, interface language and typical tax figures
+   for a country. Rates are common headline figures — starting points the
+   user can (and should) adjust to their situation, never tax advice. */
+const COUNTRY_PRESETS = [
+  { code: "US", name: "United States", currency: "USD", lang: "en", inflation: 2.5,
+    tax: { interest: 0, dividends: 15, capGains: 15, interestProvisional: 0 },
+    note: "Qualified dividends & long-term gains often 15%. Interest is taxed as ordinary income — set your marginal rate." },
+  { code: "MX", name: "México", currency: "MXN", lang: "es", inflation: 4.0,
+    tax: { interest: 0, dividends: 10, capGains: 10, interestProvisional: 0.5 },
+    note: "Intereses se pagan en bruto y se liquidan en la declaración anual, solo sobre el interés real. Retención provisional ≈0.5%." },
+  { code: "CA", name: "Canada", currency: "CAD", lang: "en", inflation: 2.0,
+    tax: { interest: 0, dividends: 15, capGains: 25, interestProvisional: 0 },
+    note: "Eligible dividends use gross-up + credit; gains have 50% inclusion. Starting points — adjust." },
+  { code: "GB", name: "United Kingdom", currency: "GBP", lang: "en", inflation: 2.5,
+    tax: { interest: 0, dividends: 8.75, capGains: 20, interestProvisional: 0 },
+    note: "Basic-rate figures; allowances (e.g. ISA) aren't modeled. Adjust to your band." },
+  { code: "ES", name: "España", currency: "EUR", lang: "es", inflation: 2.0,
+    tax: { interest: 19, dividends: 19, capGains: 19, interestProvisional: 0 },
+    note: "Base del ahorro: 19%–28% por tramos. Punto de partida — ajústalo." },
+  { code: "DE", name: "Deutschland", currency: "EUR", lang: "en", inflation: 2.0,
+    tax: { interest: 26.375, dividends: 26.375, capGains: 26.375, interestProvisional: 0 },
+    note: "Abgeltungsteuer 25% + solidarity surcharge. Adjust for your Freibetrag." },
+  { code: "BR", name: "Brasil", currency: "BRL", lang: "en", inflation: 4.5,
+    tax: { interest: 15, dividends: 15, capGains: 15, interestProvisional: 0 },
+    note: "Fixed income uses a regressive 15–22.5% table. Verify for your case." },
+];
+
+function countryPreset(code) {
+  return COUNTRY_PRESETS.find(p => p.code === code) || null;
+}
+
+/* Apply a country preset to settings (currency, language if not explicitly
+   chosen, and typical tax figures). Returns true when applied. */
+function applyCountryPreset(code) {
+  const p = countryPreset(code);
+  if (!p || typeof Store === "undefined" || !Store.state) return false;
+  const s = Store.state.settings;
+  s.country = p.code;
+  s.currency = p.currency;
+  if (!s.lang || s.lang === "auto") s.lang = p.lang;
+  s.tax = Object.assign({}, s.tax, {
+    interest: p.tax.interest, dividends: p.tax.dividends, capGains: p.tax.capGains,
+    interestProvisional: p.tax.interestProvisional || 0, inflation: p.inflation,
+  });
+  Store.save();
+  if (typeof I18N !== "undefined") I18N.refresh();
+  return true;
+}
+
+/* Locale for numbers/dates follows the interface language. */
+function activeLocale() {
+  if (typeof I18N !== "undefined" && I18N.active()) return "es-MX";
+  return "en-US";
+}
 
 function displayCurrency() {
   return (typeof Store !== "undefined" && Store.state) ? Store.state.settings.currency : "USD";
@@ -92,7 +165,7 @@ function fmtPct(n, digits) {
 }
 
 function fmtNum(n, digits) {
-  return new Intl.NumberFormat("en-US", {
+  return new Intl.NumberFormat(activeLocale(), {
     minimumFractionDigits: 0,
     maximumFractionDigits: digits == null ? 4 : digits,
   }).format(Number(n) || 0);
@@ -121,18 +194,24 @@ function toISO(d) {
   return y + "-" + m + "-" + dd;
 }
 
-const MONTHS_SHORT = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+/* Locale-aware short month name ("Jan" / "ene"), cached per locale. */
+const _monthFmtCache = {};
+function monthNameShort(m) {
+  const loc = activeLocale();
+  if (!_monthFmtCache[loc]) _monthFmtCache[loc] = new Intl.DateTimeFormat(loc, { month: "short" });
+  return _monthFmtCache[loc].format(new Date(2024, m, 1)).replace(/\.$/, "");
+}
 
 function fmtDate(d) {
   if (!(d instanceof Date)) d = parseISO(d);
   if (!d) return "—";
-  return MONTHS_SHORT[d.getMonth()] + " " + d.getDate() + ", " + d.getFullYear();
+  return monthNameShort(d.getMonth()) + " " + d.getDate() + ", " + d.getFullYear();
 }
 
 function fmtDateShort(d) {
   if (!(d instanceof Date)) d = parseISO(d);
   if (!d) return "—";
-  return MONTHS_SHORT[d.getMonth()] + " " + d.getDate();
+  return monthNameShort(d.getMonth()) + " " + d.getDate();
 }
 
 function daysBetween(a, b) {
@@ -461,6 +540,9 @@ function sparkline(values, opts) {
 
 function ordinal(n) {
   n = Number(n);
+  // English ordinals only make sense in the English UI; other languages
+  // just get the bare number (e.g. Spanish "día 15", not "15th")
+  if (typeof I18N !== "undefined" && I18N.active()) return String(n);
   const s = ["th", "st", "nd", "rd"], v = n % 100;
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
@@ -469,7 +551,13 @@ function ordinal(n) {
    Rates are stored as units-per-USD (Frankfurter/ECB, refreshed daily).
    FALLBACK_FX keeps the app working offline. */
 
-const FALLBACK_FX = { USD: 1, MXN: 18.2, EUR: 0.92, GBP: 0.79 };
+const FALLBACK_FX = {
+  USD: 1, EUR: 0.92, GBP: 0.79, MXN: 18.2, CAD: 1.38, BRL: 5.45,
+  CHF: 0.88, JPY: 155, CNY: 7.1, INR: 88.5, KRW: 1390, AUD: 1.52,
+  NZD: 1.68, SGD: 1.34, HKD: 7.78, SEK: 10.4, NOK: 10.7, DKK: 6.86,
+  PLN: 3.95, CZK: 23.1, HUF: 355, RON: 4.58, BGN: 1.8, ILS: 3.25,
+  ZAR: 17.8, TRY: 42.5, THB: 32.5, PHP: 58.5, MYR: 4.45, ISK: 137,
+};
 
 function fxRates() {
   const s = (typeof Store !== "undefined" && Store.state) ? Store.state.settings : null;

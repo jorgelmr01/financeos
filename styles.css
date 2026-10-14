@@ -1266,6 +1266,14 @@ button, a, .nav-item, .tool-btn, .icon-btn, .swatch { -webkit-tap-highlight-colo
 
 /* ---------- budget & expenses page ---------- */
 .empty-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+.empty-country { margin: 0 auto 18px; max-width: 340px; }
+.empty-country label { display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 13.5px; color: var(--text); }
+.empty-country select {
+  background: var(--surface); color: var(--text); border: 1px solid var(--hairline);
+  border-radius: 10px; padding: 8px 12px; font-size: 13.5px; font-family: inherit; cursor: pointer;
+}
+.empty-country select:focus { outline: none; border-color: var(--mint); }
+.empty-country .hint { color: var(--text-mute); font-size: 12px; margin-top: 8px; }
 .empty-tip { color: var(--text-mute); font-size: 12.5px; margin-top: 18px; }
 .empty-tip a { color: var(--mint); text-decoration: none; }
 .empty-tip a:hover { text-decoration: underline; }

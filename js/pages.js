@@ -9,8 +9,9 @@ const Pages = {
   _onboardPanel() {
     const s = Store.state;
     if (s.settings.onboardDone) return "";
+    const isMX = (typeof Store !== "undefined" && Store.state && Store.state.settings.country) === "MX";
     const steps = [
-      { done: s.accounts.length > 0, label: "Add an account", sub: "checking, savings or CETES — your money's home base", action: "add-account" },
+      { done: s.accounts.length > 0, label: "Add an account", sub: isMX ? "checking, savings or CETES — your money's home base" : "checking, savings or investments — your money's home base", action: "add-account" },
       { done: s.incomes.length > 0, label: "Add your income", sub: "salary or any recurring deposit — powers the forecasts", action: "add-income" },
       { done: (s.expenses || []).length > 0, label: "Log or import expenses", sub: "import a statement PDF or add one by hand — unlocks the Budget", action: "statement-import" },
       { done: s.cards.length > 0, label: "Add a credit card", sub: "get due-date alerts and your utilization at a glance", action: "add-card" },
@@ -40,6 +41,11 @@ const Pages = {
         '<div class="empty-glyph">' + icon("home") + '</div>' +
         "<h3>Welcome to your command center</h3>" +
         "<p>Add your first account, credit card, or position — or load sample data to explore what FinanceOS can do.</p>" +
+        '<div class="empty-country"><label>' + tr("Where are you?") + ' <select id="onboard-country" aria-label="' + tr("Country") + '">' +
+          '<option value="">' + tr("Choose…") + "</option>" +
+          COUNTRY_PRESETS.map(p => '<option value="' + p.code + '">' + tr(p.name) + "</option>").join("") +
+        "</select></label>" +
+        '<div class="hint">' + tr("Sets your currency, language and typical tax rates in one tap.") + "</div></div>" +
         '<div class="empty-actions">' +
           '<button class="btn primary" data-action="sample">Load sample data</button>' +
           '<button class="btn" data-action="add-account">Add an account</button>' +
@@ -1564,7 +1570,7 @@ const Pages = {
     if (sel == null || sel < 0 || sel >= buckets.length) sel = 0;
 
     const yr2 = (d) => "’" + String(d.getFullYear()).slice(2);
-    const bLabel = (b) => MONTHS_SHORT[b.start.getMonth()] + (bucketSize > 1 || b.start.getMonth() === 0 ? " " + yr2(b.start) : "");
+    const bLabel = (b) => monthNameShort(b.start.getMonth()) + (bucketSize > 1 || b.start.getMonth() === 0 ? " " + yr2(b.start) : "");
 
     const grid = [1, 2 / 3, 1 / 3].map(f =>
       '<div class="proj-grid" style="top:' + ((1 - f) * 100).toFixed(1) + '%"><span>' + fmtMoney(maxB * f, { compact: true }) + "</span></div>").join("");

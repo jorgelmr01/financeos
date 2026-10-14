@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Privacy Policy — FinanceOS</title>
+<meta name="description" content="FinanceOS privacy policy: no data collection, on-device storage, plain language.">
+<style>
+  :root { --bg: #0a0d0b; --surface: #111714; --text: #edf2e7; --mute: #93a08d; --mint: #8fe3a6; --gold: #e5c97b; --hairline: #223026; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, "Segoe UI", sans-serif; line-height: 1.65; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 48px 22px 80px; }
+  .brand { font-family: Georgia, serif; font-style: italic; font-size: 26px; margin-bottom: 6px; }
+  .brand b { color: var(--mint); font-weight: normal; } .brand span { color: var(--gold); }
+  h1 { font-size: 30px; margin: 26px 0 4px; letter-spacing: -0.01em; }
+  .meta { color: var(--mute); font-size: 13.5px; margin-bottom: 26px; }
+  h2 { font-size: 19px; margin: 34px 0 8px; color: var(--mint); }
+  p, li { font-size: 15.5px; } ul { padding-left: 22px; } li { margin: 6px 0; }
+  code { background: var(--surface); border: 1px solid var(--hairline); border-radius: 6px; padding: 1px 7px; font-size: 13.5px; }
+  .callout { background: var(--surface); border: 1px solid var(--hairline); border-left: 3px solid var(--mint); border-radius: 10px; padding: 14px 18px; margin: 22px 0; }
+  .callout.warn { border-left-color: var(--gold); }
+  .callout p { margin: 6px 0; font-size: 14.5px; }
+  a { color: var(--mint); }
+  footer { margin-top: 44px; color: var(--mute); font-size: 13px; border-top: 1px solid var(--hairline); padding-top: 18px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand"><b>F</b><span>/</span> FinanceOS</div>
+  <h1>Privacy Policy</h1>
+  <div class="meta">Last updated: <strong>[set before publishing]</strong> · Applies to FinanceOS v1.0 and later (iOS)</div>
+
+  <div class="callout warn"><p>⚠️ <strong>Draft — have a lawyer review it before publishing.</strong> This policy describes the app accurately in plain language, but it is not legal advice.</p></div>
+
+  <h2>The short version</h2>
+  <p>FinanceOS does not collect your data. There is no account, no signup, no analytics, no ads, and no tracking. Everything you enter stays on your device. The only times the app talks to the internet are to fetch public market data (stock prices and exchange rates) — and those requests contain nothing personal about you.</p>
+
+  <h2>What we do NOT collect</h2>
+  <p>We collect <strong>zero</strong> personal data. We never collect, store, or transmit:</p>
+  <ul>
+    <li>Your name, email, phone number, or contact details</li>
+    <li>Your location</li>
+    <li>Device identifiers (no IDFA, IDFV, or advertising IDs)</li>
+    <li>Financial account numbers, card numbers, or bank credentials — FinanceOS never connects to your bank</li>
+    <li>Your balances, transactions, budgets, goals, or anything you type into the app</li>
+    <li>Usage analytics, crash reports, or behavioral data</li>
+    <li>Anything for advertising</li>
+  </ul>
+  <p>There is no server on our end that could receive this information — the app is fully client-side.</p>
+
+  <h2>Where your data lives</h2>
+  <p>Everything you enter is stored <strong>only on your device</strong>, in the app's local storage. It is never uploaded, synced to a cloud, or shared. Delete the app and your data is deleted with it.</p>
+  <ul>
+    <li><strong>Backups:</strong> you can export a <code>.json</code> file from the app's menu. Exported files are <strong>not encrypted</strong> — store them somewhere safe.</li>
+    <li><strong>No cloud backup:</strong> FinanceOS does not back up to iCloud or any other service. Your export file is your backup.</li>
+  </ul>
+
+  <h2>PIN lock and encryption</h2>
+  <p>With PIN lock on, your on-device data is encrypted with <strong>AES-256-GCM</strong>. The key is derived from your PIN on your device (PBKDF2, 150,000 iterations) and never leaves it. We cannot see, reset, or recover your PIN — forget it and the encrypted data cannot be recovered by anyone.</p>
+
+  <h2>Network requests the app makes</h2>
+  <p>FinanceOS works fully offline. It contacts the internet only for public market data, and no request includes anything personal:</p>
+  <ul>
+    <li><strong>Exchange rates</strong> — daily ECB rates via the free Frankfurter API (<code>api.frankfurter.dev</code>). The request contains only currency codes (e.g. USD → MXN).</li>
+    <li><strong>Stock &amp; ETF quotes</strong> — Yahoo Finance data through a public CORS proxy (<code>corsproxy.io</code>, fallback <code>api.allorigins.win</code>). The request contains <strong>only the ticker symbols</strong> you asked to update (e.g. AAPL, VOO) — never holdings, balances, or identity. As with any internet request, the proxy operator technically sees your IP address with the tickers, but nothing identifying you or your finances.</li>
+    <li><strong>Optional:</strong> your own free Finnhub API key (Settings) fetches quotes directly from Finnhub instead. The key stays on your device.</li>
+  </ul>
+
+  <h2>Your rights</h2>
+  <p>We hold no data about you, so there is nothing to access or correct on any server. Your rights are simple:</p>
+  <ul>
+    <li><strong>See everything:</strong> it's all in the app, on your device.</li>
+    <li><strong>Delete everything:</strong> erase data in Settings, or delete the app.</li>
+    <li><strong>Take it with you:</strong> export a <code>.json</code> backup any time.</li>
+  </ul>
+
+  <h2>Children</h2>
+  <p>FinanceOS collects no data from anyone, including children. No ads, no chat, no social features.</p>
+
+  <h2>Changes</h2>
+  <p>Changes will be posted here with a new date, and material changes noted in the App Store "What's New" text.</p>
+
+  <h2>Contact</h2>
+  <p>Questions about this policy: <strong>[privacy@financeos.app — replace with a real monitored address before publishing]</strong></p>
+
+  <div class="callout"><p><strong>Plain-language summary:</strong> your money details never leave your phone. We couldn't sell your data if we wanted to — we never see it.</p></div>
+
+  <footer>© FinanceOS. This page is part of the FinanceOS app repository.</footer>
+</div>
+</body>
+</html>
